@@ -1,7 +1,6 @@
-# urlang
+# URLANG
 
 > Urlang is JavaScript with a sane syntax
->                             - everyone
 
 Urlang is a language designed to allow straightforward translation to JavaScript.
 Think of Urlang as JavaScript with sane syntax and JavaScript semantics.
@@ -10,7 +9,7 @@ JavaScript in this context is short for ECMAScript 5 in strict mode.
 Although the constructs of Urlang and JavaScript map almost one-to-one,
 a little sugar was added:
   * function definitions allow default arguments
-  * let expression
+  * let expressions
 
 Even though the syntax of Urlang is Racket-like, remember that the
 semantics is standard JavaScript. This means in particular that tail calls
@@ -42,8 +41,8 @@ exports.fact=fact;
 
 ### Example (`cond`-macro and `array`)
 
-; Urlang macro transformers receive and produce standard Racket syntax objects.
-; This implies that that standard tools such as syntax-parse are available.
+Urlang macro transformers receive and produce standard Racket syntax objects.
+This implies that standard tools such as syntax-parse are available.
 
 ````
   SYNTAX (cond [e0 e1 e2 ...] ... [else en]), 
@@ -130,61 +129,62 @@ In the grammar below:
   x stands for a non-keyword identifier
   f stands for an identifier defined as a function
 
-; <module>            ::= (urmodule <module-name> <module-path> <module-level-form> ...)
+````
+ <module>            ::= (urmodule <module-name> <module-path> <module-level-form> ...)
 
-; <module-level-form> ::= <export> | <import> | <definition> | <statement> 
-; <export>            ::= (export x ...)
-; <import>            ::= (import x ...)
-; <definition>        ::= (define (f <formal> ...) <body>)
-;                      |  (define x <expr>)
-; <formal>           ::= x | [x <expr>]
+ <module-level-form> ::= <export> | <import> | <definition> | <statement> 
+ <export>            ::= (export x ...)
+ <import>            ::= (import x ...)
+ <definition>        ::= (define (f <formal> ...) <body>)
+                      |  (define x <expr>)
+ <formal>           ::= x | [x <expr>]
 
-; <statement>         ::= <var-decl> | <block> | <while> | <do-while> | <if> | <expr>
-; <var-decl>          ::= (var <var-binding> ...)
-; <block>             ::= (block <statement> ...)
-; <var-binding>       ::= x | (x e)
-; <while>             ::= (while <expr> <statement> ...)
-; <do-while>          ::= (do-while <expr> <statement> ...)
-; <if>                ::= (sif <expr> <statement> <statement>)
+ <statement>         ::= <var-decl> | <block> | <while> | <do-while> | <if> | <expr>
+ <var-decl>          ::= (var <var-binding> ...)
+ <block>             ::= (block <statement> ...)
+ <var-binding>       ::= x | (x e)
+ <while>             ::= (while <expr> <statement> ...)
+ <do-while>          ::= (do-while <expr> <statement> ...)
+ <if>                ::= (sif <expr> <statement> <statement>)
 
-; <body>              ::= <statement> ... <expr>
+ <body>              ::= <statement> ... <expr>
 
-; <expr>              ::= <datum>   | <reference> | <application> | <sequence>
-;                      |  <ternary> | <assignment> | <let> | <lambda> | <dot>
-; <ternary>           ::= (if <expr> <expr> <expr>)
-; <reference>         ::= x
-; <application>       ::= (<expr> <expr> ...)
-; <sequence>          ::= (begin <expr> ...)
-; <assignment>        ::= (:= x <expr>)
-; <let>               ::= (let ((x <expr>) ...) <statement> ... <expr>)
-; <lambda>            ::= (lambda (<formal> ...) <body>)
+ <expr>              ::= <datum>   | <reference> | <application> | <sequence>
+                      |  <ternary> | <assignment> | <let> | <lambda> | <dot>
+ <ternary>           ::= (if <expr> <expr> <expr>)
+ <reference>         ::= x
+ <application>       ::= (<expr> <expr> ...)
+ <sequence>          ::= (begin <expr> ...)
+ <assignment>        ::= (:= x <expr>)
+ <let>               ::= (let ((x <expr>) ...) <statement> ... <expr>)
+ <lambda>            ::= (lambda (<formal> ...) <body>)
 
-; <keyword>           ::= define | begin | urmodule | if | := | ...se code...
+ <keyword>           ::= define | begin | urmodule | if | := | ...se code...
 
-; <datum>             ::= <fixnum> | <string> | #t | #f
+ <datum>             ::= <fixnum> | <string> | #t | #f
 
-; <identifier>     an identifier that is not a keyword
-; <fixnum>         an integer between -2^53 and 2^53
-; <module-name>    a symbol or string
+ <identifier>     an identifier that is not a keyword
+ <fixnum>         an integer between -2^53 and 2^53
+ <module-name>    a symbol or string
+````
 
-;;;
-;NOTES
-;;;
+# NOTES
 
-; Some application are special cases:
-;    (ref e0 e1)     becomes  e0[e1]
-;    (array e ...)   becomes  [e,...]
+Some application are special cases:
 
-; Property access with dot notation is rewritten to use bracket syntax in the parser.
-; Example:  object.property becomes object["property"]
+    (ref e0 e1)     becomes  e0[e1]
+    (array e ...)   becomes  [e,...]
 
-;;;
-;SEMANTICS
-;;;
+Property access with dot notation is rewritten to use bracket syntax in the parser.
 
-; (if e0 e1 e2)
-;   If e0 evaluates to value strictly equal to false, then e2 otherwise e1.
-;   Note: The JavaScript becomes  ((e0===false) ? e2 : e1)
+Example:  `object.property` becomes `object["property"]`
 
-; (var x (y 3))
-;   Binds x to undefined and y to 3.
+
+# SEMANTICS
+
+### `(if e0 e1 e2)`
+If `e0` evaluates to value strictly equal to false, then `e2` otherwise `e1`.
+Note: The JavaScript becomes  `((e0===false) ? e2 : e1)`
+
+### (var x (y 3))
+Binds `x` to undefined and `y` to `3`.
