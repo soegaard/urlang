@@ -18,7 +18,7 @@ build context.
 
 ## Examples
 
-### Example (factorial):
+### Example (factorial)
 
 ````
 > (define fact-program
@@ -45,19 +45,15 @@ Urlang macro transformers receive and produce standard Racket syntax objects.
 This implies that standard tools such as syntax-parse are available.
 
 ````
-  SYNTAX (cond [e0 e1 e2 ...] ... [else en]), 
-      like Racket cond except there is no new scope in the body
-
+  ; SYNTAX  (cond [e0 e1 e2 ...] ... [else en]) 
+  ;     like Racket cond except there is no new scope in the body
+  ;     [Change the begin to let, if you need a version with new scope
   (define-urlang-macro cond
     (λ (stx)   
     (syntax-parse stx
-      [(_cond [else e0:Expr e:Expr ...])
-       #'(begin e0 e ...)]
-      [(_cond [e0 e1 e2 ...] clause ...)
-       (syntax/loc stx
-         (if e0 (begin e1 e2 ...) (cond clause ...)))]
-      [(_cond)
-       (raise-syntax-error 'cond "expected an else clause" stx)])))
+      [(_cond [else e0:Expr e:Expr ...])  (syntax/loc stx (begin e0 e ...))]
+      [(_cond [e0 e1 e2 ...] clause ...)  (syntax/loc stx (if e0 (begin e1 e2 ...) (cond clause ...)))]
+      [(_cond)                            (raise-syntax-error 'cond "expected an else clause" stx)])))
 ````
 
 ````
@@ -81,16 +77,21 @@ This implies that standard tools such as syntax-parse are available.
 
 The heart of the system is a compiler written using the Nanopass
 compiler Framework. The compiler is exported as a function
+
     compile : urlang-module -> JavaScript
+
 that compiles an urlang module and produces JavaScript,
 that can be evaluated by the Node.js platform (or be embedded in a web page).
 
 The Urlang module to be compiled can be represented 
+
    1) as a syntax object
    2) as a Nanopass structure (representing an Lurlang program)
 
 Use 1) to program in Urlang directly.
+
 Use 2) if you intend to use Urlang as a compiler backend.
+
 [Note: Nanopass is a framework for implementing compilers.]
 
 The intended use of Urlang is to use 1) to write (generate) a Racket runtime in JavaScript.
@@ -98,7 +99,9 @@ The middle-end of the Racket-to-JavaScript compiler will produce output as Nanop
 structures, so 2) will be used as the backend for the Racket-to-JavaScript compiler.
 
 Internally the function expand
+
     expand : syntax -> LUrlang
+
 will parse and expand its input and produce an LUrlang representation.
 
 Note that `expand` allows the user to extend the input language
@@ -108,16 +111,16 @@ This allow you to use all of the standard Racket macro machinery.
 
 Main functions:
 
-  expand : syntax -> Lurlang
-    expand the input and produce a fully expanded Urlang program
-    represented as a Lurlang structure
-
-  compile : syntax ->
-    Expand and compile. The output is written to standard out.
-
-  eval : syntax -> value
-    expand, compile and run the input (an Urlang module represented as a syntax object)
-    Running means that `node` is used to run the generated JavaScript.
+    expand : syntax -> Lurlang
+        expand the input and produce a fully expanded Urlang program
+        represented as a Lurlang structure
+        
+    compile : syntax ->
+        Expand and compile. The output is written to standard out.
+        
+    eval : syntax -> value
+        expand, compile and run the input (an Urlang module represented as a syntax object)
+        Running means that `node` is used to run the generated JavaScript.
 
 Having Urlang as a #lang language allows
 
@@ -126,7 +129,9 @@ Having Urlang as a #lang language allows
  * easier testing
 
 In the grammar below:
+
   x stands for a non-keyword identifier
+  
   f stands for an identifier defined as a function
 
 ````
