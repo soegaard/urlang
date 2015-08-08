@@ -122,7 +122,7 @@ Main functions:
         expand, compile and run the input (an Urlang module represented as a syntax object)
         Running means that `node` is used to run the generated JavaScript.
 
-Having Urlang as a #lang language allows
+Having Urlang as a `#lang` language allows
 
  * macros (using full Racket at compile time)
  * export of defined names
@@ -130,9 +130,8 @@ Having Urlang as a #lang language allows
 
 In the grammar below:
 
-  - x stands for a non-keyword identifier
-  
-  - f stands for an identifier defined as a function
+  - `x` stands for a non-keyword identifier
+  - `f` stands for an identifier defined as a function
 
 ````
  <module>            ::= (urmodule <module-name> <module-path> <module-level-form> ...)
@@ -191,5 +190,5 @@ Example:  `object.property` becomes `object["property"]`
 If `e0` evaluates to value strictly equal to false, then `e2` otherwise `e1`.
 Note: The JavaScript becomes  `((e0===false) ? e2 : e1)`
 
-### (var x (y 3))
+### `(var x (y 3))`
 Binds `x` to undefined and `y` to `3`.
