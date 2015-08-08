@@ -85,8 +85,8 @@ that can be evaluated by the Node.js platform (or be embedded in a web page).
 
 The Urlang module to be compiled can be represented 
 
-   1) as a syntax object
-   2) as a Nanopass structure (representing an Lurlang program)
+   1. as a syntax object
+   2. as a Nanopass structure (representing an Lurlang program)
 
 Use 1) to program in Urlang directly.
 
@@ -130,9 +130,9 @@ Having Urlang as a #lang language allows
 
 In the grammar below:
 
-  x stands for a non-keyword identifier
+  - x stands for a non-keyword identifier
   
-  f stands for an identifier defined as a function
+  - f stands for an identifier defined as a function
 
 ````
  <module>            ::= (urmodule <module-name> <module-path> <module-level-form> ...)
