@@ -4,7 +4,6 @@
 ;;; TODO
 ;;;
 
-; * Automatic "import" of predefined functions and operators
 ; * Provide list of reserved identifiers and operators in JavaScript
 ; * Source map
 
@@ -30,8 +29,8 @@
 ;; Example (factorial):
 
 ; > (define fact-program
-;     #'(urmodule
-;        (export fact)
+;     #'(urmodule fact                                          ; module name
+;        (export fact)                                          ; fact is exported
 ;        (import + - * = displayln ref console)
 ;        (define (fact n) (if (= n 0) 1 (* n (fact (- n 1)))))
 ;        (console.log (fact 5))))
@@ -48,7 +47,7 @@
 ;; Example (cond-macro and array)
 
 #;(compile
-   #'(urmodule
+   #'(urmodule 
       (export)
       (import + - * % = === < displayln ref console array)
       (define (even? x) (=== (% x 2) 0))
@@ -170,6 +169,7 @@
 
 ; Some application are special cases:
 ;    (ref e0 e1)     becomes  e0[e1]
+;    (ref e0 "str")  becomes  e0.str    
 ;    (array e ...)   becomes  [e,...]
 
 ; Property access with dot notation is rewritten to use bracket syntax in the parser.
@@ -299,9 +299,12 @@
   ; (#'x is accepted as the syntax terminal even though the grammar says x)
   (if (identifier? s) (syntax-e s) '_))
 
-(define (id? v)          (identifier? v))
-(define (datum? v)       (or (fixnum? v) (string? v) (boolean? v)))
-(define (module-name? v) (or (symbol? v) (string? v)))
+(define (id? v)            (identifier? v))
+(define (datum? v)         (or (fixnum? v) (string? v) (boolean? v)))
+(define (module-name? v)   (or (symbol? v) (string? v)))
+(define (property-name? v) (or (symbol? v) (string? v)
+                               (and (syntax? v)
+                                    (property-name? (syntax-e v)))))
 
 ;;;
 ;;; URLANG AS NANOPASS LANGUAGE
@@ -770,6 +773,8 @@
 ;;; OPERATORS
 ;;;
 
+;;; Infix
+
 (define infix-operators
   '(+ - * / %                        ; arithmetical
       = == === != !== < > <= >=      ; comparison   (= is an alias for ===)
@@ -786,16 +791,31 @@
   (or (and (identifier? v) (infix-operator? (syntax-e v)))
       (memq v infix-operators)))
 
+;;; Assignment Operators
+
+(define assignment-operators
+  '(+= -= *= /= %= **= <<= >>= >>>= &= ^=))
+
+(define assignment-operators-ids (symbols->ids assignment-operators))
+
+(define (assignment-operator? v)
+  (or (and (identifier? v) (assignment-operator? (syntax-e v)))
+      (memq v assignment-operators)))
+
+(define-syntax-class AssignmentOperator
+  #:opaque
+  (pattern x:Id
+           #:fail-unless (assignment-operator? (syntax-e #'x)) #f))
+
 ;;;
 ;;; PREDEFINED NAMES AND RESERVED WORDS
 ;;;
 
 (define predefined-names '(ref console arguments array))
+; (besides operators)
 
 (define reserved-words-ids (symbols->ids ecma6-reservered-keywords))
 (define predefined-ids     (symbols->ids predefined-names))
-
-         
 
 
 ;;;
@@ -891,9 +911,10 @@
   (Module : Module (u) ->  Module ()
     [(urmodule ,mn ,[m] ...)
      ;; register predefined names, reserved words, and, operators
-     (for ([op infix-operators-ids]) (operator!   op))
-     (for ([op reserved-words-ids])  (reserved!   op))
-     (for ([op predefined-ids])      (predefined! op))     
+     (for ([op infix-operators-ids])       (operator!   op))
+     (for ([op assignment-operators-ids])  (operator!   op))
+     (for ([op reserved-words-ids])        (reserved!   op))
+     (for ([op predefined-ids])            (predefined! op))
      ;; check that all exports are defined
      (match (for/first ([x (exports)] #:unless (or (fun? x) (var? x))) x)
        [#f #f] [x  (complain "exported identifier not defined" x)])
@@ -1140,26 +1161,34 @@
                                               (~parens (~commas e)))))]
     [(lambda (,x ...) ,ab)   (let ((ab (AnnotatedBody ab)))
                                (~parens "function" (~parens (~commas x)) ab))]
-    [(app ,e0 ,e ...)       (let ((f (Expr e0))
-                                  (e (map Expr e)))
-                              (cond
-                                [(identifier? f)
-                                 (cond
-                                   [(and (eq? (syntax-e f) 'ref))
-                                    (match e
-                                      [(list e0 e1) (list e0 (~brackets e1))]  ; e0[e1]
-                                      [else
-                                       (raise-syntax-error 'ref "(ref expr expr) expected, at " f)])]
-                                   [(and (eq? (syntax-e f) 'array))
-                                    (~brackets (~commas e))]
-                                   [(and (infix-operator? f) (= (length e) 1)) ; unary
-                                    (~parens f e)]
-                                   [(infix-operator? f)
-                                    (~parens (add-between e f))]               ; nary
-                                   [else
-                                    (~parens f (~parens (~commas e)))])]       ; prefix
-                                [else
-                                 (~parens (~parens f) (~parens (~commas e)))]))])
+    [(app ,e0 ,e ...)      (cond
+                             [(identifier? e0)
+                              (define f e0)
+                              (define (infix? _)      (infix-operator? f))
+                              (define (assignment? _) (assignment-operator? f))
+                              (define (pn? _)
+                                (nanopass-case (L1 Expr) (second e)
+                                  [(quote ,d) (and (property-name? d) d)]
+                                  [else       #f]))
+                              (match (cons (syntax-e f) (map Expr e))
+                                [(list 'ref e1 (and (? pn?)
+                                                    (app pn? pn)))    (if (identifier? e1)
+                                                                          (~a (mangle e1) "." pn)
+                                                                          (list e1 "." (~a pn)))]
+                                [(list 'ref e1 (and (? pn?) (app pn? pn))) (list e1 "." (~a pn))]
+                                [(list 'ref e1 e2)                         (list e1 (~brackets e2))]
+                                [(list 'array e ...)                       (~brackets (~commas e))]
+                                [(list* 'ref _)
+                                 (raise-syntax-error 'ref "(ref expr expr) expected, at " e0)]
+                                [(list (? infix?) e1)    (~parens f e1)]                      ; unary
+                                [(list (? infix?) e ...) (~parens (add-between e f))]         ; nary
+                                [(list (? assignment?) e0 e1)  (~parens e0 f e1)]             ; assign
+                                [(list _ e ...)          (~parens f (~parens (~commas e)))])] ; prefix
+                             [else ; expression in front
+                              (let ((e0 (Expr e0)) (e (map Expr e)))
+                                ; improve output, don't wrap e0 in parentheses if possible
+                                (define f (if (string? e0) e0 (~parens e0)))
+                                (~parens f (~parens (~commas e))))])])
   (Module U))
 
 ;;;
@@ -1210,9 +1239,11 @@
   ; (displayln (list "  " 'mangle 'id (syntax-e id) 'id* (syntax-e id*)))
   ; (set! id id*)  
   (syntax-parse id
-    #:literals (and or not = bit-and bit-or bit-xor bit-not displayln
-                    < > <= >= + - * /)
-    ; take care of JavaScript operators first
+    #:literals (and or not = bit-and bit-or bit-xor bit-not < > <= >= + - * /)
+    ;; Take care of JavaScript operators first
+    ;;  - assignment operators
+    [ao:AssignmentOperator (symbol->string (syntax-e #'ao))]
+    ;;  - infix operators
     [=       "==="]
     [<       "<"]
     [>       ">"]
