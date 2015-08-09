@@ -1,13 +1,47 @@
 #lang racket
+(provide urlang)
+;; Parameters
+(provide current-urlang-output-file                      ; overrides module-name as output file
+         current-urlang-run?                             ; run after compilation
+         current-urlang-echo?                            ; echo JavaScript after compilation
+         current-urlang-console.log-module-level-expr?)  ; call console.log on each module-level expr?
+
+;; Keywords
+(provide begin block define do-while export global if import lambda λ let sif urmodule var while :=)
+;; Compiler 
+(provide compile  ; syntax -> *         prints JavaScript
+         eval)    ; syntax -> string    compiles, saves, runs - output returned as string
+;; Compiler Phases
+(provide parse            ; syntax -> L      parse and expand syntax object into L
+         collect          ; L      -> L0     annotate module with exports, imports, funs and vars 
+         annotate-bodies  ; L0     -> L1     annotate bodies with local variables
+         α-rename         ; L1     -> L1     make all variable names unique
+         generate-code    ; L1     -> tree   make tree of JavaScript
+         emit)            ; tree   -> *      print tree to standard output port
+;; Macros 
+(provide define-urlang-macro          ; (define-urlang-macro name transformer)
+         macro-expansion-context      ; returns of of 'module-level, 'statement, 'expression
+         macros-ht) ; internal
+;; Syntax Classes
+(provide Module ModuleName Export Import
+         ModuleLevelForm Statement Expr Definition MacroApplication
+         ;; Datums
+         Datum Fixnum String Symbol
+         ;; Expressions
+         Application Assignment Id Let Sequence Ternary
+         ;; Statements         
+         Block If While DoWhile)
+;; Languages
+(provide L L0 L1
+         unparse-L unparse-L0 unparse-L1)
 
 ;;;
-;;; TODO
+;;; IDEAS
 ;;;
 
-; * Provide list of reserved identifiers and operators in JavaScript
 ; * Source map
-
 ; * Improve error when infix operators are invoked with too few arguments (* 3)
+; * Static check of identifiers from NodeJS imported modules.
 
 ;;;
 ;;; URLANG
@@ -36,7 +70,7 @@
 ;        (console.log (fact 5))))
 ;
 ; > (compile fact-program)
-; "use strict;"
+; "use strict";
 ; function fact(n){return (((n===0)===false)?(n*(fact((n-1)))):1);};
 ; ((console["log"])((fact(5))));
 ; exports.fact=fact;
@@ -500,7 +534,7 @@
   (make-parameter 'module-level
                   (λ (c) (or (and (member c '(module-level statement expression)) c)
                              (error 'expansion-context
-                                    "expected one of: 'module-level, 'statement, 'exression ; got ~a"
+                                    "expected one of: 'module-level, 'statement, 'expression ; got ~a"
                                     c)))))
 
 ; There are three expansion contexts:
@@ -567,7 +601,7 @@
         [im:Import            (parse-import #'im)]
         [ma:MacroApplication  (parse-module-level-form
                                (parse-macro-application #'ma))]
-        [e:Expr               (parse-statement #'e)]
+        [e:Expr               (parse-expr #'e)]
         [d:Definition         (parse-definition #'d)]
         [σ:Statement          (parse-statement  #'σ)]))))
 
@@ -811,7 +845,7 @@
 ;;; PREDEFINED NAMES AND RESERVED WORDS
 ;;;
 
-(define predefined-names '(ref console arguments array))
+(define predefined-names '(ref console arguments array undefined))
 ; (besides operators)
 
 (define reserved-words-ids (symbols->ids ecma6-reservered-keywords))
@@ -1003,7 +1037,6 @@
 (define counter 0)
 (define joiner "_")
 (define (new-var [prefix "t"])
-  (displayln (list 'newvar prefix counter))
   (set! counter (+ counter 1))
   (define pre (if (syntax?   prefix) (syntax-e prefix) prefix))
   (datum->syntax #'here (string->symbol (~a pre joiner counter))))
@@ -1099,9 +1132,11 @@
     (define (~Statement . t) (list t ";"))
     (define (~Return t)      (~Statement "return " t))
     (define (~displayln t)   (list "console.log" (~parens t)))
+    (define (~top-expr t)     (if (current-urlang-console.log-module-level-expr?)
+                                  (~displayln t) t))
     (define (exports.id x)   (format-id x "exports.~a" x)))
   (Module : Module (u) -> * ()
-    [(urmodule ,mn (,an ...) ,m ...) (list (~newline (~Statement "\"use strict;\""))
+    [(urmodule ,mn (,an ...) ,m ...) (list (~newline (~Statement "\"use strict\""))
                                            (map ModuleLevelForm m)
                                            (map Annotation an))])
   (Annotation : Annotation (an) -> * ()
@@ -1112,8 +1147,8 @@
                          (~newline (~Statement (exports.id x) "=" x)))])
   (ModuleLevelForm : ModuleLevelForm (m) -> * ()
     [,δ (~newline (Definition δ))]
-    [,σ (~newline (Statement σ))]
-    [,e (~newline (~Statement (~displayln (Expr e))))])
+    [,e (~newline (~Statement (~top-expr (Expr e))))]
+    [,σ (~newline (Statement σ))])    
   (Definition : Definition (δ) -> * ()
     [(define ,x ,e)            (let ([e (Expr e)])
                                  (~Statement `(var ,x "=" ,e)))]
@@ -1121,7 +1156,7 @@
                                 (~Statement `(function ,f ,(~parens (~commas x))
                                                        ,ab)))])
   (Statement : Statement (σ) -> * ()
-    [,e (~Statement (Expr e))]
+    [,e                   (~Statement (Expr e))]
     [(block ,σ ...)       (let ((σ (map Statement σ)))
                             (~braces σ))]
     [(sif ,e ,σ1 (block)) (let ((e (Expr e)) (σ1 (Statement σ1)))
@@ -1312,22 +1347,35 @@
 ; can evaluate the program. Here the JavaScript implementation
 ; Node is used.
 
-(define (run js-tree [delete-tmp? #f])
+(define (run js-tree [delete-tmp? #t])
   (define tmp (make-temporary-file "tmp~a.js"))
   ; (displayln (path->string tmp))
   (with-output-to-file tmp
     (λ () (emit js-tree))
     #:exists 'replace)
-  (for ([line (in-port read-line (open-input-string (node tmp)))])
+  (for ([line (in-port read-line (open-input-string (node/break tmp)))])
     (displayln line))
   (when delete-tmp?
     (delete-file tmp)))
 
+(define (node/break path)
+  (define me            (current-thread))
+  (define cust          (make-custodian))
+  (define (kill)        (custodian-shutdown-all cust))
+  (define (on-break _)  (kill) "\"break: node process was killed\"")
+  (parameterize ([current-subprocess-custodian-mode 'kill]
+                 [subprocess-group-enabled          #t]
+                 [current-custodian                 cust])
+    (with-handlers ([exn:break? on-break])
+      (thread (λ() (thread-send me (node path))))
+      (thread-receive))))
+
 (define (node path)
   (with-output-to-string
       (λ ()
+        (define p (if (string? path) path (path->string path)))
         (parameterize ([current-subprocess-custodian-mode 'kill])
-          (system (string-append "/usr/local/bin/node " " " (path->string path)))))))
+          (system (string-append "/usr/local/bin/node " " " p))))))
 
 ;;;
 ;;; EVAL
@@ -1337,237 +1385,46 @@
   (run
    (compile stx #f)))
 
-
 ;;;
-;;; MACROS
+;;; COMPILATION
 ;;;
 
-(define-syntax in-array (λ (stx) (raise-syntax-error 'in-array "used out of context" stx)))
-(define-literal-set for-keywords (in-array))
-(define for-keyword? (literal-set->predicate for-keywords))
+(define current-urlang-output-file                    (make-parameter #f))
+(define current-urlang-run?                           (make-parameter #f))
+(define current-urlang-echo?                          (make-parameter #f))
+(define current-urlang-console.log-module-level-expr? (make-parameter #f))
 
-(define-urlang-macro for
-  (λ (stx)
-    (syntax-parse stx
-      #:literal-sets (for-keywords)
-      [(_for (x:Id in-array e:Expr) σ:Statement ...)
-       (syntax/loc stx
-         (for ((x ignore) in-array e) σ ...))]
-      [(_for ((x:Id i:Id) in-array e:Expr) σ:Statement ...)
-       ; evaluate e, check it is an array a,
-       ; for each element v of a :
-       ;   assign v to x, assign the index if v to i and evaluate the statements σ ...
-       #'(block
-          (var x (i 0) (a e))
-          ; (unless (array? a) (console.log (error "URLANG: expected array")))
-          (var (n a.length))
-          (while (< i n)
-                 (:= x (ref a i))
-                 σ ...
-                 (:= i (+ i 1))))])))
+(define (urmodule-name->file-name name)
+  (match name
+    [(? symbol? s) (~a s ".js")]
+    [(? string? s) s]
+    [_ (error 'urmodule-name->file-name
+              "Internal error: expected symbol or string")]))
 
-(define-urlang-macro for/sum
-  (λ (stx)
-    (syntax-parse stx
-      [(_for (s:Id x:Id e:Expr) σ:Statement ... r:Expr)
-       #'(block
-          (var x (i 0) (a e) (n a.length))
-          (while (< i n)
-                 (:= x (ref a i))
-                 σ ...
-                 (:= s (+ s r))
-                 (:= i (+ i 1))))])))
-
-
-#;(module+ test (require rackunit)
-    (check-equal? (unparse-L (parse #'(urmodule 1))) '(urmodule '1)))
-
-#;(emit
-   (generate-code
-    (parse
-     #'(urmodule
-        (define (sum xs)
-          (var (n xs.length) (s 0) (i 0))
-          (while (< i n)
-                 (:= s (+ s (ref xs i)))
-                 (:= i (+ i 1)))
-          s)
-        (sum (Array 1 2 3))))))
-
-#;(emit
-   (generate-code
-    (parse
-     #'(urmodule
-        (define (sum xs)
-          (var (s 0))
-          (for-array (x i 3) (:= s (+ s x)))
-          s)
-        (sum (array 1 2 3))))))
-
-#;(emit
-   (generate-code
-    (parse
-     #'(urmodule
-        (define (fact n)
-          4
-          x)
-        (:= x 3)
-        x))))
-
-(unparse-L1
- (annotate-bodies
-  (collect
-  (parse
-   #'(urmodule
-      fact-example
-      (export fact)
-      (import +)
-      (define (fact n)
-        (var a (y 87))
-        (block
-         (:= a 9)
-         (var j (k 0)))
-        3)
-      (define (fact2 n)
-        (var a (z 87))
-        (block
-         (:= a 9)
-         (var j (k 0))
-         (var j (k 0)))
-        3))))))
-
-(compile
- #'(urmodule
-    "list.js"
-    (export NULL PAIR cons car cdr null?)
-    (import array displayln ref + - >= Array or not and === < arguments in-array)
-    ;; TAGS
-    (define PAIR (array "PAIR"))
-    (define NULL (array "NULL"))
-    (define (array? v) (Array.isArray v))
-    (define (tag v)    (and (array? v) (ref v 0)))
-    (define (true? v)    (=== v #t))
-    (define (false? v)   (=== v #f))
-    (define (boolean? v) (or (true? v) (false? v)))
-    (define (null? v)  (=== v NULL))
-    (define (pair? v)  (=== (tag v) PAIR))
-    (define (cons a d) (if (or (=== d NULL) (list? d))
-                           (array "PAIR" #t a d)
-                           (array "PAIR" #f a d)))
-    (define (list? v) (and (pair? v) (ref v 1)))
-    (define (car p)   (ref p 2))
-    (define (cdr p)   (ref p 3))
-    (define (list)
-      (var (a arguments) (n a.length) (i (- n 1)) (xs NULL))
-      (do-while (>= i 0)
-                (:= xs (cons (ref a i) xs))
-                (:= i (- i 1)))
-      xs)
-    (define (length xs)
-      (var (n 0))
-      (while (not (null? xs))
-             (:= n (+ n 1))
-             (:= xs (cdr xs)))
-      n)
-    
-    (define l (list 1 2 3 4 5))
-    (length l)
-    (define s 0)
-    (block
-     (for (x in-array (array 1 2 3 4 5))
-       (:= s (+ s x))))
-    s))
-
-; SYNTAX: (mec)
-;   expands to a string indicating the expansion context
-;   in which mec was expanded.
-(define-urlang-macro mec
-  (λ (stx)
-    (syntax-parse stx
-      #:literal-sets (for-keywords)
-      [(_double)
-       (with-syntax ([mec (~a (macro-expansion-context))])
-         (syntax/loc stx
-           mec))])))
-
-; EXAMPLE
-;> (compile
-;   #'(urmodule
-;      (export)
-;      (import)
-;      (mec)
-;      (define (foo x) (mec) 5)
-;      (define (bar x) (mec))))
-;
-;"use strict;"
-;"module-level";
-;function foo(x){"statement";return 5;};
-;function bar(x){return "expression";};
-
-;; SYNTAX (cond [e0 e1 e2 ...] ... [else en]), 
-;;   like Racket cond except there is no new scope 
-(define-urlang-macro cond
-  (λ (stx)   
+(define-syntax (urlang stx)
+  (define-syntax-class String
+    #:opaque (pattern d #:fail-unless (string? (syntax-e #'d)) #f))
+  (define-syntax-class Symbol
+    #:opaque (pattern d #:fail-unless (symbol? (syntax-e #'d)) #f))
+  (define-syntax-class ModuleName
+    #:description "<module-name>" (pattern (~or mn:Symbol mn:String)))
   (syntax-parse stx
-    [(_cond [else e0:Expr e:Expr ...])
-     #'(begin e0 e ...)]
-    [(_cond [e0 e1 e2 ...] clause ...)
+    #:literals (urmodule)
+    [(_urlang (~and urmod (urmodule mn:ModuleName . _)) ...)
      (syntax/loc stx
-       (if e0 (begin e1 e2 ...) (cond clause ...)))]
-    [(_cond)
-     (raise-syntax-error 'cond "expected an else clause" stx)])))
-
-(define-urlang-macro (case stx)
-  (syntax-parse stx
-    [(_case e:Expr clauses ...)
-     (syntax/loc stx
-       (let ((v e))
-         (vcase v clauses ...)))]))
-
-(define-urlang-macro (vcase stx)
-  (syntax-parse stx
-    #:literals (else)
-    [(_vcase v:Id [else e0:Expr e:Expr ...])
-     (syntax/loc stx
-       (begin e0 e ...))]
-    [(_vcase v:Id [(d:Datum ...) e0:Expr e:Expr ...] clause ...)
-     (syntax/loc stx
-       (if (array-memq v (array d ...))
-           (begin e0 e ...)
-           (vcase v clause ...)))]))
-
-(define-urlang-macro (when stx)
-  (with-syntax
-      ([(<if> <seq>)
-        (case (macro-expansion-context)
-          [(expression) #'(if begin)]
-          [else         #'(sif block)])])
-    (syntax-parse stx
-      [(_when e/s0 e/s ...)
-       (syntax/loc stx
-         (<if> e/s0 (<seq> e/s ...) undefined))])))
-;;;
-;;; DISPLAY
-;;;
-
-(eval
-    #'(urmodule display
-        (export display)
-        (import array ref < * + === undefined typeof console process true false)
-        ;;; DISPLAY
-        (define (out v)       (process.stdout.write v))
-        (define (newline)     (console.log ""))
-        (define (displayln v) (display v) (newline))
-        (define (display v)
-          (var (t (typeof v)))
-          (console.log t)
-          (if (=== t "number") (display-number v)
-              (if (=== t "string") (display-string v)
-                  (if (=== t true) (out "#t")
-                      (if (=== t false) (out "#f")
-                          (begin (displayln "error: display unknown value")
-                                 (console.log v)))))))
-        (define (display-number v) (out (v.toString)))
-        (define (display-string v) (out "'") (out v) (out "'"))
-        (display 43)
-        (display "foo")))
+       (begin
+         (let ()
+           (define name (syntax-e #'mn))
+           (define path (or (current-urlang-output-file)      ; parameter can override module name
+                            (urmodule-name->file-name name)))
+           (define tree (compile #'urmod #f)) ; #f = don't emit
+           (parameterize ([current-urlang-output-file path])
+             (with-output-to-file path
+               (λ () (emit tree))
+               #:exists 'replace))
+           (when (current-urlang-echo?)
+             (with-input-from-file path
+               (λ() (copy-port (current-input-port) (current-output-port)))))
+           (when (current-urlang-run?)
+             (node/break path)))
+         ...))]))
