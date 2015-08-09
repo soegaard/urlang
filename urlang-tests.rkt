@@ -174,4 +174,45 @@
                          (block (begin (for (x in-array b) (+= bsum x)) 1)) ; expression context
                          (+ (* asum 10000) bsum))))
               150020) ; asum=15 and bsum = 20
-                         
+
+;;;
+;;; MACRO EXPANDING TO ANOTHER MACRO
+;;;
+
+;; SYNTAX
+;;  (for/sum (x     in-array e) σ ... r)   ; σ is a statement and r is an expression
+;;  (for/sum ((x i) in-array e) σ ... r)
+;;    0. Set the running sum to 0.
+;;    1. Evaluate the expression e  (expected to be an array)
+;;    2. For each element in the array:
+;;         - bind x to the element (and possible i to its index)
+;;         - evaluate the statemtens σ
+;;         - evaluate the expression r
+;;         - add r to the running sum
+;;    3. Return the running sum
+
+(define-urlang-macro for/sum
+  (λ (stx)
+    (syntax-parse stx
+      #:literal-sets (for-keywords)
+      [(_for/sum (x:Id in-array e:Expr) σ:Statement ... r:Expr)
+       (syntax/loc stx (for/sum ((x ignored) in-array e) σ ... r))]
+      [(_for/sum ((x:Id i:Id) in-array e:Expr) σ:Statement ... r:Expr)
+       (syntax/loc stx
+         (let ([sum 0] [x 0])
+           (for ((x i) in-array e) σ ... (+= sum r))
+           sum))])))
+
+(check-equal? (rs (urlang (urmodule test-for-sum
+                            (define a (array 1 2 3 4 5))
+                            (for/sum (x in-array a)
+                              (* x x)))))  ; sum the squares
+              55) ; = 1^2 + 2^2 + 3^2 + 4^2 + 5^2
+             
+(check-equal? (rs (urlang (urmodule test-for-sum
+                            (define a (array 1 2 3 4 5))
+                            (for/sum ((x index) in-array a)
+                              index))))  ; sum the indices
+              10) ; 0 + 1 + 2 + 3 + 4 
+
+
