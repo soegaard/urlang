@@ -18,25 +18,36 @@ build context.
 
 ## Examples
 
+The following examples are compiled using the `urlang` form.
+
+    (urlang <module> ...)
+
+The urlang form compiles the modules. The result of compiling
+a module is saved a file whose path is the module-name with `.js`
+added.
+
+The `urlang` form is controlled by the following parameters:
+
+    (current-urlang-run?                           #t)  ; compile and run (using node)
+    (current-urlang-echo?                          #t)  ; print JavaScript to screen
+    (current-urlang-console.log-module-level-expr? #t)  ; use conole.log to print module-level exprs
+
+
 ### Example (factorial)
 
-````
-> (define fact-program
-    #'(urmodule
-       (export fact)
-       (import + - * = displayln ref console)
-       (define (fact n) (if (= n 0) 1 (* n (fact (- n 1)))))
-       (console.log (fact 5))))
+     > (urlang
+         (urmodule fact                                           ; module name
+           (export fact)                                          ; fact is exported
+           (import + - * = displayln ref console)
+           (define (fact n) (if (= n 0) 1 (* n (fact (- n 1)))))
+           (fact 5)))
 
-> (compile fact-program)
-"use strict;"
-function fact(n){return (((n===0)===false)?(n*(fact((n-1)))):1);};
-((console["log"])((fact(5))));
-exports.fact=fact;
+     "use strict";
+     function fact(n){return (((n===0)===false)?(n*(fact((n-1)))):1);};
+     console.log((fact(5)));
+     exports.fact=fact;
 
-> (eval fact-program)
-120
-````
+     "120\n"
 
 
 ### Example (`cond`-macro and `array`)
@@ -44,33 +55,43 @@ exports.fact=fact;
 Urlang macro transformers receive and produce standard Racket syntax objects.
 This implies that standard tools such as syntax-parse are available.
 
-````
-  ; SYNTAX  (cond [e0 e1 e2 ...] ... [else en]) 
-  ;     like Racket cond except there is no new scope in the body
-  ;     [Change the begin to let, if you need a version with new scope
-  (define-urlang-macro cond
-    (λ (stx)   
-    (syntax-parse stx
-      [(_cond [else e0:Expr e:Expr ...])  (syntax/loc stx (begin e0 e ...))]
-      [(_cond [e0 e1 e2 ...] clause ...)  (syntax/loc stx (if e0 (begin e1 e2 ...) (cond clause ...)))]
-      [(_cond)                            (raise-syntax-error 'cond "expected an else clause" stx)])))
-````
+ SYNTAX (cond [e0 e1 e2 ...] ... [else en]), 
+   like Racket cond except there is no new scope 
 
-````
-  (compile
-   #'(urmodule
-      (export)
-      (import + - * % = === < displayln ref console array)
-      (define (even? x) (=== (% x 2) 0))
-      (var (sum 0) x (a (array 1 2 3 4 5)) (i 0) (n a.length))
-      (while (< i n)
-             (:= x (ref a i))
-             (cond
-               [(even? x)  (:= sum (+ sum (ref a i)))]
-               [else       "skip"])
-             (:= i (+ i 1)))
-      (console.log sum)))
-````
+ The urlang macro transformer is an standard (phase 0) Racket function.
+
+    (begin
+      (define-urlang-macro cond
+        (λ (stx)   
+          (syntax-parse stx
+            [(_cond [else e0:Expr e:Expr ...])
+             #'(begin e0 e ...)]
+            [(_cond [e0 e1 e2 ...] clause ...)
+             (syntax/loc stx
+               (if e0 (begin e1 e2 ...) (cond clause ...)))]
+            [(_cond)
+             (raise-syntax-error 'cond "expected an else clause" stx)])))
+      (urlang
+       (urmodule sum-example
+          (export)
+          (import + - * % = === < displayln ref console array)
+          (define (even? x) (=== (% x 2) 0))
+          (var (sum 0) x (a (array 1 2 3 4 5)) (i 0) (n a.length))
+          (while (< i n)
+                 (:= x (ref a i))
+                 (cond
+                   [(even? x)  (:= sum (+ sum (ref a i)))]
+                   [else       "skip"])
+                 (:= i (+ i 1)))
+         sum)))
+
+    "use strict";
+    function even_p(x){return ((x%2)===0);};
+    var sum=0,x,a=[1,2,3,4,5],i=0,n=a.length;
+    while((i<n)){(x=a[i]);(((even_p(x))===false)?"skip":(sum=(sum+a[i])));(i=(i+1));};
+    console.log(sum);
+
+    "6\n"
 
 
 # Overview
