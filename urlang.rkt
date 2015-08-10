@@ -66,7 +66,11 @@
 
 ; The following examples are compiled using the urlang form.
 ;     (urlang <module> ...)
-; The urlang form is constrolled by the following parameters:
+; The urlang form compiles the modules. The result of compiling
+; a module is saved a file whose path is the module-name with .js
+; added.
+
+; The urlang form is controlled by the following parameters:
 
 ; (current-urlang-run?                           #t)  ; compile and run (using node)
 ; (current-urlang-echo?                          #t)  ; print JavaScript to screen
