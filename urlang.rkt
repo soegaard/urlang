@@ -62,55 +62,77 @@
 ;; semantics is standard JavaScript. This means in particular that tail calls
 ;; build context.
 
+;; Examples
+
+; The following examples are compiled using the urlang form.
+;     (urlang <module> ...)
+; The urlang form is constrolled by the following parameters:
+
+; (current-urlang-run?                           #t)  ; compile and run (using node)
+; (current-urlang-echo?                          #t)  ; print JavaScript to screen
+; (current-urlang-console.log-module-level-expr? #t)  ; use conole.log to print module-level exprs
+
 ;; Example (factorial):
 
-; > (define fact-program
-;     #'(urmodule fact                                          ; module name
-;        (export fact)                                          ; fact is exported
-;        (import + - * = displayln ref console)
-;        (define (fact n) (if (= n 0) 1 (* n (fact (- n 1)))))
-;        (console.log (fact 5))))
+; > (urlang
+;     (urmodule fact                                           ; module name
+;       (export fact)                                          ; fact is exported
+;       (import + - * = displayln ref console)
+;       (define (fact n) (if (= n 0) 1 (* n (fact (- n 1)))))
+;       (fact 5)))
 ;
-; > (compile fact-program)
 ; "use strict";
 ; function fact(n){return (((n===0)===false)?(n*(fact((n-1)))):1);};
-; ((console["log"])((fact(5))));
+; console.log((fact(5)));
 ; exports.fact=fact;
-;
-; > (eval fact-program)
-; 120
+
+; "120\n"
 
 ;; Example (cond-macro and array)
-
-#;(compile
-   #'(urmodule 
-      (export)
-      (import + - * % = === < displayln ref console array)
-      (define (even? x) (=== (% x 2) 0))
-      (var (sum 0) x (a (array 1 2 3 4 5)) (i 0) (n a.length))
-      (while (< i n)
-             (:= x (ref a i))
-             (cond
-               [(even? x)  (:= sum (+ sum (ref a i)))]
-               [else       "skip"])
-             (:= i (+ i 1)))
-      (console.log sum)))
-
 
 ;; SYNTAX (cond [e0 e1 e2 ...] ... [else en]), 
 ;;   like Racket cond except there is no new scope 
 
-;  (define-urlang-macro cond
-;    (λ (stx)   
-;    (syntax-parse stx
-;      [(_cond [else e0:Expr e:Expr ...])
-;       #'(begin e0 e ...)]
-;      [(_cond [e0 e1 e2 ...] clause ...)
-;       (syntax/loc stx
-;         (if e0 (begin e1 e2 ...) (cond clause ...)))]
-;      [(_cond)
-;       (raise-syntax-error 'cond "expected an else clause" stx)])))
+; The urlang macro transformer is an standard (phase 0) Racket function.
 
+; (begin
+;   (define-urlang-macro cond
+;     (λ (stx)   
+;       (syntax-parse stx
+;         [(_cond [else e0:Expr e:Expr ...])
+;          #'(begin e0 e ...)]
+;         [(_cond [e0 e1 e2 ...] clause ...)
+;          (syntax/loc stx
+;            (if e0 (begin e1 e2 ...) (cond clause ...)))]
+;         [(_cond)
+;          (raise-syntax-error 'cond "expected an else clause" stx)])))
+;   (urlang
+;    (urmodule sum-example
+;       (export)
+;       (import + - * % = === < displayln ref console array)
+;       (define (even? x) (=== (% x 2) 0))
+;       (var (sum 0) x (a (array 1 2 3 4 5)) (i 0) (n a.length))
+;       (while (< i n)
+;              (:= x (ref a i))
+;              (cond
+;                [(even? x)  (:= sum (+ sum (ref a i)))]
+;                [else       "skip"])
+;              (:= i (+ i 1)))
+;      sum)))
+;
+; "use strict";
+; function even_p(x){return ((x%2)===0);};
+; var sum=0,x,a=[1,2,3,4,5],i=0,n=a.length;
+; while((i<n)){(x=a[i]);(((even_p(x))===false)?"skip":(sum=(sum+a[i])));(i=(i+1));};
+; console.log(sum);
+
+; "6\n"
+
+;; See more examples in "urlang-tests.rkt".
+
+;;;
+;;; INTERNALS
+;;;
 
 ;; The heart of the system is a compiler written using the Nanopass
 ;; compiler Framework. The compiler is exported as a function
@@ -152,11 +174,19 @@
 ;;     expand, compile and run the input (an Urlang module represented as a syntax object)
 ;;     Running means that `node` is used to run the generated JavaScript.
 
-;; Having Urlang as a #lang language allows
+;; Having Urlang represented as syntax objects allow:
 
 ;;  * macros (using full Racket at compile time)
 ;;  * export of defined names
 ;;  * easier testing
+
+
+;;;
+;;; GRAMMAR
+;;;
+
+;; The expander/parser accepts the syntax objects following the
+;; the grammar below.
 
 ;; In the grammar below:
 ;;   x stands for a non-keyword identifier
@@ -223,6 +253,8 @@
 
 ; (var x (y 3))
 ;   Binds x to undefined and y to 3.
+
+; Other forms follow standard JavaScript sementics.
 
 (require syntax/parse syntax/stx nanopass/base
          (for-syntax syntax/parse))
