@@ -42,6 +42,8 @@
 ; * Source map
 ; * Improve error when infix operators are invoked with too few arguments (* 3)
 ; * Static check of identifiers from NodeJS imported modules.
+; * Static check: Is the label in (break label) declared as a label?
+; * Static check: Number of arguments of assignment operators (+= x 1 2)
 
 ;;;
 ;;; URLANG
@@ -250,6 +252,8 @@
                      (letv ((xs ρ) (f* xs ρ))
                        (values (cons x xs) ρ)))]))
   (f* xs ρ))
+
+(define-syntax (debug stx) #'(void))
 
 (require (for-syntax racket/syntax))
 
@@ -497,7 +501,7 @@
 
 (define-syntax-class Formal
   #:literal-sets (keywords)
-  (pattern (~or x:Id (x:Id e:Expr))
+  (pattern (~or x:Id (x:Id e))
            #:attr xe (if (attribute e) #'(x e) #f)))
 
 (define-syntax-class While
@@ -597,7 +601,7 @@
   (with-output-language (L Module)
     (syntax-parse u
       #:literal-sets (keywords)
-      [(urmodule mn:ModuleName m:ModuleLevelForm ...)
+      [(urmodule mn:ModuleName m ...)
        (let ((m  (stx-map parse-module-level-form #'(m ...)))
              (mn (syntax-e #'mn)))
          `(urmodule ,mn ,m ...))])))
@@ -619,41 +623,45 @@
          `(import ,x ...))])))
 
 (define (parse-module-level-form m)
+  (debug (list 'parse-module-level-form (syntax->datum m)))
   (parameterize ([macro-expansion-context 'module-level])
     (with-output-language (L ModuleLevelForm)
       (syntax-parse m
         #:literal-sets (keywords)
-        [ex:Export            (parse-export #'ex)]
-        [im:Import            (parse-import #'im)]
-        [ma:MacroApplication  (parse-module-level-form
-                               (parse-macro-application #'ma))]
-        [d:Definition         (parse-definition #'d)]
-        [σ:Statement          (parse-statement  #'σ)]
-        [e:Expr               (parse-expr #'e)]))))
+        [ma:MacroApplication    (parse-module-level-form (parse-macro-application #'ma))]
+        [(~and ex (export . _)) (parse-export #'ex)]
+        [(~and im (import . _)) (parse-import #'im)]
+        [(~and d (define . _))  (parse-definition #'d)]
+        [σ                      (parse-statement #'σ parse-module-level-form 'module-level-form)]))))
 
-(define (parse-statement σ)
+(define (parse-statement σ [context-parse parse-statement] [parent-context 'statement])
+  (debug (list 'parse-statement (syntax->datum σ)))
   (parameterize ([macro-expansion-context 'statement])
     (with-output-language (L Statement)
       (syntax-parse σ
         #:literal-sets (keywords)
-        [ma:MacroApplication (parse-statement
-                              (parse-macro-application #'ma))]
-        [b:Break             (parse-break    #'b)]
-        [w:While             (parse-while    #'w)]
-        [dw:DoWhile          (parse-do-while #'dw)]
-        [v:VarDecl           (parse-var-decl #'v)]
-        [β:Block             (parse-block    #'β)]
-        [i:If                (parse-if       #'i)]
-        [e:Expr              (parse-expr     #'e)]))))
+        [ma:MacroApplication      (define expansion (parse-macro-application #'ma))
+                                  ; (displayln (list 'parse-statement 'expansion: expansion))
+                                  (parameterize ([macro-expansion-context parent-context])
+                                    (context-parse expansion))]
+        [(~and b  (break    . _)) (parse-break    #'b)]
+        [(~and w  (while    . _)) (parse-while    #'w)]
+        [(~and dw (do-while . _)) (parse-do-while #'dw)]
+        [(~and v  (var      . _)) (parse-var-decl #'v)]
+        [(~and β  (block    . _)) (parse-block    #'β)]
+        [(~and i  (sif      . _)) (parse-if       #'i)]
+        [e                        (parse-expr     #'e context-parse parent-context)]))))
 
 (define (parse-break b)
+  (debug (list 'parse-break (syntax->datum b)))
   (with-output-language (L Statement)
     (syntax-parse b
       #:literal-sets (keywords)
-      [(break)       `(break)]
-      [(break label) `(break ,#'label)])))
+      [(break)          `(break)]
+      [(break label:Id) `(break ,#'label)])))
 
 (define (parse-macro-application ma)
+  (debug (list 'parse-macro-application (syntax->datum ma)))
   (syntax-parse ma
     #:literal-sets (keywords)
     [ma:MacroApplication
@@ -662,34 +670,38 @@
        (mark (transform (mark #'ma))))]))
 
 (define (parse-if i)
+  (debug (list 'parse-if (syntax->datum i)))
   (with-output-language (L Statement)
     (syntax-parse i
       #:literal-sets (keywords)
-      [(sif e:Expr σ1:Statement σ2:Statement)
+      [(sif e σ1 σ2)
        (let ((e  (parse-expr #'e))
              (σ1 (parse-statement #'σ1))
              (σ2 (parse-statement #'σ2)))
          `(sif ,e ,σ1 ,σ2))])))
 
 (define (parse-let l)
+  (debug (list 'parse-let (syntax->datum l)))
   (with-output-language (L Expr)
     (syntax-parse l
       #:literal-sets (keywords)
-      [(let ((x:Id e:Expr) ...) body:Body)
+      [(let ((x:Id e) ...) . body)
        (let ([x  (syntax->list #'(x ...))]
              [e (stx-map parse-expr #'(e ...))]
              (b (parse-body #'body)))
        `(let ((,x ,e) ...) ,b))])))
 
 (define (parse-block β)
+  (debug (list 'parse-block (syntax->datum β)))
   (with-output-language (L Statement)
     (syntax-parse β
       #:literal-sets (keywords)
-      [(block σ:Statement ...)
+      [(block σ ...)
        (let ((σ (stx-map parse-statement #'(σ ...))))
          `(block ,σ ...))])))
 
 (define (parse-var-decl v)
+  (debug (list 'parse-var-decl (syntax->datum v)))
   (with-output-language (L Statement)
     (syntax-parse v
       #:literal-sets (keywords)
@@ -701,35 +713,38 @@
   (with-output-language (L VarBinding)
     (syntax-parse vb
       #:literal-sets (keywords)
-      [x:Id          #'x]
-      [(x:Id e:Expr) `(binding ,#'x ,(parse-expr #'e))])))
+      [x:Id     #'x]
+      [(x:Id e) `(binding ,#'x ,(parse-expr #'e))])))
 
 (define (parse-while w)
+  (debug (list 'parse-while (syntax->datum w)))
   (with-output-language (L Statement)
     (syntax-parse w
       #:literal-sets (keywords)
-      [(while e:Expr σ:Statement ...)
+      [(while e σ ...)
        (let ((e (parse-expr #'e))
              (σ (stx-map parse-statement #'(σ ...))))
          `(while ,e ,σ ...))])))
 
 (define (parse-do-while dw)
+  (debug (list 'parse-do-while (syntax->datum dw)))
   (with-output-language (L Statement)
     (syntax-parse dw
       #:literal-sets (keywords)
-      [(do-while e:Expr σ:Statement ...)
+      [(do-while e σ ...)
        (let ((e (parse-expr #'e))
              (σ (stx-map parse-statement #'(σ ...))))
          `(do-while ,e ,σ ...))])))
 
 (define (parse-definition d)
+  (debug (list 'parse-definition (syntax->datum d)))
   (with-output-language (L Definition)
     (syntax-parse d
       #:literal-sets (keywords)
-      [(define x:Id e:Expr)
+      [(define x:Id e)
        (let ((e (parse-expr #'e)))
          `(define ,#'x ,e))]
-      [(define (f:Id φ:Formal ...) b:Body)
+      [(define (f:Id φ:Formal ...) . b)
        (let ((x (attribute φ.x)))                                           ; all parameters
          (with-syntax ([((x0 e0) ...) (filter identity (attribute φ.xe))])  ; parameters with defaults
            (with-syntax ([(σ0 ...) #'((sif (=== x0 undefined) (:= x0 e0) (block)) ...)])
@@ -738,10 +753,11 @@
                  `(define (,#'f ,x ...) ,b))))))])))
 
 (define (parse-lambda d)
+  (debug (list 'parse-lambda (syntax->datum d)))
   (with-output-language (L Expr)
     (syntax-parse d
       #:literal-sets (keywords)
-      [(_lambda (φ:Formal ...) b:Body)
+      [(_lambda (φ:Formal ...) . b)
        (let ((x (attribute φ.x)))                                           ; all parameters
          (with-syntax ([((x0 e0) ...) (filter identity (attribute φ.xe))])  ; parameters with defaults
            (with-syntax ([(σ0 ...) #'((sif (=== x0 undefined) (:= x0 e0) (block)) ...)])
@@ -750,40 +766,47 @@
                  `(lambda (,x ...) ,b))))))])))
       
 (define (parse-body b)
+  (debug (list 'parse-body (syntax->datum b)))
   (with-output-language (L Body)
     (syntax-parse b
       #:literal-sets (keywords)
-      [(σ:Statement ... e:Expr)
+      [(σ ... e)
        (let ((e (parse-expr #'e))
              (σ (stx-map parse-statement #'(σ ...))))
          `(body ,σ ... ,e))])))
 
-(define (parse-expr e)
+(define (parse-expr e [context-parse parse-expr] [parent-context 'expression])
+  (debug (list 'parse-expr (syntax->datum e)))
   (parameterize ([macro-expansion-context 'expression])
     (syntax-parse e
       #:literal-sets (keywords)
-      [ma:MacroApplication  (parse-expr
-                             (parse-macro-application #'ma))]
-      [d:Datum              (parse-datum       #'d)]
-      [r:Reference          (parse-reference   #'r)]
-      [s:Sequence           (parse-sequence    #'s)]
-      [t:Ternary            (parse-ternary     #'t)]
-      [a:Assignment         (parse-assignment  #'a)]
-      [l:Let                (parse-let         #'l)]
-      [la:Lambda            (parse-lambda      #'la)]
-      [a:Application        (parse-application #'a)]
+      [ma:MacroApplication                    (define expansion (parse-macro-application #'ma))
+                                             ; (displayln (list 'parse-expr 'expansion: expansion))
+                                              (parameterize ([macro-expansion-context parent-context])
+                                              (context-parse expansion))]
+      [d:Datum                                (parse-datum       #'d)]
+      [r:Reference                            (parse-reference   #'r)]
+      [(~and s  (begin . _))                  (parse-sequence    #'s)]
+      [(~and t  (if    . _))                  (parse-ternary     #'t)]
+      [(~and a  (:=    . _))                  (parse-assignment  #'a)]
+      [(~and l  (let   . _))                  (parse-let         #'l)]
+      [(~and la (~or (lambda . _) (λ . _)))   (parse-lambda      #'la)]
+      [(~and a  (e ...)
+             (~not (k:keyword . _)))          (parse-application #'a)]
       [_ (raise-syntax-error 'parse-expr (~a "expected an expression, got " e) e)])))
 
 (define (parse-application a)
+  (debug (list 'parse-application (syntax->datum a)))
   (with-output-language (L Expr)
     (syntax-parse a
       #:literal-sets (keywords)
-      [(~and (e0:Expr e:Expr ...) (~not ma:MacroApplication))
+      [(~and (e0 e ...) (~not ma:MacroApplication))
        (let ([e0 (parse-expr #'e0)]
              [e  (stx-map parse-expr #'(e ...))])
          `(app ,e0 ,e ...))])))
 
 (define (parse-reference r)
+  (debug (list 'parse-reference (syntax->datum r)))
   (with-output-language (L Expr)
     (syntax-parse r
       #:literal-sets (keywords)
@@ -799,27 +822,30 @@
                 `(app ,#'ref ,e ,p))))])])))
 
 (define (parse-sequence a)
+  (debug (list 'parse-sequence (syntax->datum a)))
   (with-output-language (L Expr)
     (syntax-parse a
       #:literal-sets (keywords)
-      [(begin e0:Expr)            (parse-expr #'e0)]
-      [(begin e0:Expr e:Expr ...) (let ([e0 (parse-expr #'e0)]
-                                        [e  (stx-map parse-expr #'(e ...))])
-                                    `(begin ,e0 ,e ...))])))
+      [(begin e0)       (parse-expr #'e0)]
+      [(begin e0 e ...) (let ([e0 (parse-expr #'e0)]
+                              [e  (stx-map parse-expr #'(e ...))])
+                          `(begin ,e0 ,e ...))])))
 
 (define (parse-assignment a)
+  (debug (list 'parse-assignment (syntax->datum a)))
   (with-output-language (L Expr)
     (syntax-parse a
       #:literal-sets (keywords)
-      [(:= x:Id e:Expr)
+      [(:= x:Id e)
        (let ((e (parse-expr #'e)))
          `(:= ,#'x ,e))])))
 
 (define (parse-ternary t)
+  (debug (list 'parse-ternary (syntax->datum t)))
   (with-output-language (L Expr)
     (syntax-parse t
       #:literal-sets (keywords)
-      [(if e0:Expr e1:Expr e2:Expr)
+      [(if e0 e1 e2)
        (let ([e0 (parse-expr #'e0)]
              [e1 (parse-expr #'e1)]
              [e2 (parse-expr #'e2)])

@@ -2,7 +2,7 @@
 (require "urlang.rkt" rackunit)
 
 (current-urlang-run?                           #t)
-(current-urlang-echo?                          #t)
+(current-urlang-echo?                          #f)
 (current-urlang-console.log-module-level-expr? #t) ; print top-level expression
 
 (define (rs s) (read (open-input-string s)))
@@ -111,7 +111,7 @@
   (λ (stx)
     (syntax-parse stx
       [(_when e0 e ...)
-       (displayln (list 'when 'context: (macro-expansion-context)))
+       ; (displayln (list 'when 'context: (macro-expansion-context)))
        (match (macro-expansion-context) ; one of 'module-level, 'statement, 'expression
          ['expression (syntax/loc stx (if  e0 (begin e ...) undefined))]
          [_           (syntax/loc stx (sif e0 (block e ...) (block)))])])))
