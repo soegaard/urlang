@@ -42,10 +42,14 @@ The `urlang` form is controlled by the following parameters:
            (define (fact n) (if (= n 0) 1 (* n (fact (- n 1)))))
            (fact 5)))
 
+The generated JavaScript:
+
      "use strict";
      function fact(n){return (((n===0)===false)?(n*(fact((n-1)))):1);};
      console.log((fact(5)));
      exports.fact=fact;
+
+The output from Node:
 
      "120\n"
 
@@ -55,12 +59,13 @@ The `urlang` form is controlled by the following parameters:
 Urlang macro transformers receive and produce standard Racket syntax objects.
 This implies that standard tools such as syntax-parse are available.
 
- SYNTAX (cond [e0 e1 e2 ...] ... [else en]), 
-   like Racket cond except there is no new scope 
+Consider an Urlang version of `cond`:
+
+    SYNTAX (cond [e0 e1 e2 ...] ... [else en]), 
+       like Racket cond except there is no new scope 
 
  The urlang macro transformer is an standard (phase 0) Racket function.
 
-    (begin
       (define-urlang-macro cond
         (λ (stx)   
           (syntax-parse stx
@@ -71,28 +76,32 @@ This implies that standard tools such as syntax-parse are available.
                (if e0 (begin e1 e2 ...) (cond clause ...)))]
             [(_cond)
              (raise-syntax-error 'cond "expected an else clause" stx)])))
-      (urlang
-       (urmodule sum-example
-          (export)
-          (import + - * % = === < displayln ref console array)
-          (define (even? x) (=== (% x 2) 0))
-          (var (sum 0) x (a (array 1 2 3 4 5)) (i 0) (n a.length))
-          (while (< i n)
-                 (:= x (ref a i))
-                 (cond
-                   [(even? x)  (:= sum (+ sum (ref a i)))]
-                   [else       "skip"])
-                 (:= i (+ i 1)))
-         sum)))
+             
+ The macro can now we be used:
+             
+    > (urlang
+   (urmodule sum-example
+     (define (even? x) (=== (% x 2) 0))
+     (var (sum 0) x (a (array 1 2 3 4 5)) (i 0) (n a.length))
+     (while (< i n)
+            (:= x (ref a i))
+            (cond
+              [(even? x)  (+= sum (ref a i))]
+              [else       "skip"])
+            (+= i 1))
+     sum))
+
+The generated JavaScript:
 
     "use strict";
     function even_p(x){return ((x%2)===0);};
     var sum=0,x,a=[1,2,3,4,5],i=0,n=a.length;
-    while((i<n)){(x=a[i]);(((even_p(x))===false)?"skip":(sum=(sum+a[i])));(i=(i+1));};
+    while((i<n)){(x=a[i]);(((even_p(x))===false)?"skip":(sum+=a[i]));(i+=1);};
     console.log(sum);
 
-    "6\n"
+The output from Node:
 
+    "6\n"
 
 # Overview
 
