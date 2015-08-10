@@ -111,6 +111,7 @@
   (λ (stx)
     (syntax-parse stx
       [(_when e0 e ...)
+       (displayln (list 'when 'context: (macro-expansion-context)))
        (match (macro-expansion-context) ; one of 'module-level, 'statement, 'expression
          ['expression (syntax/loc stx (if  e0 (begin e ...) undefined))]
          [_           (syntax/loc stx (sif e0 (block e ...) (block)))])])))
@@ -215,4 +216,28 @@
                               index))))  ; sum the indices
               10) ; 0 + 1 + 2 + 3 + 4 
 
+;;;
+;;; for/first
+;;;
+
+(define-urlang-macro for/first
+  (λ (stx)
+    (syntax-parse stx
+      #:literal-sets (for-keywords)
+      [(_for/first (x:Id in-array e:Expr) σ:Statement ... r:Expr)
+       (syntax/loc stx (for/first ((x ignored) in-array e) σ ... r))]
+      [(_for/first ((x:Id i:Id) in-array e:Expr) σ:Statement ... r:Expr)
+       (syntax/loc stx
+         (let ([result #f])
+           (for ((x i) in-array e)
+             (when (not result)      ; todo: use break instead
+               σ ...
+               (:= result r)))
+           result))])))
+
+(check-equal? (rs (urlang (urmodule test-for-sum
+                            (define a (array 1 2 3 4 5))
+                            (for/first ((x index) in-array a)
+                              (and (or (= x 3) (= x 4)) (* x x))))))
+              9)
 
