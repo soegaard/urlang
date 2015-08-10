@@ -164,13 +164,14 @@ In the grammar below:
                       |  (define x <expr>)
  <formal>           ::= x | [x <expr>]
 
- <statement>         ::= <var-decl> | <block> | <while> | <do-while> | <if> | <expr>
+ <statement>         ::= <var-decl> | <block> | <while> | <do-while> | <if> | <break> | <expr> 
  <var-decl>          ::= (var <var-binding> ...)
  <block>             ::= (block <statement> ...)
  <var-binding>       ::= x | (x e)
  <while>             ::= (while <expr> <statement> ...)
  <do-while>          ::= (do-while <expr> <statement> ...)
  <if>                ::= (sif <expr> <statement> <statement>)
+ <break>             ::= (break) | (break label)
 
  <body>              ::= <statement> ... <expr>
 
