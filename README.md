@@ -208,6 +208,7 @@ In the grammar below:
 Some application are special cases:
 
     (ref e0 e1)     becomes  e0[e1]
+    (ref e0 "str")  becomes  e0.str    
     (array e ...)   becomes  [e,...]
 
 Property access with dot notation is rewritten to use bracket syntax in the parser.
