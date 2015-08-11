@@ -7,7 +7,8 @@
          current-urlang-console.log-module-level-expr?)  ; call console.log on each module-level expr?
 
 ;; Keywords
-(provide begin block break define do-while export if import lambda λ let sif urmodule var while :=)
+(provide begin block break continue define do-while export if import in-array in-range
+         label lambda λ let sif urmodule var while :=)
 ;; Compiler 
 (provide compile  ; syntax -> *         prints JavaScript
          eval)    ; syntax -> string    compiles, saves, runs - output returned as string
@@ -195,6 +196,7 @@
 ;; In the grammar below:
 ;;   x stands for a non-keyword identifier
 ;;   f stands for an identifier defined as a function
+;;   l stands for a label (identifier, not a reserved word)
 
 ; <module>            ::= (urmodule <module-name> <module-path> <module-level-form> ...)
 
@@ -205,14 +207,17 @@
 ;                      |  (define x <expr>)
 ; <formal>           ::= x | [x <expr>]
 
-; <statement>         ::= <var-decl> | <block> | <while> | <do-while> | <if> | <expr>
+; <statement>         ::= <var-decl> | <block> | <while> | <do-while> | <if>
+;                      |  <break> | <continue> | <label> | <expr>
 ; <var-decl>          ::= (var <var-binding> ...)
 ; <block>             ::= (block <statement> ...)
 ; <var-binding>       ::= x | (x e)
 ; <while>             ::= (while <expr> <statement> ...)
 ; <do-while>          ::= (do-while <expr> <statement> ...)
 ; <if>                ::= (sif <expr> <statement> <statement>)
-; <break>             ::= (break <label>?)
+; <break>             ::= (break)    | (break l)
+; <continue>          ::= (continue) | (continue l)
+; <label>             ::= (label l <statement>)
 
 ; <body>              ::= <statement> ... <expr>
 
@@ -341,9 +346,13 @@
 
 (define-syntax block    (λ (stx) (raise-syntax-error 'block    "used out of context" stx)))
 (define-syntax break    (λ (stx) (raise-syntax-error 'break    "used out of context" stx)))
+(define-syntax continue (λ (stx) (raise-syntax-error 'continue "used out of context" stx)))
 (define-syntax do-while (λ (stx) (raise-syntax-error 'do-while "used out of context" stx)))
 (define-syntax export   (λ (stx) (raise-syntax-error 'export   "used out of context" stx)))
 (define-syntax import   (λ (stx) (raise-syntax-error 'import   "used out of context" stx)))
+(define-syntax in-array (λ (stx) (raise-syntax-error 'in-array "used out of context" stx)))
+(define-syntax in-range (λ (stx) (raise-syntax-error 'in-range "used out of context" stx)))
+(define-syntax label    (λ (stx) (raise-syntax-error 'label    "used out of context" stx)))
 (define-syntax sif      (λ (stx) (raise-syntax-error 'sif      "used out of context" stx)))
 (define-syntax urmodule (λ (stx) (raise-syntax-error 'urmodule "used out of context" stx)))
 (define-syntax var      (λ (stx) (raise-syntax-error 'var      "used out of context" stx)))
@@ -351,8 +360,9 @@
 (define-syntax :=       (λ (stx) (raise-syntax-error ':=       "used out of context" stx)))
 
 ; Note: Rememember to provide all keywords
-(define-literal-set keywords (begin block break define do-while export
-                                    if import lambda λ let sif urmodule var while :=))
+(define-literal-set keywords (begin block break continue define do-while export
+                                    in-array in-range
+                                    if import label lambda λ let sif urmodule var while :=))
 (define keyword? (literal-set->predicate keywords))
 
 
@@ -421,7 +431,10 @@
     (while    e σ ...)          
     (do-while e σ ...)
     (break)
-    (break l))
+    (break l)
+    (continue)
+    (continue l)
+    (label l σ))
   (Expr (e)
     x                             ; reference
     (app e0 e ...) => (e0 e ...)  ; application
@@ -475,8 +488,8 @@
 (define-syntax-class Id
   (pattern (~and x:id (~not y:Keyword))))
 
-(define-syntax-class Label
-  (pattern x:Id))
+#;(define-syntax-class Label
+   (pattern x:Id))
 
 (define-syntax-class Reference
   (pattern x:Id))
@@ -521,7 +534,9 @@
                 β:Block
                 dw:DoWhile
                 i:If
-                b:Break)))
+                b:Break
+                c:Continue
+                la:Label)))
 
 (define-syntax-class Block
   #:literal-sets (keywords)
@@ -544,6 +559,10 @@
   #:literal-sets (keywords)
   (pattern (while e:Expr σ:Statement ...)))
 
+(define-syntax-class Label
+  #:literal-sets (keywords)
+  (pattern (label x:Id σ:Statement ...)))
+
 (define-syntax-class If
   #:literal-sets (keywords)
   (pattern (sif e:Expr σ1:Statement σ2:Statement)))
@@ -559,7 +578,12 @@
 (define-syntax-class Break
   #:literal-sets (keywords)
   (pattern (break))
-  (pattern (break label:Id)))
+  (pattern (break la:Id)))
+
+(define-syntax-class Continue
+  #:literal-sets (keywords)
+  (pattern (continue))
+  (pattern (continue la:Id)))
 
 (define-splicing-syntax-class Body
   (pattern (~seq σ:Statement ... b:Expr)))
@@ -681,6 +705,8 @@
                                   (parameterize ([macro-expansion-context parent-context])
                                     (context-parse expansion))]
         [(~and b  (break    . _)) (parse-break    #'b)]
+        [(~and c  (continue . _)) (parse-continue #'c)]
+        [(~and la (label    . _)) (parse-label    #'la)]
         [(~and w  (while    . _)) (parse-while    #'w)]
         [(~and dw (do-while . _)) (parse-do-while #'dw)]
         [(~and v  (var      . _)) (parse-var-decl #'v)]
@@ -693,8 +719,24 @@
   (with-output-language (L Statement)
     (syntax-parse b
       #:literal-sets (keywords)
-      [(break)          `(break)]
-      [(break label:Id) `(break ,#'label)])))
+      [(break)       `(break)]
+      [(break la:Id) `(break ,#'la)])))
+
+(define (parse-continue c)
+  (debug (list 'parse-continue (syntax->datum c)))
+  (with-output-language (L Statement)
+    (syntax-parse c
+      #:literal-sets (keywords)
+      [(continue)       `(continue)]
+      [(continue la:Id) `(continue ,#'la)])))
+
+(define (parse-label la)
+  (debug (list 'parse-label (syntax->datum la)))
+  (with-output-language (L Statement)
+    (syntax-parse la
+      #:literal-sets (keywords)
+      [(label x:Id σ) (let ([σ (parse-statement #'σ)])
+                        `(label ,#'x ,σ))])))
 
 (define (parse-macro-application ma)
   (debug (list 'parse-macro-application (syntax->datum ma)))
@@ -1265,6 +1307,9 @@
                             (~Statement "do" (~braces σ) "while" (~parens e)))]
     [(break)              (~Statement "break")]
     [(break ,l)           (~Statement "break" " " l)]
+    [(continue)           (~Statement "continue")]
+    [(continue ,l)        (~Statement "continue" " " l)]
+    [(label ,l ,σ)        (~Statement l ":" (Statement σ))]
     [(var ,vb ...)        (match (map VarBinding vb)
                             [(list (list xs es) ...)
                              (~Statement
