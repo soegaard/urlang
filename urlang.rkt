@@ -8,7 +8,7 @@
 
 ;; Keywords
 (provide begin block break continue define do-while export if import in-array in-range
-         label lambda λ let sif urmodule var while :=)
+         label lambda λ let sempty sif urmodule var while :=)
 ;; Compiler 
 (provide compile  ; syntax -> *         prints JavaScript
          eval)    ; syntax -> string    compiles, saves, runs - output returned as string
@@ -208,16 +208,18 @@
 ; <formal>           ::= x | [x <expr>]
 
 ; <statement>         ::= <var-decl> | <block> | <while> | <do-while> | <if>
-;                      |  <break> | <continue> | <label> | <expr>
+;                      |  <break> | <continue> | <label> | <sempty> | <expr>
 ; <var-decl>          ::= (var <var-binding> ...)
 ; <block>             ::= (block <statement> ...)
 ; <var-binding>       ::= x | (x e)
 ; <while>             ::= (while <expr> <statement> ...)
 ; <do-while>          ::= (do-while <expr> <statement> ...)
 ; <if>                ::= (sif <expr> <statement> <statement>)
+; <empty>             ::= (sempty)
+; <label>             ::= (label l <statement>)
 ; <break>             ::= (break)    | (break l)
 ; <continue>          ::= (continue) | (continue l)
-; <label>             ::= (label l <statement>)
+
 
 ; <body>              ::= <statement> ... <expr>
 
@@ -353,6 +355,7 @@
 (define-syntax in-array (λ (stx) (raise-syntax-error 'in-array "used out of context" stx)))
 (define-syntax in-range (λ (stx) (raise-syntax-error 'in-range "used out of context" stx)))
 (define-syntax label    (λ (stx) (raise-syntax-error 'label    "used out of context" stx)))
+(define-syntax sempty   (λ (stx) (raise-syntax-error 'sempty   "used out of context" stx)))
 (define-syntax sif      (λ (stx) (raise-syntax-error 'sif      "used out of context" stx)))
 (define-syntax urmodule (λ (stx) (raise-syntax-error 'urmodule "used out of context" stx)))
 (define-syntax var      (λ (stx) (raise-syntax-error 'var      "used out of context" stx)))
@@ -361,8 +364,8 @@
 
 ; Note: Rememember to provide all keywords
 (define-literal-set keywords (begin block break continue define do-while export
-                                    in-array in-range
-                                    if import label lambda λ let sif urmodule var while :=))
+                                    in-array in-range if import label lambda λ let
+                                    sempty sif urmodule var while :=))
 (define keyword? (literal-set->predicate keywords))
 
 
@@ -427,8 +430,9 @@
     e                             ; expression
     (var vb ...)                  ; variable definition
     (sif e σ1 σ2)                 ; statement if
+    (empty)                       ; the empty statement
     (block      σ ...)            ; block (no new scope in JavaScript)
-    (while    e σ ...)          
+    (while    e σ ...)
     (do-while e σ ...)
     (break)
     (break l)
@@ -712,7 +716,16 @@
         [(~and v  (var      . _)) (parse-var-decl #'v)]
         [(~and β  (block    . _)) (parse-block    #'β)]
         [(~and i  (sif      . _)) (parse-if       #'i)]
+        [(~and se (sempty   . _)) (parse-empty    #'se)]
         [e                        (parse-expr     #'e context-parse parent-context)]))))
+
+(define (parse-empty se)
+  ; the empty statement
+  (debug (list 'parse-empty (syntax->datum se)))
+  (with-output-language (L Statement)
+    (syntax-parse se
+      #:literal-sets (keywords)
+      [(sempty) `(empty)])))
 
 (define (parse-break b)
   (debug (list 'parse-break (syntax->datum b)))
@@ -1301,6 +1314,7 @@
                             (list "if" (~parens "!" (~parens e "===false")) σ1))]
     [(sif ,e ,σ1 ,σ2)     (let ((e (Expr e)) (σ1 (Statement σ1)) (σ2 (Statement σ2)))
                             (~Statement "if" (~parens "!" (~parens e "===false")) σ1 "else " σ2))]
+    [(empty)              (~Statement)]
     [(while ,e ,σ ...)    (let ((e (Expr e)) (σ (map Statement σ)))
                             (~Statement "while" (~parens e) (~braces σ)))]
     [(do-while ,e ,σ ...) (let ((e (Expr e)) (σ (map Statement σ)))

@@ -1,9 +1,9 @@
 #lang racket
 (require "urlang.rkt" rackunit)
 
-(current-urlang-run?                           #t)
-(current-urlang-echo?                          #t)
-(current-urlang-console.log-module-level-expr? #t) ; print top-level expression
+(current-urlang-run?                           #t) ; run using Node?
+(current-urlang-echo?                          #f) ; print generated JavaScript?
+(current-urlang-console.log-module-level-expr? #t) ; print top-level expression?
 
 (define (rs s) (read (open-input-string s)))
 
@@ -114,7 +114,7 @@
        ; (displayln (list 'when 'context: (macro-expansion-context)))
        (match (macro-expansion-context) ; one of 'module-level, 'statement, 'expression
          ['expression (syntax/loc stx (if  e0 (begin e ...) undefined))]
-         [_           (syntax/loc stx (sif e0 (block e ...) (block)))])])))
+         [_           (syntax/loc stx (sif e0 (block e ...) (sempty)))])])))
 
 (check-equal? (rs (urlang (urmodule test-when-macro
                             (var (a 1))
@@ -287,7 +287,7 @@
 ;   }
 ;}
 
-(urlang
+#;(urlang
  (urmodule label-break
    (var i j)
    (:= i 0)
@@ -304,7 +304,7 @@
                                 (+= j 1))))
                  (+= i 1)))))
 
-(urlang
+#;(urlang
  (urmodule label-continue
    (var (i 0) (n 0))
    (while (< i 5)
