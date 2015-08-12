@@ -54,7 +54,7 @@
          syntax/stx
          "urlang.rkt")
 
-(define-literal-set for-keywords (in-array in-range))
+(define-literal-set for-keywords (in-array in-range in-naturals in-value))
 (define for-keyword? (literal-set->predicate for-keywords))
 
 (define-syntax-class ForKeyword
@@ -71,8 +71,25 @@
          ['expression (syntax/loc stx (let () more ... undefined))]
          [_           (syntax/loc stx (block  more ...))])])))
 
+(define (handle-in-value clause) ; generates a single value
+  (syntax-parse clause
+    #:literal-sets (for-keywords)
+    [[x in-value expr]
+     #'(([t #t])                 ; list of var clauses to create initial state
+        t                 ; termination condition (#t = never terminate)
+        ([x expr])         ; let bindings (needs to bind x)
+        ((:= t #f)))]))
 
-(define (handle-in-range-clause clause)
+(define (handle-in-naturals clause)
+  (syntax-parse clause
+    #:literal-sets (for-keywords)
+    [[x in-naturals from]
+     #'(([i from])      ; list of var clauses to create initial state
+        #t              ; termination condition (#f means terminate)
+        ([x i])         ; let bindings (needs to bind x)
+        ((+= i 1)))]))
+
+(define (handle-in-range clause)
   (syntax-parse clause
     #:literal-sets (for-keywords)
     [[x in-range from to]
@@ -82,7 +99,7 @@
         ([x i])         ; let bindings (needs to bind x)
         ((+= i 1)))]))  ; statements to step state forward
 
-(define (handle-in-array-clause clause)
+(define (handle-in-array clause)
   (syntax-parse clause
     #:literal-sets (for-keywords)
     [[x in-array array-expr]
@@ -93,11 +110,13 @@
         ([x (ref a i)]) ; let bindings (needs to bind x)
         ((+= i 1)))]))  ; statements to step state forward
 
-(define (handle-clause clause-stx)
+(define (get-clause-handler clause-stx)
   (syntax-parse clause-stx
     #:literal-sets (for-keywords)
-    [ [x in-range from to]    (handle-in-range-clause clause-stx) ]
-    [ [x in-array array-expr] (handle-in-array-clause clause-stx) ]
+    [ [x in-range    from to]    handle-in-range    ]
+    [ [x in-array    array-expr] handle-in-array    ]
+    [ [x in-naturals from]       handle-in-naturals ]
+    [ [x in-value    expr]       handle-in-value    ]
     [_ (raise-syntax-error 'for "unknown clause" clause-stx)]))
 
 (define (expand-for stx)   ; parallel for
@@ -112,10 +131,12 @@
      ;;       This is handled by marking the clause before and after
      ;;       calling handle-clause.
      (define clauses                (syntax->list #'(clause ...)))
+     (define handlers               (map get-clause-handler clauses))     
      (define marks                  (map make-syntax-introducer clauses))
      (define marked-clauses         (for/list ([clause clauses] [mark marks])
                                       (mark clause)))
-     (define handled-clauses        (map handle-clause marked-clauses))
+     (define handled-clauses        (for/list ([handle handlers] [marked-clause marked-clauses])
+                                      (handle marked-clause)))
      (define marked-handled-clauses (for/list ([handled-clause handled-clauses] [mark marks])
                                       (mark handled-clause)))
      (match (map syntax->list marked-handled-clauses)
@@ -136,15 +157,25 @@
                         step ...))
                undefined))))])]))
 
-(define-urlang-macro for expand-for)
+(define (expand-for* stx)
+  (syntax-parse stx
+    [(_for* () statement ...)
+     (syntax/loc stx (block statement ...))]
+    [(_for (clause0 clause ...) statement ...)
+     (syntax/loc stx
+       (for (clause0)
+         (for* (clause ...)
+           statement ...)))]))
+
+
+(define-urlang-macro for  expand-for)
+(define-urlang-macro for* expand-for*)
 
 
 ;;;
 ;;; TEST
 ;;;
 
-#;(
-   
    (current-urlang-run?                           #t) ; run using Node?
    (current-urlang-echo?                          #t) ; print generated JavaScript?
    (current-urlang-console.log-module-level-expr? #t) ; print top-level expression?
@@ -172,4 +203,11 @@
         (+= sum x)
         (+= sum y))
       sum))
-   )
+
+   #;(urlang
+    (urmodule test-for
+      (define i 0)
+      (define stop? #f)
+      (for ([x in-naturals 5])
+        (:= i x))
+      i))
