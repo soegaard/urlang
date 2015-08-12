@@ -7,8 +7,9 @@
          current-urlang-console.log-module-level-expr?)  ; call console.log on each module-level expr?
 
 ;; Keywords
-(provide begin block break continue define do-while export if import in-array in-range
-         label lambda λ let sempty sif urmodule var while :=)
+(provide begin block break catch continue define do-while export finally if import
+         in-array in-naturals in-range in-value
+         label lambda λ let sempty sif throw try urmodule var while :=)
 ;; Compiler 
 (provide compile  ; syntax -> *         prints JavaScript
          eval)    ; syntax -> string    compiles, saves, runs - output returned as string
@@ -219,7 +220,12 @@
 ; <label>             ::= (label l <statement>)
 ; <break>             ::= (break)    | (break l)
 ; <continue>          ::= (continue) | (continue l)
-
+; <try>               ::= (try <block> <catch>)
+;                      |  (try <block> <finally>)
+;                      |  (try <block> <catch> <finally>)
+; <catch>             ::= (catch   x <statement> ...)
+; <finally>           ::= (finally <statement> ...)
+; <throw>             ::= (throw <expr>)
 
 ; <body>              ::= <statement> ... <expr>
 
@@ -346,26 +352,33 @@
 ;;; KEYWORDS
 ;;;
 
-(define-syntax block    (λ (stx) (raise-syntax-error 'block    "used out of context" stx)))
-(define-syntax break    (λ (stx) (raise-syntax-error 'break    "used out of context" stx)))
-(define-syntax continue (λ (stx) (raise-syntax-error 'continue "used out of context" stx)))
-(define-syntax do-while (λ (stx) (raise-syntax-error 'do-while "used out of context" stx)))
-(define-syntax export   (λ (stx) (raise-syntax-error 'export   "used out of context" stx)))
-(define-syntax import   (λ (stx) (raise-syntax-error 'import   "used out of context" stx)))
-(define-syntax in-array (λ (stx) (raise-syntax-error 'in-array "used out of context" stx)))
-(define-syntax in-range (λ (stx) (raise-syntax-error 'in-range "used out of context" stx)))
-(define-syntax label    (λ (stx) (raise-syntax-error 'label    "used out of context" stx)))
-(define-syntax sempty   (λ (stx) (raise-syntax-error 'sempty   "used out of context" stx)))
-(define-syntax sif      (λ (stx) (raise-syntax-error 'sif      "used out of context" stx)))
-(define-syntax urmodule (λ (stx) (raise-syntax-error 'urmodule "used out of context" stx)))
-(define-syntax var      (λ (stx) (raise-syntax-error 'var      "used out of context" stx)))
-(define-syntax while    (λ (stx) (raise-syntax-error 'while    "used out of context" stx)))
-(define-syntax :=       (λ (stx) (raise-syntax-error ':=       "used out of context" stx)))
+(define-syntax block       (λ (stx) (raise-syntax-error 'block       "used out of context" stx)))
+(define-syntax break       (λ (stx) (raise-syntax-error 'break       "used out of context" stx)))
+(define-syntax catch       (λ (stx) (raise-syntax-error 'catch       "used out of context" stx)))
+(define-syntax continue    (λ (stx) (raise-syntax-error 'continue    "used out of context" stx)))
+(define-syntax do-while    (λ (stx) (raise-syntax-error 'do-while    "used out of context" stx)))
+(define-syntax export      (λ (stx) (raise-syntax-error 'export      "used out of context" stx)))
+(define-syntax finally     (λ (stx) (raise-syntax-error 'finally     "used out of context" stx)))
+(define-syntax import      (λ (stx) (raise-syntax-error 'import      "used out of context" stx)))
+(define-syntax in-array    (λ (stx) (raise-syntax-error 'in-array    "used out of context" stx)))
+(define-syntax in-naturals (λ (stx) (raise-syntax-error 'in-naturals "used out of context" stx)))
+(define-syntax in-range    (λ (stx) (raise-syntax-error 'in-range    "used out of context" stx)))
+(define-syntax in-value    (λ (stx) (raise-syntax-error 'in-value    "used out of context" stx)))
+(define-syntax label       (λ (stx) (raise-syntax-error 'label       "used out of context" stx)))
+(define-syntax sempty      (λ (stx) (raise-syntax-error 'sempty      "used out of context" stx)))
+(define-syntax sif         (λ (stx) (raise-syntax-error 'sif         "used out of context" stx)))
+(define-syntax throw       (λ (stx) (raise-syntax-error 'throw       "used out of context" stx)))
+(define-syntax try         (λ (stx) (raise-syntax-error 'try         "used out of context" stx)))
+(define-syntax urmodule    (λ (stx) (raise-syntax-error 'urmodule    "used out of context" stx)))
+(define-syntax var         (λ (stx) (raise-syntax-error 'var         "used out of context" stx)))
+(define-syntax while       (λ (stx) (raise-syntax-error 'while       "used out of context" stx)))
+(define-syntax :=          (λ (stx) (raise-syntax-error ':=          "used out of context" stx)))
 
 ; Note: Rememember to provide all keywords
-(define-literal-set keywords (begin block break continue define do-while export
-                                    in-array in-range if import label lambda λ let
-                                    sempty sif urmodule var while :=))
+(define-literal-set keywords (begin block break catch continue define do-while export finally
+                                    in-array in-naturals in-range in-value
+                                    if import label lambda λ let
+                                    sempty sif throw try urmodule var while :=))
 (define keyword? (literal-set->predicate keywords))
 
 
@@ -418,7 +431,7 @@
   (Definition (δ)
     (define (f x ...) b)          ; function definition
     (define x e))                 ; variable definition
-  #;(Formal (φ) ; When Nanpass Issue xxx is fixed this will be used in Definition and (lambda ...)
+  #;(Formal (φ) ; When Nanpass Issue #39 is fixed this will be used in Definition and (lambda ...)
     x                             ; parameter name
     (x e))                        ; parameter name and default value
   (Body (b)
@@ -426,6 +439,10 @@
   (VarBinding (vb)
     x
     (binding x e) => (x e))
+  (CatchFinally (cf)
+    (catch   x σ ...)
+    (finally   σ ...)
+    (catch-finally x (σ ...) (σ0 ...))) ; See Nanopass Issue #40
   (Statement (σ)
     e                             ; expression
     (var vb ...)                  ; variable definition
@@ -438,7 +455,9 @@
     (break l)
     (continue)
     (continue l)
-    (label l σ))
+    (label l σ)
+    (try (σ ...) cf)
+    (throw e))
   (Expr (e)
     x                             ; reference
     (app e0 e ...) => (e0 e ...)  ; application
@@ -717,7 +736,46 @@
         [(~and β  (block    . _)) (parse-block    #'β)]
         [(~and i  (sif      . _)) (parse-if       #'i)]
         [(~and se (sempty   . _)) (parse-empty    #'se)]
+        [(~and tr (try      . _)) (parse-try      #'tr)]
+        [(~and th (throw    . _)) (parse-throw    #'th)]
         [e                        (parse-expr     #'e context-parse parent-context)]))))
+
+(define (parse-try tr)
+  ; <try>               ::= (try <block> <catch>)
+  ;                      |  (try <block> <finally>)
+  ;                      |  (try <block> <catch> <finally>)
+  (debug (list 'parse-try (syntax->datum tr)))
+  (with-output-language (L Statement)
+    (syntax-parse tr
+      #:literal-sets (keywords)
+      [(try (σ ...)
+            (catch x:Id cσ ...))   (let* ([σ  (map parse-statement (syntax->list #'( σ ...)))]
+                                          [cσ (map parse-statement (syntax->list #'(cσ ...)))]
+                                          [c  (with-output-language (L CatchFinally)
+                                                `(catch ,#'x ,cσ ...))])
+                                     `(try (,σ ...) ,c))]
+      [(try (σ ...)
+            (finally fσ ...))    (let* ([σ  (map parse-statement (syntax->list #'( σ ...)))]
+                                        [fσ (map parse-statement (syntax->list #'(fσ ...)))]
+                                        [f  (with-output-language (L CatchFinally)
+                                              `(finally ,fσ ...))])
+                                   `(try (,σ ...) ,f))]
+      [(try (σ ...)
+            (catch x:Id cσ ...)
+            (finally fσ ...))    (let* ([σ  (map parse-statement (syntax->list #'( σ ...)))]
+                                        [cσ (map parse-statement (syntax->list #'(cσ ...)))]
+                                        [fσ (map parse-statement (syntax->list #'(fσ ...)))]
+                                        [cf (with-output-language (L CatchFinally)
+                                              `(catch-finally ,#'x (,cσ ...) (,fσ ...)))])
+                                   `(try (,σ ...) ,cf))])))
+
+(define (parse-throw th)
+  (debug (list 'parse-throw (syntax->datum th)))
+  (with-output-language (L Statement)
+    (syntax-parse th
+      #:literal-sets (keywords)
+      [(throw e) (let ([e (parse-expr #'e)])
+                   `(throw ,e))])))
 
 (define (parse-empty se)
   ; the empty statement
@@ -727,13 +785,7 @@
       #:literal-sets (keywords)
       [(sempty) `(empty)])))
 
-(define (parse-break b)
-  (debug (list 'parse-break (syntax->datum b)))
-  (with-output-language (L Statement)
-    (syntax-parse b
-      #:literal-sets (keywords)
-      [(break)       `(break)]
-      [(break la:Id) `(break ,#'la)])))
+
 
 (define (parse-continue c)
   (debug (list 'parse-continue (syntax->datum c)))
@@ -750,6 +802,14 @@
       #:literal-sets (keywords)
       [(label x:Id σ) (let ([σ (parse-statement #'σ)])
                         `(label ,#'x ,σ))])))
+
+(define (parse-break b)
+  (debug (list 'parse-break (syntax->datum b)))
+  (with-output-language (L Statement)
+    (syntax-parse b
+      #:literal-sets (keywords)
+      [(break)       `(break)]
+      [(break la:Id) `(break ,#'la)])))
 
 (define (parse-macro-application ma)
   (debug (list 'parse-macro-application (syntax->datum ma)))
@@ -1255,6 +1315,17 @@
        (let ((σ (Statement* σ ρ)) (e (Expr e ρ)))
          `(annotated-body (,y ...) ,σ ... ,e)))])
   (Statement : Statement (σ ρ) -> Statement ())
+  (CatchFinally : CatchFinally (cf ρ) -> CatchFinally ()
+    [(catch ,x ,σ ...)                     (letv ((y ρ) (rename x ρ))
+                                             (let ((σ (Statement* σ ρ)))
+                                               `(catch ,y ,σ ...)))]
+    [(finally ,σ ...)                      (let ((σ (Statement* σ ρ)))
+                                             `(finally ,σ ...))]
+    [(catch-finally ,x (,σ ...) (,σ0 ...)) (letv ((y ρ) (rename x ρ))
+                                             (let* ((σ  (Statement* σ  ρ))
+                                                    (σ0 (Statement* σ0 ρ)))
+                                               `(catch-finally ,x (,σ ...) (,σ0 ...))))])
+                            
   ; Expression never change the environment, so only a single return value
   (Expr : Expr (e ρ) -> Expr ()
     ; all expressions that contain an id (x or f) needs consideration
@@ -1306,6 +1377,15 @@
     [(define (,f ,x ...) ,ab) (let ((ab (AnnotatedBody ab)))
                                 (~Statement `(function ,f ,(~parens (~commas x))
                                                        ,ab)))])
+  (CatchFinally : CatchFinally (cf) -> * ()
+    [(catch ,x ,σ ...)                      (let ([σ (map Statement σ)])
+                                              (list "catch" (~parens x) (~braces σ)))]
+    [(finally  ,σ ...)                      (let ([σ (map Statement σ)])
+                                              (list "finally"  (~braces σ)))]
+    [(catch-finally ,x (,σ ...) (,σ0 ...))  (let ([σ  (map Statement σ)]
+                                                  [σ0 (map Statement σ0)])
+                                              (list "catch"   (~parens x) (~braces σ)
+                                                    "finally"             (~braces σ0)))])
   (Statement : Statement (σ) -> * ()
     [,e                   (~Statement (Expr e))]
     [(block ,σ ...)       (let ((σ (map Statement σ)))
@@ -1324,11 +1404,16 @@
     [(continue)           (~Statement "continue")]
     [(continue ,l)        (~Statement "continue" " " l)]
     [(label ,l ,σ)        (~Statement l ":" (Statement σ))]
+    [(try (,σ ...) ,cf)   (let ((σ (map Statement σ)))
+                            (~Statement "try " (~braces σ) (CatchFinally cf)))]
+    [(throw ,e)           (let ((e (Expr e)))
+                            (~Statement "throw" " " e))]
     [(var ,vb ...)        (match (map VarBinding vb)
+                            [(list) (~Statement)]            ; no bindings => empty statement
                             [(list (list xs es) ...)
                              (~Statement
                               `(var ,(~commas (for/list ([x xs] [e es])
-                                                (if e (list x "=" e) x)))))])])
+                                                (if e (list x "=" e) x)))))])])  
   (VarBinding : VarBinding (vb) -> * ()
     [,x              (list x #f)]
     [(binding ,x ,e) (list x (Expr e))])
