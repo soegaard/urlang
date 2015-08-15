@@ -1,6 +1,6 @@
 #lang racket
 (require syntax/parse syntax/stx "urlang.rkt")
-(define-literal-set for-keywords (in-array in-range in-naturals in-value))
+(define-literal-set for-keywords (in-array in-range in-naturals in-string in-value))
 (define for-keyword? (literal-set->predicate for-keywords))
 (define-syntax-class ForKeyword #:opaque (pattern x #:fail-unless (for-keyword? #'x) #f))
 
@@ -130,6 +130,17 @@
         ([x (ref a i)]) ; let bindings (needs to bind x)
         ((+= i 1)))]))  ; statements to step state forward
 
+(define (handle-in-string clause)
+  (syntax-parse clause
+    #:literal-sets (for-keywords)
+    [[x in-string string-expr]
+     #'(([s string-expr]       ; list of var clauses to create initial state
+         [n s.length]
+         [i 0])
+        (< i n)              ; termination condition
+        ([x (ref s i)]) ; let bindings (needs to bind x)
+        ((+= i 1)))]))
+
 (define (get-clause-handler clause-stx)
   (syntax-parse clause-stx
     #:literal-sets (for-keywords)
@@ -137,6 +148,7 @@
     [ [x in-array    array-expr] handle-in-array    ]
     [ [x in-naturals from]       handle-in-naturals ]
     [ [x in-value    expr]       handle-in-value    ]
+    [ [x in-string   expr]       handle-in-string   ]
     [_ (raise-syntax-error 'for "unknown clause" clause-stx)]))
 
 (define (expand-for stx)   ; parallel for
@@ -349,18 +361,58 @@
            #:break b)
          b))]))
 
+(define (expand-for/sum stx)
+  (syntax-parse stx
+    [(_for/sum (clause ...) statement-or-break ... expr)
+     (syntax/loc stx
+       (let ([s 0])
+         (for (clause ...)
+           statement-or-break ...
+           (+= s expr))
+         s))]))
 
-(define-urlang-macro for        expand-for)
-(define-urlang-macro for*       expand-for*)
-(define-urlang-macro for/array  expand-for/array)
-(define-urlang-macro for*/array expand-for*/array)
-(define-urlang-macro for/and    expand-for/and)
-(define-urlang-macro for*/and   expand-for*/and)
-(define-urlang-macro for/or     expand-for/or)
-(define-urlang-macro for*/or    expand-for*/or)
+(define (expand-for*/sum stx)
+  (syntax-parse stx
+    [(_for*/sum (clause ...) statement-or-break ... expr)
+     (syntax/loc stx
+       (let ([s 0])
+         (for* (clause ...)
+           statement-or-break ...
+           (+= s expr))
+         s))]))
 
+(define (expand-for/product stx)
+  (syntax-parse stx
+    [(_for/product (clause ...) statement-or-break ... expr)
+     (syntax/loc stx
+       (let ([p 1])
+         (for (clause ...)
+           statement-or-break ...
+           (*= p expr))
+         p))]))
 
+(define (expand-for*/product stx)
+  (syntax-parse stx
+    [(_for*/product (clause ...) statement-or-break ... expr)
+     (syntax/loc stx
+       (let ([p 1])
+         (for* (clause ...)
+           statement-or-break ...
+           (*= p expr))
+         p))]))
 
+(define-urlang-macro for          expand-for)
+(define-urlang-macro for*         expand-for*)
+(define-urlang-macro for/array    expand-for/array)
+(define-urlang-macro for*/array   expand-for*/array)
+(define-urlang-macro for/and      expand-for/and)
+(define-urlang-macro for*/and     expand-for*/and)
+(define-urlang-macro for/or       expand-for/or)
+(define-urlang-macro for*/or      expand-for*/or)
+(define-urlang-macro for/sum      expand-for/sum)
+(define-urlang-macro for*/sum     expand-for*/sum)
+(define-urlang-macro for/product  expand-for/product)
+(define-urlang-macro for*/product expand-for*/product)
 
 ;;;
 ;;; TEST
