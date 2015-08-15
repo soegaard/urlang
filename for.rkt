@@ -13,10 +13,16 @@
 ; for-loops for Urlang (which compiles to JavaScript).
 
 ; SYNTAX
-;   (for  (clause ...) <statement-or-break> ...)
+; Parallel loops:
+;   (for         (clause ...) <statement-or-break> ...)
+;   (for/array   (clause ...) <statement-or-break> ... <expression>)
+;   (for/or      (clause ...) <statement-or-break> ... <expression>)
+;   (for/and     (clause ...) <statement-or-break> ... <expression>)
+;   (for/sum     (clause ...) <statement-or-break> ... <expression>)
+;   (for/product (clause ...) <statement-or-break> ... <expression>)
+; Nested loops:
 ;   (for* (clause ...) <statement-or-break> ...)
-; for  binds the variables in clause ... in parallel
-; for* is a nested loop
+;   ...
 
 ; <statement-or-break> is a either
 ;    a statement
@@ -27,17 +33,23 @@
 ; CLAUSES
 
 ;  [x in-range from to]
-;    evaluates the expressions from and to
-;    binds x to from, from+1, ..., to-1
-;    Note: from and to are only evaluated once.
+;                       evaluates the expressions from and to
+;                       binds x to from, from+1, ..., to-1
+;                       Note: from and to are only evaluated once.
 ;  [x in-naturals from]
-;    binds x to from, from+1, ...
+;                       binds x to from, from+1, ...
 ;  [x in-value expr]
-;    binds x to the result of expr
+;                       binds x to the result of expr
 ;  [x in-array expr]
-;    evaluates expr
-;    if the result is not an array, an error is thrown
-;    binds x to the elements of the array one at a time
+;                       evaluates expr
+;                       if the result is not an array, an error is thrown
+;                       binds x to the elements of the array one at a time
+;  [x in-string expr]
+;                       evaluates expr
+;                       if the result is not a string, an error is thrown
+;                       binds x to one character at a time
+
+
 
 ; The main idea is best illustrated with an example.
 ; When I write this:
@@ -71,7 +83,7 @@
 ; The JavaScript becomes:
 ;    {var i=3,t=7,a=ys,n=a.length,i_4=0;
 ;     while( (true && (i<t) && (i_4<n) )){
-;       ((function(x,y){                    // let 
+;       ((function(x,y){                    // let x=i, y=a[i_4]
 ;           (console.log((x+y)));
 ;           (i+=1);
 ;           return (i_4+=1);
