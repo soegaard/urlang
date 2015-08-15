@@ -272,6 +272,21 @@
 
 (define (expand-for/array stx)
   (syntax-parse stx
+    [(_for/array #:length length-expr (clause ...) statement-or-break ... expr)
+     ; Allocate array of length length-expr and fill in the values afterwards.
+     ; This is faster than pushing repeatedly.
+     (syntax/loc stx
+       (let ()
+         (var [n length-expr] [a (new Array n)] [i 0])
+         (for (clause ...)
+           statement-or-break ...
+           (array! a i expr)
+           (+= i 1))
+         ; fill in remaining elements with 0
+         (sif (< i n)
+              (for ([j in-range i n]) (array! a j 0))
+              (sempty))
+         a))]
     [(_for/array (clause ...) statement-or-break ... expr)
      (syntax/loc stx
        (let ([a (array)])
