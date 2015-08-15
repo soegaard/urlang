@@ -305,11 +305,59 @@
            (a.push expr))
          a))]))
 
+(define (expand-for/and stx)
+  (syntax-parse stx
+    [(_for/and (clause ...) statement-or-break ... expr)
+     (syntax/loc stx
+       (let ([b #t])
+         (for (clause ...)
+           statement-or-break ...
+           (:= b (and b expr))
+           #:break (not b))
+         b))]))
+
+(define (expand-for*/and stx)
+  (syntax-parse stx
+    [(_for*/and (clause ...) statement-or-break ... expr)
+     (syntax/loc stx
+       (let ([b #t])
+         (for* (clause ...)
+           statement-or-break ...
+           (:= b (and b expr))
+           #:break (not b))
+         b))]))
+
+(define (expand-for/or stx)
+  (syntax-parse stx
+    [(_for/or (clause ...) statement-or-break ... expr)
+     (syntax/loc stx
+       (let ([b #f])
+         (for (clause ...)
+           statement-or-break ...
+           (:= b (or b expr))
+           #:break b)
+         b))]))
+
+(define (expand-for*/or stx)
+  (syntax-parse stx
+    [(_for*/or (clause ...) statement-or-break ... expr)
+     (syntax/loc stx
+       (let ([b #f])
+         (for* (clause ...)
+           statement-or-break ...
+           (:= b (or b expr))
+           #:break b)
+         b))]))
+
 
 (define-urlang-macro for        expand-for)
 (define-urlang-macro for*       expand-for*)
 (define-urlang-macro for/array  expand-for/array)
 (define-urlang-macro for*/array expand-for*/array)
+(define-urlang-macro for/and    expand-for/and)
+(define-urlang-macro for*/and   expand-for*/and)
+(define-urlang-macro for/or     expand-for/or)
+(define-urlang-macro for*/or    expand-for*/or)
 
 
 
