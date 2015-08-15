@@ -1,4 +1,8 @@
 #lang racket
+(require syntax/parse syntax/stx "urlang.rkt")
+(define-literal-set for-keywords (in-array in-range in-naturals in-value))
+(define for-keyword? (literal-set->predicate for-keywords))
+(define-syntax-class ForKeyword #:opaque (pattern x #:fail-unless (for-keyword? #'x) #f))
 
 ;;;
 ;;; Racket for-loops for Urlang.
@@ -7,6 +11,33 @@
 ; The standard JavaScript for-loops aren't as enjoyable to use
 ; as the Racket counterpart. This module implement Racket style
 ; for-loops for Urlang (which compiles to JavaScript).
+
+; SYNTAX
+;   (for  (clause ...) <statement-or-break> ...)
+;   (for* (clause ...) <statement-or-break> ...)
+; for  binds the variables in clause ... in parallel
+; for* is a nested loop
+
+; <statement-or-break> is a either
+;    a statement
+;    #:break <guard-expression>
+; If the guard expression evaluates to true, the loop is done.
+; Any statements after the #:break <guard> are not evaluated.
+
+; CLAUSES
+
+;  [x in-range from to]
+;    evaluates the expressions from and to
+;    binds x to from, from+1, ..., to-1
+;    Note: from and to are only evaluated once.
+;  [x in-naturals from]
+;    binds x to from, from+1, ...
+;  [x in-value expr]
+;    binds x to the result of expr
+;  [x in-array expr]
+;    evaluates expr
+;    if the result is not an array, an error is thrown
+;    binds x to the elements of the array one at a time
 
 ; The main idea is best illustrated with an example.
 ; When I write this:
@@ -48,17 +79,6 @@
 ;       };
 ;     undefined;                           // due to expression context
 ;     }
-
-
-(require syntax/parse
-         syntax/stx
-         "urlang.rkt")
-
-(define-literal-set for-keywords (in-array in-range in-naturals in-value))
-(define for-keyword? (literal-set->predicate for-keywords))
-
-(define-syntax-class ForKeyword
-  #:opaque (pattern x #:fail-unless (for-keyword? #'x) #f))
 
 
 (define-urlang-macro block/let
@@ -120,10 +140,26 @@
     [_ (raise-syntax-error 'for "unknown clause" clause-stx)]))
 
 (define (expand-for stx)   ; parallel for
+  (define (is-break? x)          (or (eq? x '#:break) (and (syntax? x) (is-break? (syntax-e x)))))
+  (define (rewrite-breaks statement-or-breaks)
+    (match statement-or-breaks
+      ['()                                   '()]
+      [(list  (? is-break? b))               (raise-syntax-error
+                                              'foo "missing guard expression after #:break" b)]
+      [(list* (? is-break? b) guard more)    (cons #`(sif #,guard
+                                                          (block (:= cont #f) (break skip))
+                                                          (sempty))
+                                                   (rewrite-breaks more))]
+      [(list* statement more)                (cons statement
+                                                   (rewrite-breaks more))]))
   (syntax-parse stx
-    [(_for () statement ...)
-     (syntax/loc stx (block statement ...))]
-    [(_for (clause ...) statement ...)
+    [(_for () statement-or-break ...)
+     (define break-used? (ormap is-break? (syntax->list #'(statement-or-break ...))))
+     (with-syntax ([(stat ...) (rewrite-breaks (syntax->list #'(statement-or-break ...)))])
+       (if break-used?
+           (syntax/loc stx (let ([cont #t]) (label skip (while cont stat ...)) undefined))
+           (syntax/loc stx (block stat ...))))]
+    [(_for (clause ...) statement-or-break ...)
      ;; Note: The idea is to call (map handle-clause clauses) and the
      ;;       combine the pieces to one large while-loop.
      ;;       Since the same handler can be called multiple times.
@@ -139,37 +175,128 @@
                                       (handle marked-clause)))
      (define marked-handled-clauses (for/list ([handled-clause handled-clauses] [mark marks])
                                       (mark handled-clause)))
+     (define (is-break? x)          (or (eq? x '#:break) (and (syntax? x) (is-break? (syntax-e x)))))
+     (define break-used?            (ormap is-break? (syntax->list #'(statement-or-break ...))))
+     (define (maybe-wrap-in-loop-label loop-label statement)
+       (if break-used? #`(label #,loop-label #,statement) statement))
+     
      (match (map syntax->list marked-handled-clauses)
        [(list (list var-bindings termination-expr let-bindings step-statements) ...)
-        (let ([var-bindings    (append* (map syntax->list var-bindings))]
-              [let-bindings    (append* (map syntax->list let-bindings))]
-              [step-statements (append* (map syntax->list step-statements))])
+        (let* ([var-bindings    (append* (map syntax->list var-bindings))]
+               [let-bindings    (append* (map syntax->list let-bindings))]
+               [step-statements (append* (map syntax->list step-statements))]          
+               [statements      (rewrite-breaks (syntax->list #'(statement-or-break ...)))])
           (with-syntax ([(vb ...)   var-bindings]
                         [(te ...)   termination-expr]
                         [(lb ...)   let-bindings]
-                        [(step ...) step-statements])
-            (syntax/loc stx
-              (block/let
-               (var vb ...)
-               (while (and #t te ...)
-                      (let (lb ...)
-                        statement ...
-                        step ...))
-               undefined))))])]))
+                        [(step ...) step-statements]
+                        [(stat ...) statements])
+            (cond
+              [(not break-used?)  (syntax/loc stx
+                                    (block/let
+                                     (var vb ...)
+                                     (while (and #t #t te ...)
+                                            (let (lb ...)
+                                              stat ...
+                                              step ...))
+                                     undefined))]
+              [else               (syntax/loc stx
+                                    (block/let
+                                     (var vb ... (cont #t))
+                                     (while (and #t cont te ...)
+                                            (let (lb ...)
+                                              ; break does not work across function boundaries
+                                              ; and the let introduces one, so we need
+                                              ; a fake while here.
+                                              (label skip (while #t
+                                                                 stat ...
+                                                                 step ...
+                                                                 (break skip)))
+                                              undefined))
+                                     undefined))])))])]))
 
 (define (expand-for* stx)
+  ; The basic idea is to rewrite for* into nested fors"
+  ;      (for* (clause0 clause1 ...) body)
+  ;   => (for (clause 0) (for (clause1) ... body))       
+  ; Only problem is that #:break <guard> needs to break out to the outer loop,
+  ; and since the JavaScript break statement doesn't work across function boundaries,
+  ; we need to introduce a try-catch. We only do this if #:break is used though.
+  (define (is-break? x)
+    (or (eq? x '#:break) (and (syntax? x) (is-break? (syntax-e x)))))
+  (define (rewrite-breaks statement-or-breaks)
+    (match statement-or-breaks
+      ['()                                   '()]
+      [(list  (? is-break? b))               (raise-syntax-error
+                                              'for* "missing guard expression after #:break" b)]
+      [(list* (? is-break? b) guard more)    (cons #`(sif #,guard
+                                                          (throw "break: for*")
+                                                          (sempty))
+                                                   (rewrite-breaks more))]
+      [(list* statement more)                (cons statement
+                                                   (rewrite-breaks more))]))
   (syntax-parse stx
-    [(_for* () statement ...)
-     (syntax/loc stx (block statement ...))]
-    [(_for (clause0 clause ...) statement ...)
+    ;[(_for* () statement ...)                   (syntax/loc stx (for () statement ...))]
+    ;[(_for* (clause0) statement ...)            (syntax/loc stx (for (clause0) statement ...))]
+    [(_for* (clause ...) statement-or-break ...)
+     (define (for*->for reverse-clauses body)
+       ; rewrite for* to nested fors. 
+       ;    (for* (clause0 clause1 ...) body)
+       ; => (for (clause 0) (for (clause1) ... body))       
+       (match reverse-clauses
+         ['()                           body]
+         [(list clause0)                (with-syntax ([body body] [clause0 clause0])
+                                        #'(for (clause0) body))]
+         [(list last-clause clause ...) (for*->for
+                                         clause
+                                         (with-syntax ([body body] [last-clause last-clause])
+                                           (syntax/loc stx (for (last-clause) body))))]))
+     ; rewrite breaks to break out of the (other) loop
+     (define statements (rewrite-breaks (syntax->list #'(statement-or-break ...))))
+     ; rewrite for* to nested fors
+     (with-syntax ([(statement ...) statements])
+       (define body #'(block statement ...))
+       (define fors (for*->for (reverse (syntax->list #'(clause ...))) body))
+       ; determine if #:break <guard> is used
+       (define break-used? (ormap is-break? (syntax->list #'(statement-or-break ...))))
+       ; if #:break is used setup a try-catch
+       (with-syntax ([fors fors])
+         (cond
+           [break-used?    (syntax/loc stx
+                             (try {fors}
+                                  (catch msg
+                                    (sif (= msg "break: for*")
+                                         (sempty)
+                                         (throw msg)))))]
+           [else           #'fors])))]))
+
+(define (expand-for/array stx)
+  (syntax-parse stx
+    [(_for/array (clause ...) statement-or-break ... expr)
      (syntax/loc stx
-       (for (clause0)
+       (let ([a (array)])
+         (for (clause ...)
+           statement-or-break ...
+           (a.push expr))
+         a))]))
+
+(define (expand-for*/array stx)
+  (syntax-parse stx
+    [(_for*/array (clause ...) statement-or-break ... expr)
+     (syntax/loc stx
+       (let ([a (array)])
          (for* (clause ...)
-           statement ...)))]))
+           statement-or-break ...
+           (a.push expr))
+         a))]))
 
 
-(define-urlang-macro for  expand-for)
-(define-urlang-macro for* expand-for*)
+(define-urlang-macro for        expand-for)
+(define-urlang-macro for*       expand-for*)
+(define-urlang-macro for/array  expand-for/array)
+(define-urlang-macro for*/array expand-for*/array)
+
+
 
 
 ;;;
