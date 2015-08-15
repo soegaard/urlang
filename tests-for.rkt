@@ -78,10 +78,10 @@
                             (for/product ([x in-range 1 6]) x))))
               120)
 
-;;; for/or
+;;; for/and
 (check-equal? (rs (urlang (urmodule test-in-string
-                            (for/and ([x in-range 1 5]) 3))))
-              3)
+                            (for/and ([x in-range 1 5]) x))))
+              4)
 (check-equal? (rs (urlang (urmodule test-in-string
                             (for/and ([x in-range 1 5]) (= x 3)))))
               'false)
@@ -89,4 +89,46 @@
 (check-equal? (rs (urlang (urmodule test-in-string
                             (for/and () 3))))
               3)
+
+;;; for/or
+(check-equal? (rs (urlang (urmodule test-in-string
+                            (for/or ([x in-range 1 5]) x))))
+              1)
+(check-equal? (rs (urlang (urmodule test-in-string
+                            (for/or ([x in-range 1 5]) (= x 3)))))
+              'true)
+
+(check-equal? (rs (urlang (urmodule test-in-string
+                            (for/or () 3))))
+              3)
+
+;;; Multiple clauses in for*
+(check-equal? (rs (urlang
+                   (urmodule test-for
+                     (define sum 0)
+                     (for* ([y in-range 1 11]
+                            [x in-array (array 1 2 3 4 5)])
+                       (+= sum x))
+                     sum)))
+              150)
+
+(check-equal? (rs (urlang
+                   (urmodule test-for
+                     (define sum 0)
+                     (for* ([y in-range 1 11]
+                            [x in-array (array 1 2 3 4 5)])
+                       #:break (= y 5)
+                       (+= sum x))
+                     sum)))
+              (* 4 15))
+
+;;; Parallel clauses stop when one of the clauses are exhausted.
+(check-equal? (rs (urlang
+                   (urmodule test-for
+                     (define i 0)
+                     (for ([y in-range 1 11]
+                           [x in-range 1 5])
+                       (:= i (+ (* 10 y) x)))
+                     i)))
+              44)
 
