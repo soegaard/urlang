@@ -181,7 +181,8 @@
      (define break-used? (ormap is-break? (syntax->list #'(statement-or-break ...))))
      (with-syntax ([(stat ...) (rewrite-breaks (syntax->list #'(statement-or-break ...)))])
        (if break-used?
-           (syntax/loc stx (let ([cont #t]) (label skip (while cont stat ...)) undefined))
+           (syntax/loc stx
+             (let ([cont #t]) (label skip (while cont stat ... (:= cont #f))) undefined))
            (syntax/loc stx (block stat ...))))]
     [(_for (clause ...) statement-or-break ...)
      ;; Note: The idea is to call (map handle-clause clauses) and the
@@ -426,42 +427,3 @@
 (define-urlang-macro for/product  expand-for/product)
 (define-urlang-macro for*/product expand-for*/product)
 
-;;;
-;;; TEST
-;;;
-
-   (current-urlang-run?                           #t) ; run using Node?
-   (current-urlang-echo?                          #t) ; print generated JavaScript?
-   (current-urlang-console.log-module-level-expr? #t) ; print top-level expression?
-   
-   (urlang
-    (urmodule test-for
-      (define sum 0)
-      (for ([x in-range 1 101])
-        (+= sum x))
-      sum))
-   
-   (urlang
-    (urmodule test-for
-      (define sum 0)
-      (for ([x in-array (array 1 2 3 4 5)])
-        (+= sum x))
-      sum))
-   
-   (urlang
-    (urmodule test-for
-      (define sum 0)
-      (for ([x in-array (array 1 2 3 4 5)]
-            [y in-range 100 200])
-        (console.log (+ "" x " " y))
-        (+= sum x)
-        (+= sum y))
-      sum))
-
-   #;(urlang
-    (urmodule test-for
-      (define i 0)
-      (define stop? #f)
-      (for ([x in-naturals 5])
-        (:= i x))
-      i))

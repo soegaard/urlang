@@ -61,4 +61,32 @@
                      sum)))
               12)
 
-              
+; test in-string
+(check-equal? (urlang (urmodule test-in-string
+                        (for/array ([x in-string "foobar"]) x)))
+              (urlang (urmodule test-in-string2
+                        (array "f" "o" "o" "b" "a" "r"))))
+
+
+;;; for/sum
+(check-equal? (rs (urlang (urmodule test-in-string
+                            (for/sum ([x in-range 1 6]) x))))
+              15)
+
+;;; for/product
+(check-equal? (rs (urlang (urmodule test-in-string
+                            (for/product ([x in-range 1 6]) x))))
+              120)
+
+;;; for/or
+(check-equal? (rs (urlang (urmodule test-in-string
+                            (for/and ([x in-range 1 5]) 3))))
+              3)
+(check-equal? (rs (urlang (urmodule test-in-string
+                            (for/and ([x in-range 1 5]) (= x 3)))))
+              'false)
+
+(check-equal? (rs (urlang (urmodule test-in-string
+                            (for/and () 3))))
+              3)
+
