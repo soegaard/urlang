@@ -8,14 +8,14 @@
 
 ;; Keywords
 (provide begin block break catch continue define do-while export finally if import
-         in-array in-naturals in-range in-value
+         in-array in-naturals in-range in-string in-value
          label lambda λ let sempty sif throw try urmodule var while :=)
 ;; Compiler 
 (provide compile  ; syntax -> *         prints JavaScript
          eval)    ; syntax -> string    compiles, saves, runs - output returned as string
 ;; Compiler Phases
 (provide parse            ; syntax -> L      parse and expand syntax object into L
-         collect          ; L      -> L0     annotate module with exports, imports, funs and vars 
+         annotate-module  ; L      -> L0     annotate module with exports, imports, funs and vars 
          annotate-bodies  ; L0     -> L1     annotate bodies with local variables
          α-rename         ; L1     -> L1     make all variable names unique
          generate-code    ; L1     -> tree   make tree of JavaScript
@@ -363,6 +363,7 @@
 (define-syntax in-array    (λ (stx) (raise-syntax-error 'in-array    "used out of context" stx)))
 (define-syntax in-naturals (λ (stx) (raise-syntax-error 'in-naturals "used out of context" stx)))
 (define-syntax in-range    (λ (stx) (raise-syntax-error 'in-range    "used out of context" stx)))
+(define-syntax in-string   (λ (stx) (raise-syntax-error 'in-string   "used out of context" stx)))
 (define-syntax in-value    (λ (stx) (raise-syntax-error 'in-value    "used out of context" stx)))
 (define-syntax label       (λ (stx) (raise-syntax-error 'label       "used out of context" stx)))
 (define-syntax sempty      (λ (stx) (raise-syntax-error 'sempty      "used out of context" stx)))
@@ -1056,7 +1057,7 @@
 ;;; PREDEFINED NAMES AND RESERVED WORDS
 ;;;
 
-(define predefined-names '(ref console arguments array undefined))
+(define predefined-names '(Array array array! arguments console ref undefined))
 ; (besides operators)
 
 (define reserved-words-ids (symbols->ids ecma6-reservered-keywords))
@@ -1122,7 +1123,7 @@
     (+ (lambda (x ...) ab))))
 
 ;;;
-;;; COLLECT
+;;; ANNOTATE MODULE
 ;;;
 
 ;; This pass:
@@ -1139,7 +1140,7 @@
 ;;   * checks that there are no duplicate function names
 ;;   * checks that all exports are defined as functions
 
-(define-pass collect : L (U) -> L0 ()
+(define-pass annotate-module : L (U) -> L0 ()
   (definitions
     (define-free-table  export)
     (define-free-table  import)
@@ -1150,9 +1151,9 @@
     (define-free-table  predefined) ; predefined names
 
     (define context      (make-parameter 'module-level))
-    (define remove-form  (list 'remove-form))
+    (define remove-form  (list 'remove-form))       ; used to remove im- and export forms
     (define (keep? v)    (not (eq? v remove-form)))
-    (define (complain msg where) (raise-syntax-error 'collect msg where)))
+    (define (complain msg where) (raise-syntax-error 'annotate-module msg where)))
   (Module : Module (u) ->  Module ()
     [(urmodule ,mn ,[m] ...)
      ;; register predefined names, reserved words, and, operators
@@ -1189,6 +1190,23 @@
   (ModuleLevelForm : ModuleLevelForm (m) -> ModuleLevelForm ()
     [(import ,x ...) (for-each import! x) remove-form]
     [(export ,x ...) (for-each export! x) remove-form])
+  ;; Register variables declared with var only, when var is a module-level form.
+  ;; All contexts where var-forms can appear need to change the context.
+  ;; I.e. function bodies, let and lambda needs to set the context.
+  (VarBinding : VarBinding (vb) -> VarBinding ()
+    [,x                  (when (eq? (context) 'module-level)
+                           (var! x))
+                         vb]
+    [(binding ,x ,[e])  (when (eq? (context) 'module-level)
+                          (var! x))
+                        `(binding ,x ,e)])
+  (Expr : Expr (δ) -> Expr ()
+    ; let and lambda have bodies, so they need special attention
+    [(let ((,x ,e) ...) ,b)   (let ([e (parameterize ([context 'rhs])  (map Expr e))]
+                                    [b (parameterize ([context 'body]) (Body b))])
+                                `(let ((,x ,e) ...) ,b))]                                
+    [(lambda (,x ...) ,b)     (let ([b (parameterize ([context 'body]) (Body b))])
+                                `(lambda (,x ...) ,b))])
   (Definition : Definition (δ) ->  Definition ()
     [(define ,x ,[e])         (when (var? x)
                                 (raise-syntax-error 'collect "identifier is declared twice as var" x))
@@ -1201,13 +1219,7 @@
                                 (let ((b (Body b)))
                                   `(define (,f ,x0 ...) ,b)))])
   (Body : Body (b) -> Body ())
-  (VarBinding : VarBinding (vb) -> VarBinding ()
-    [,x                  (when (eq? (context) 'module-level)
-                           (var! x))
-                         vb]
-    [(binding ,x ,[e])  (when (eq? (context) 'module-level)
-                          (var! x))
-                        `(binding ,x ,e)])
+  
   (Module U))
 
 
@@ -1260,15 +1272,15 @@
     (define-bound-table var)    ; references to variables declared with var can be macro introduced
     (define (initial-ρ x [id= #f])
       (cond
-        [(var? x) => identity] ; get (potentially renamed x)
-        [(global? x) x]        ; exports, imports, funs are never renamed
-        [else        #f]))     ; no other variables are bound
+        [(var? x) => identity]  ; get (potentially renamed x)
+        [(global? x) x]         ; exports, imports, funs are never renamed
+        [else        #f]))      ; no other variables are bound
     (define (fid= x y)      (free-identifier=? x y))
     (define (bid= x y)      (bound-identifier=? x y))
     (define (extend ρ original renamed)
-      (λ (x id=) (if (bid= x original) renamed (ρ x id=))))
+      (λ (x id=) (if (bid= x original) renamed (ρ x id=)))) ; note: id= not used ?!
     (define (extend* ρ xs) (for/fold ((ρ ρ)) ((x xs)) (extend ρ x x)))
-    (define (Statement* σs ρ) (map (λ (σ) (Statement σ ρ)) σs))
+    (define (Statement* σs ρ) (map (λ (σ) (Statement σ ρ)) σs)) ; use same ρ on all statements
     (define (fresh x ρ [orig-x x]) (if (ρ x fid=) (fresh (new-var x) ρ x) x))
     (define (fresh-var x) (if (global? x) (fresh-var (new-var x)) x))
     (define (rename x ρ) (define x* (fresh x ρ)) (values x* (extend ρ x x*)))
@@ -1300,12 +1312,15 @@
     [,δ (Definition δ ρ)]
     [,σ (Statement  σ ρ)])
   (Definition : Definition  (δ ρ)  ->  Definition  ()
+    ; module-level-definitions aren't renamed
     [(define ,x ,e)              (let ((ρ (extend ρ x x))) ; map x to x
                                    (let ((e (Expr e ρ)))
-                                     `(define ,x ,e)))]
-    [(define (,f ,x ...) ,ab)    (let ([ρ (extend* ρ x)])  ; map x to x
+                                     `(define ,x ,e)))]    
+    [(define (,f ,x ...) ,ab)    (letv ((x ρ) (rename* x ρ))
                                    (let ([ab (AnnotatedBody ab ρ)])
                                      `(define (,f ,x ...) ,ab)))])
+  ; TODO: Change var to use same scope rules as let*.
+  ;       In (var [s s]) the second s refers to an outer scope.
   (VarBinding : VarBinding (vb ρ) -> VarBinding ()
     [,x                             (ρ x bid=)]
     [(binding ,x ,[e])   `(binding ,(ρ x bid=) ,e)])
@@ -1314,7 +1329,17 @@
      (letv ((y ρ) (rename* x ρ)) ; extend and rename
        (let ((σ (Statement* σ ρ)) (e (Expr e ρ)))
          `(annotated-body (,y ...) ,σ ... ,e)))])
-  (Statement : Statement (σ ρ) -> Statement ())
+  (Statement : Statement (σ ρ) -> Statement ()
+    #;[(var ,vb* ...) (letv ((vb ρ) (for/fold ([vbs '()] [ρ* ρ]) ([vb vb*])
+                                    (nanopass-case (L1 VarBinding) vb
+                                      [,x                 (letv ((x ρ) (rename x ρ))
+                                                            (values (cons x vbs) ρ))]
+                                      [(binding ,x ,e)   (let ([e (Expr e ρ)])
+                                                           (letv ((x ρ) (rename x ρ))
+                                                             (with-output-language (L1 VarBinding)
+                                                               (values (cons `(binding ,x ,e) vbs)
+                                                                       ρ))))])))
+                      `(var ,(reverse vb) ...))])
   (CatchFinally : CatchFinally (cf ρ) -> CatchFinally ()
     [(catch ,x ,σ ...)                     (letv ((y ρ) (rename x ρ))
                                              (let ((σ (Statement* σ ρ)))
@@ -1331,10 +1356,10 @@
     ; all expressions that contain an id (x or f) needs consideration
     [,x                         (lookup x ρ unbound-error)]
     [(:= ,x ,[e])               (let ((y (lookup x ρ unbound-error))) `(:= ,y ,e))]
-    [(let ((,x ,[e]) ...) ,ab)  (let ([ρ (extend* ρ x)])  ; map x to x
+    [(let ((,x ,[e]) ...) ,ab)  (letv ((x ρ) (rename* x ρ))  ; map x to x
                                   (let ([ab (AnnotatedBody ab ρ)])
                                     `(let ((,x ,e) ...) ,ab)))]
-    [(lambda (,x ...) ,ab)      (let ([ρ (extend* ρ x)])  ; map x to x
+    [(lambda (,x ...) ,ab)      (letv ((x ρ) (rename* x ρ))  ; map x to x
                                   (let ([ab (AnnotatedBody ab ρ)])
                                     `(lambda (,x ...) ,ab)))])
   (Module U))
@@ -1451,10 +1476,12 @@
                                 [(list 'ref e1 (and (? pn?)
                                                     (app pn? pn)))    (if (identifier? e1)
                                                                           (~a (mangle e1) "." pn)
-                                                                          (list e1 "." (~a pn)))]
-                                [(list 'ref e1 (and (? pn?) (app pn? pn))) (list e1 "." (~a pn))]
-                                [(list 'ref e1 e2)                         (list e1 (~brackets e2))]
-                                [(list 'array e ...)                       (~brackets (~commas e))]
+                                                                              (list e1 "." (~a pn)))]
+                                [(list 'ref e1 (and (? pn?) (app pn? pn)))    (list e1 "." (~a pn))]
+                                [(list 'ref e1 e2)                          (list e1 (~brackets e2))]
+                                [(list 'array e ...)                         (~brackets (~commas e))]
+                                [(list 'new    e0 e ...)      (list "new " e0 (~parens (~commas e)))]
+                                [(list 'array! e0 i e)                (list e0 (~brackets i) "=" e)]
                                 [(list* 'ref _)
                                  (raise-syntax-error 'ref "(ref expr expr) expected, at " e0)]
                                 [(list (? infix?) e1)    (~parens f e1)]                      ; unary
@@ -1549,7 +1576,7 @@
     (generate-code
      (α-rename
       (annotate-bodies
-       (collect
+       (annotate-module
         (parse u))))))
   (if emit? (emit t) t))
 
@@ -1560,7 +1587,7 @@
   (unparse-L1
    (α-rename
     (annotate-bodies
-     (collect
+     (annotate-module
       (parse u))))))
 
 ;;;
