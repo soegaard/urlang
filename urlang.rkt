@@ -1252,10 +1252,11 @@
     [(binding ,x ,[e]) (add! x) `(binding ,x ,e)]))
 
 ;;;
-;;; α-RENAMING (Not update to work with L1)
+;;; α-RENAMING
 ;;;
 
-; Macro introduced variables are renamed in this pass.
+; All variables are renamed such that each binding has a unique name.
+; This includes macro introduced variables.
 
 (define counter 0)
 (define joiner "_")
@@ -1263,8 +1264,9 @@
   (set! counter (+ counter 1))
   (define pre (if (syntax?   prefix) (syntax-e prefix) prefix))
   (datum->syntax #'here (string->symbol (~a pre joiner counter))))
-(define (reset-counter! [joiner "_"])
-  (set! counter 0))
+(define (reset-counter! [new-joiner "_"])
+  (set! counter 0)
+  (set! joiner new-joiner))
 
 (define-pass α-rename : L1 (U) -> L1 ()
   (definitions
@@ -1278,7 +1280,7 @@
     (define (fid= x y)      (free-identifier=? x y))
     (define (bid= x y)      (bound-identifier=? x y))
     (define (extend ρ original renamed)
-      (λ (x id=) (if (bid= x original) renamed (ρ x id=)))) ; note: id= not used ?!
+      (λ (x id=) (if (id= x original) renamed (ρ x id=))))
     (define (extend* ρ xs) (for/fold ((ρ ρ)) ((x xs)) (extend ρ x x)))
     (define (Statement* σs ρ) (map (λ (σ) (Statement σ ρ)) σs)) ; use same ρ on all statements
     (define (fresh x ρ [orig-x x]) (if (ρ x fid=) (fresh (new-var x) ρ x) x))
@@ -1287,7 +1289,8 @@
     (define (rename* xs ρ) (map2* rename xs ρ))
     (define (lookup x ρ [on-not-found (λ (_) #f)])
       (match (ρ x bid=) [#f (match (ρ x fid=) [#f (on-not-found x)] [y y])] [y y]))
-    (define (unbound-error x) (raise-syntax-error 'α-rename "unbound variable" x)))
+    (define (unbound-error x) (raise-syntax-error 'α-rename "unbound variable" x))
+    (define pre-body-ρ (make-parameter #f)))
   (Annotation : Annotation (an) -> Annotation ()
     [(export ,x  ...)                      an]
     [(import ,x  ...) (for-each global! x) an]
@@ -1300,6 +1303,7 @@
   (Module : Module (u) -> Module ()
     [(urmodule ,mn (,[an] ...) ,m ...)
      (let ((ρ initial-ρ))
+       (parameterize ([pre-body-ρ ρ])
        ; Note: Macros can introduce global variable bindings
        ;       The statement (block (var x) ...) introduces x as a module-level variable.
        ;       This means that module-level variables may have to be renamed.
@@ -1307,7 +1311,7 @@
        ;       No renaming needed for them (yet).
        ; TODO TODO rename vars from x to y in annotations
        (let ((m (map (λ (m) (ModuleLevelForm m ρ)) m)))
-         `(urmodule ,mn (,an ...) ,m ...)))])
+         `(urmodule ,mn (,an ...) ,m ...))))])
   (ModuleLevelForm : ModuleLevelForm (m ρ) -> ModuleLevelForm ()
     [,δ (Definition δ ρ)]
     [,σ (Statement  σ ρ)])
@@ -1326,20 +1330,29 @@
     [(binding ,x ,[e])   `(binding ,(ρ x bid=) ,e)])
   (AnnotatedBody : AnnotatedBody (b ρ) -> AnnotatedBody ()
     [(annotated-body (,x ...) ,σ ... ,e)
-     (letv ((y ρ) (rename* x ρ)) ; extend and rename
-       (let ((σ (Statement* σ ρ)) (e (Expr e ρ)))
-         `(annotated-body (,y ...) ,σ ... ,e)))])
+     (parameterize ([pre-body-ρ ρ]) ; need to rename (var ...)
+       (letv ((y ρ) (rename* x ρ))  ; extend and rename       ;  NOTE: This means that (var ...) 
+         (let ((σ (Statement* σ ρ)) (e (Expr e ρ)))           ;        should not rename again
+           `(annotated-body (,y ...) ,σ ... ,e))))])
   (Statement : Statement (σ ρ) -> Statement ()
-    #;[(var ,vb* ...) (letv ((vb ρ) (for/fold ([vbs '()] [ρ* ρ]) ([vb vb*])
-                                    (nanopass-case (L1 VarBinding) vb
-                                      [,x                 (letv ((x ρ) (rename x ρ))
-                                                            (values (cons x vbs) ρ))]
-                                      [(binding ,x ,e)   (let ([e (Expr e ρ)])
-                                                           (letv ((x ρ) (rename x ρ))
-                                                             (with-output-language (L1 VarBinding)
-                                                               (values (cons `(binding ,x ,e) vbs)
-                                                                       ρ))))])))
-                      `(var ,(reverse vb) ...))])
+    [(var ,vb* ...)
+     ; Note: At this point the variable x ... have been renamed by AnnotatedBody.
+     ;       This means that (ρ x) will return the renamed variable.
+     ;       Here we need to handle the right hand sides of [x e] since x is not
+     ;       in the scope of e. To get the environment without x ... the parameter pre-body-ρ
+     ;       is used.
+     (letv ((vb ρ) (for/fold ([vbs '()] [ρ* (pre-body-ρ)]) ([vb vb*])
+                     (nanopass-case (L1 VarBinding) vb
+                       [,x                   (let ([x* (ρ x bid=)])
+                                               (let ([ρ* (extend ρ* x x*)]) ; already renamed in ρ
+                                                 (values (cons x* vbs) ρ*)))]
+                       [(binding ,x ,e)   (let ([e (Expr e ρ*)])
+                                            (let ([x* (ρ x bid=)])
+                                            (let ([ρ* (extend ρ* x x*)])  ; renamed in ρ
+                                                (with-output-language (L1 VarBinding)
+                                                  (values (cons `(binding ,x* ,e) vbs)
+                                                          ρ*)))))])))
+       `(var ,(reverse vb) ...))])
   (CatchFinally : CatchFinally (cf ρ) -> CatchFinally ()
     [(catch ,x ,σ ...)                     (letv ((y ρ) (rename x ρ))
                                              (let ((σ (Statement* σ ρ)))

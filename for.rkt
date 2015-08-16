@@ -1,5 +1,6 @@
 #lang racket
 (require syntax/parse syntax/stx "urlang.rkt")
+(provide add-clause-handler!)
 (define-literal-set for-keywords (in-array in-range in-naturals in-string in-value))
 (define for-keyword? (literal-set->predicate for-keywords))
 (define-syntax-class ForKeyword #:opaque (pattern x #:fail-unless (for-keyword? #'x) #f))
@@ -149,22 +150,37 @@
      #'(([s string-expr]       ; list of var clauses to create initial state
          [n s.length]
          [i 0])
-        (< i n)              ; termination condition
-        ([x (ref s i)]) ; let bindings (needs to bind x)
+        (< i n)                ; termination condition
+        ([x (ref s i)])        ; let bindings (needs to bind x)
         ((+= i 1)))]))
 
+(define clause-handlers-ht (make-hasheq)) ; symbol -> handler
+(define (add-clause-handler! name handler)
+  (hash-set! clause-handlers-ht name handler))
+
+(define (get-clause-handler-from-ht name)
+  (hash-ref clause-handlers-ht name #f))
+
+(define (clause->handler-name clause-stx)
+  (define (starts-with-in-? x)
+    (regexp-match #rx"^in-" (symbol->string x)))
+  (for/first ([name (map syntax-e (syntax->list clause-stx))]
+              #:when (starts-with-in-? name))
+    name))
+    
 (define (get-clause-handler clause-stx)
-  (syntax-parse clause-stx
-    #:literal-sets (for-keywords)
-    [ [x in-range    from to]    handle-in-range    ]
-    [ [x in-array    array-expr] handle-in-array    ]
-    [ [x in-naturals from]       handle-in-naturals ]
-    [ [x in-value    expr]       handle-in-value    ]
-    [ [x in-string   expr]       handle-in-string   ]
-    [_ (raise-syntax-error 'for "unknown clause" clause-stx)]))
+  (match (clause->handler-name clause-stx)
+    [#f   (raise-syntax-error 'for "unknown clause" clause-stx)]
+    [name (get-clause-handler-from-ht name)]))
+
+(add-clause-handler! 'in-range    handle-in-range)
+(add-clause-handler! 'in-array    handle-in-array)
+(add-clause-handler! 'in-naturals handle-in-naturals)
+(add-clause-handler! 'in-value    handle-in-value)
+(add-clause-handler! 'in-string   handle-in-string)
 
 (define (expand-for stx)   ; parallel for
-  (define (is-break? x)          (or (eq? x '#:break) (and (syntax? x) (is-break? (syntax-e x)))))
+  (define (is-break? x) (or (eq? x '#:break) (and (syntax? x) (is-break? (syntax-e x)))))
   (define (rewrite-breaks statement-or-breaks)
     (match statement-or-breaks
       ['()                                   '()]
@@ -194,12 +210,8 @@
      (define clauses                (syntax->list #'(clause ...)))
      (define handlers               (map get-clause-handler clauses))     
      (define marks                  (map make-syntax-introducer clauses))
-     (define marked-clauses         (for/list ([clause clauses] [mark marks])
-                                      (mark clause)))
-     (define handled-clauses        (for/list ([handle handlers] [marked-clause marked-clauses])
-                                      (handle marked-clause)))
-     (define marked-handled-clauses (for/list ([handled-clause handled-clauses] [mark marks])
-                                      (mark handled-clause)))
+     (define marked-handled-clauses (for/list ([clause clauses] [handle handlers] [mark marks])
+                                      (mark (handle (mark clause)))))
      (define (is-break? x)          (or (eq? x '#:break) (and (syntax? x) (is-break? (syntax-e x)))))
      (define break-used?            (ormap is-break? (syntax->list #'(statement-or-break ...))))
      (define (maybe-wrap-in-loop-label loop-label statement)
