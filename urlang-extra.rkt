@@ -103,7 +103,33 @@
        (syntax/loc stx
          (let ([id val-expr])
            (let* (clause ...) statement ... expr)))])))
-       
+
+(define-urlang-macro case
+  (λ (stx)
+    (syntax-parse stx
+      #:literals (else)
+      [(_case val-expr clause ...)
+       (syntax/loc stx
+         (let ([t val-expr])
+           (case-helper t clause ...)))])))
+
+(define-urlang-macro case-helper
+  (λ (stx)
+    (syntax-parse stx
+      #:literals (else)
+      [(_case-helper t [else statement ... expr] clause ...)
+       (syntax/loc stx
+         (let () statement ... expr))]
+      [(_case-helper t [(datum ...) statement ... expr] clause ...)
+       (syntax/loc stx
+         (if (or (= t datum) ...)
+             (let () statement ... expr)
+             (case-helper t clause ...)))]
+      [(_case-helper t)
+       (syntax/loc stx
+         undefined)])))
+
+
 
 ;;;
 ;;; TEST
@@ -180,7 +206,17 @@
                               (+ (* 100 x) y)))))
               102)
 
+(check-equal? (rs (urlang (urmodule test-case1
+                            (case (+ 7 5)
+                              [(1 2 3)    "small"]
+                              [(10 11 12) "big"]))))
+              'big)
+
+(check-equal? (rs (urlang (urmodule test-case1
+                            (case (- 7 5)
+                              [(1 2 3)    "small"]
+                              [(10 11 12) "big"]))))
+              'small)
 
 
 
-                            
