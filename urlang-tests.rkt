@@ -1,4 +1,11 @@
 #lang racket
+;;;
+;;; URLANG BASE TESTS
+;;;
+
+;; Run this file to test urlang.rkt.
+;; No output means no errors.
+
 (require "urlang.rkt" rackunit)
 
 (current-urlang-run?                           #t) ; run using Node?
@@ -124,168 +131,10 @@
                             a)))
               7)
 
-;;;
-;;; FOR AS A MACRO
-;;;
-
-(define-literal-set for-keywords (in-array in-range))
-(define for-keyword? (literal-set->predicate for-keywords))
-
-(define-syntax-class ForKeyword
-  #:opaque (pattern x #:fail-unless (for-keyword? #'x) #f))
-
-(define-urlang-macro for
-  (λ (stx)
-    (syntax-parse stx
-      #:literal-sets (for-keywords)
-      ;; BASE CASE
-      [(_for () σ:Statement ...)
-       (syntax/loc stx undefined)]
-      ;; IN-ARRAY
-      [(_for ([x:Id in-array e]) σ ...)
-       (syntax/loc stx
-         (for ([x ignored in-array e]) σ ...))]
-      [(_for ([x:Id i:Id in-array e]) σ ...)
-       ; evaluate e, check it is an array a,
-       ; for each element v of a :
-       ;   assign v to x, assign the index if v to i and evaluate the statements σ ...
-       (match (macro-expansion-context)
-         ['expression
-          (syntax/loc stx
-            (let ()
-              (var x (i 0) (a e))
-              ; (unless (array? a) (console.log (error "URLANG: expected array")))
-              (var (n a.length))
-              (while (< i n)
-                     (:= x (ref a i))
-                     σ ...
-                     (+= i 1))
-              undefined))]
-         [_ ; statement or module-level context
-          (syntax/loc stx
-            (block
-             (var x (i 0) (a e))
-             ; (unless (array? a) (console.log (error "URLANG: expected array")))
-             (var (n a.length))
-             (while (< i n)
-                    (:= x (ref a i))
-                    σ ...
-                    (+= i 1))))])]
-      ;; IN-RANGE
-      ; (for (x:Id      in-range e0 e1) σ:Statement ...)
-      ; (for (x:Id i:Id in-range e0 e1) σ:Statement ...)
-      ;   Bind x to the numbers in the range from e0 (inclusive) to e1 (exclusive),
-      ;   then evaluate the statements.
-      [(_for ((x:Id in-range e0 e1)) σ ...)
-       (match (macro-expansion-context)
-         ['expression
-          (syntax/loc stx
-            (let ()
-              (var x (from e0) (to e1))
-              ; (unless (array? a) (console.log (error "URLANG: expected array")))
-              (:= x from)
-              (while (< x to) σ ... (+= x 1))
-              undefined))]
-         [_ ; statement or module-level context
-          (syntax/loc stx
-            (block
-             (var x (from e0) (to e1))
-             (:= x from)
-             (while (< x to) σ ... (+= x 1))))])]
-      [(_for ((~and clause0 [_vars fk:ForKeyword . _]) clause ...) σ ...)
-       (syntax/loc stx
-         (for (clause0)
-           (for (clause ...)
-             σ ...)))])))
-
-(check-equal? (rs ; test for
-               (urlang (urmodule test-while
-                         (define a (array 1 2 3 4 5))
-                         (define b (array 2 3 4 5 6))
-                         (var (asum 0) (bsum 0))
-                         (for ([x in-array a]) (+= asum x))                   ; statement context
-                         (block (begin (for ([x in-array b]) (+= bsum x)) 1)) ; expression context
-                         (+ (* asum 10000) bsum))))
-              150020) ; asum=15 and bsum = 20
-
-;;;
-;;; MACRO EXPANDING TO ANOTHER MACRO
-;;;
-
-;; SYNTAX
-;;  (for/sum (x     in-array e) σ ... r)   ; σ is a statement and r is an expression
-;;  (for/sum ((x i) in-array e) σ ... r)
-;;    0. Set the running sum to 0.
-;;    1. Evaluate the expression e  (expected to be an array)
-;;    2. For each element in the array:
-;;         - bind x to the element (and possible i to its index)
-;;         - evaluate the statemtens σ
-;;         - evaluate the expression r
-;;         - add r to the running sum
-;;    3. Return the running sum
-
-(define-urlang-macro for/sum
-  (λ (stx)
-    (syntax-parse stx
-      #:literal-sets (for-keywords)
-      [(_for/sum (x:Id in-array e:Expr) σ:Statement ... r:Expr)
-       (syntax/loc stx (for/sum ((x ignored) in-array e) σ ... r))]
-      [(_for/sum ((x:Id i:Id) in-array e:Expr) σ:Statement ... r:Expr)
-       (syntax/loc stx
-         (let ([sum 0] [x 0])
-           (for ([x i in-array e]) σ ... (+= sum r))
-           sum))])))
-
-(check-equal? (rs (urlang (urmodule test-for-sum
-                            (define a (array 1 2 3 4 5))
-                            (for/sum (x in-array a)
-                              (* x x)))))  ; sum the squares
-              55) ; = 1^2 + 2^2 + 3^2 + 4^2 + 5^2
-             
-(check-equal? (rs (urlang (urmodule test-for-sum
-                            (define a (array 1 2 3 4 5))
-                            (for/sum ((x index) in-array a)
-                              index))))  ; sum the indices
-              10) ; 0 + 1 + 2 + 3 + 4 
-
-;;;
-;;; for/first
-;;;
-
-(define-urlang-macro for/first
-  (λ (stx)
-    (syntax-parse stx
-      #:literal-sets (for-keywords)
-      [(_for/first (x:Id in-array e:Expr) σ:Statement ... r:Expr)
-       (syntax/loc stx (for/first ((x ignored) in-array e) σ ... r))]
-      [(_for/first ((x:Id i:Id) in-array e:Expr) σ:Statement ... r:Expr)
-       (syntax/loc stx
-         (let ([result #f])
-           (for ([x i in-array e])
-             (when (not result)      ; todo: use break instead
-               σ ...
-               (:= result r)))
-           result))])))
-
-(check-equal? (rs (urlang (urmodule test-for-sum
-                            (define a (array 1 2 3 4 5))
-                            (for/first ((x index) in-array a)
-                              (and (or (= x 3) (= x 4)) (* x x))))))
-              9)
 
 
-;var i, j;
-;
-;loop1:
-;for (i = 0; i < 3; i++) {      //The first for statement is labeled "loop1"
-;   loop2:
-;   for (j = 0; j < 3; j++) {   //The second for statement is labeled "loop2"
-;      if (i == 1 && j == 1) {
-;         break loop1;
-;      }
-;      console.log("i = " + i + ", j = " + j);
-;   }
-;}
+
+
 
 #;(urlang
  (urmodule label-break

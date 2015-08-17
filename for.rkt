@@ -1,6 +1,14 @@
 #lang racket
 (require syntax/parse syntax/stx "urlang.rkt")
 (provide add-clause-handler!)
+(provide in-array in-naturals in-range in-string in-value)
+
+(define-syntax in-array    (λ (stx) (raise-syntax-error 'in-array    "used out of context" stx)))
+(define-syntax in-naturals (λ (stx) (raise-syntax-error 'in-naturals "used out of context" stx)))
+(define-syntax in-range    (λ (stx) (raise-syntax-error 'in-range    "used out of context" stx)))
+(define-syntax in-string   (λ (stx) (raise-syntax-error 'in-string   "used out of context" stx)))
+(define-syntax in-value    (λ (stx) (raise-syntax-error 'in-value    "used out of context" stx)))
+
 (define-literal-set for-keywords (in-array in-range in-naturals in-string in-value))
 (define for-keyword? (literal-set->predicate for-keywords))
 (define-syntax-class ForKeyword #:opaque (pattern x #:fail-unless (for-keyword? #'x) #f))

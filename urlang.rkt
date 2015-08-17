@@ -8,7 +8,6 @@
 
 ;; Keywords
 (provide begin block break catch continue define do-while export finally if import
-         in-array in-naturals in-range in-string in-value
          label lambda λ let sempty sif throw try urmodule var while :=)
 ;; Compiler 
 (provide compile  ; syntax -> *         prints JavaScript
@@ -360,11 +359,6 @@
 (define-syntax export      (λ (stx) (raise-syntax-error 'export      "used out of context" stx)))
 (define-syntax finally     (λ (stx) (raise-syntax-error 'finally     "used out of context" stx)))
 (define-syntax import      (λ (stx) (raise-syntax-error 'import      "used out of context" stx)))
-(define-syntax in-array    (λ (stx) (raise-syntax-error 'in-array    "used out of context" stx)))
-(define-syntax in-naturals (λ (stx) (raise-syntax-error 'in-naturals "used out of context" stx)))
-(define-syntax in-range    (λ (stx) (raise-syntax-error 'in-range    "used out of context" stx)))
-(define-syntax in-string   (λ (stx) (raise-syntax-error 'in-string   "used out of context" stx)))
-(define-syntax in-value    (λ (stx) (raise-syntax-error 'in-value    "used out of context" stx)))
 (define-syntax label       (λ (stx) (raise-syntax-error 'label       "used out of context" stx)))
 (define-syntax sempty      (λ (stx) (raise-syntax-error 'sempty      "used out of context" stx)))
 (define-syntax sif         (λ (stx) (raise-syntax-error 'sif         "used out of context" stx)))
@@ -377,7 +371,6 @@
 
 ; Note: Rememember to provide all keywords
 (define-literal-set keywords (begin block break catch continue define do-while export finally
-                                    in-array in-naturals in-range in-value
                                     if import label lambda λ let
                                     sempty sif throw try urmodule var while :=))
 (define keyword? (literal-set->predicate keywords))
