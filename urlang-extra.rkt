@@ -92,6 +92,19 @@
                       (:= id t) ...
                       (let () statement ... expr)))))])))
 
+
+(define-urlang-macro let*
+  (λ (stx)
+    (syntax-parse stx
+      [(_let* () statement ... expr)
+       (syntax/loc stx
+         (let () statement ... expr))]
+      [(_let* ([id val-expr] clause ...) statement ... expr)
+       (syntax/loc stx
+         (let ([id val-expr])
+           (let* (clause ...) statement ... expr)))])))
+       
+
 ;;;
 ;;; TEST
 ;;;
@@ -160,4 +173,14 @@
                                                      (is-even? (sub1 n))))])
                               (is-odd? 11)))))
               'true)
+
+(check-equal? (rs (urlang (urmodule test-let*
+                            (let* ([x 1]
+                                   [y (+ x 1)])
+                              (+ (* 100 x) y)))))
+              102)
+
+
+
+
                             
