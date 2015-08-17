@@ -78,6 +78,19 @@
        (syntax/loc stx
          (swhen (not test) statement ...))])))
 
+;;; 3.9 Local Binding
+
+;; SYNTAX (letrec ([id val-expr] ...) statement ... expr)
+
+(define-urlang-macro letrec
+  (λ (stx)
+    (syntax-parse stx
+      [(_letrec ([id val-expr] ...) statement ... expr)
+       (with-syntax ([(t ...) (generate-temporaries (syntax (id ...)))])
+          (syntax (let ([id #f] ...)
+                    (let ([t val-expr] ...)
+                      (:= id t) ...
+                      (let () statement ... expr)))))])))
 
 ;;;
 ;;; TEST
@@ -135,3 +148,16 @@
                             msg)))
                   'hi-there)
 
+
+(check-equal? (rs (urlang (urmodule test-letrec
+                            (define (zero? x) (= x 0))
+                            (define (sub1 x) (- x 1))
+                            (letrec ([is-even? (lambda (n)
+                                                 (or (zero? n)
+                                                     (is-odd? (sub1 n))))]
+                                     [is-odd? (lambda (n)
+                                                (and (not (zero? n))
+                                                     (is-even? (sub1 n))))])
+                              (is-odd? 11)))))
+              'true)
+                            
