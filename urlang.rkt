@@ -1334,6 +1334,8 @@
      ;       Here we need to handle the right hand sides of [x e] since x is not
      ;       in the scope of e. To get the environment without x ... the parameter pre-body-ρ
      ;       is used.
+     ; Note: Since each (var ...) adds variables to the scope, we need to update
+     ;       pre-body-ρ so the variables are in scope in the following statements.
      (letv ((vb ρ) (for/fold ([vbs '()] [ρ* (pre-body-ρ)]) ([vb vb*])
                      (nanopass-case (L1 VarBinding) vb
                        [,x                   (let ([x* (ρ x bid=)])
@@ -1345,6 +1347,7 @@
                                                 (with-output-language (L1 VarBinding)
                                                   (values (cons `(binding ,x* ,e) vbs)
                                                           ρ*)))))])))
+       (pre-body-ρ ρ)
        `(var ,(reverse vb) ...))])
   (CatchFinally : CatchFinally (cf ρ) -> CatchFinally ()
     [(catch ,x ,σ ...)                     (letv ((y ρ) (rename x ρ))
