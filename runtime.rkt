@@ -14,7 +14,7 @@
 ;            return xs;
 ;         })(NULL));};
 
-(require "urlang.rkt" "for.rkt" syntax/parse)
+(require "urlang.rkt" "urlang-extra.rkt" "for.rkt" syntax/parse)
 
 (current-urlang-run?                           #t)
 (current-urlang-echo?                          #t)
@@ -28,7 +28,14 @@
      #'(([xs list-expr])        ; list of var clauses to create initial state
         (not (null? xs))        ; termination condition
         ([x (car xs)])          ; let bindings (needs to bind x)
-        ((:= xs (cdr xs))))]))  ; statements to step state forward
+        ((:= xs (cdr xs))))]    ; statements to step state forward
+    ; version with i as index
+    [[x i in-list list-expr]
+     #'(([xs list-expr] [i 0])  ; list of var clauses to create initial state
+        (not (null? xs))        ; termination condition
+        ([x (car xs)])          ; let bindings (needs to bind x)
+        ((:= xs (cdr xs))       ; statements to step state forward
+         (+= i 1)))]))
 
 (define (handle-in-vector clause)
   (syntax-parse clause
@@ -93,13 +100,20 @@
       (array! a 0 VECTOR)
       (for ([j in-range 0 n])
         (array! a (+ j 1) (ref args j)))
-      a)
-        
+      a)        
     ;;; Lists
     (define (length xs)
       (var (n 0))
       (while (pair? xs) (+= n 1) (:= xs (cdr xs)))
       n)
+    (define (list->array xs)
+      ; allocate array
+      (var a [n (length xs)])
+      (:= a (Array n))
+      ; fill it
+      (for ([x i in-list xs])
+        (array! a i x))
+      a)
     (define (reverse xs)
       ; Note: for/list uses reverse, so reverse can't use for/list
       (var [result NULL])
@@ -107,6 +121,21 @@
              (:= result (cons (car xs) result))
              (:= xs (cdr xs)))
       result)
+    (define (append2 xs ys)
+      ; note xs and ys are immutable, so ys can be reused.
+      (var [ret NULL] rev-xs n n-1 axs)
+      (scond
+       [(null? ys) (:= ret xs)]
+       [#t         (:= axs  (list->array xs))
+                   (:= n axs.length)
+                   (:= n-1 (- n 1))
+                   (:= ret ys)
+                   (for ([i in-range 0 n])
+                     (:= ret (cons (ref axs (- n-1 i)) ret)))])
+      ret)
+      
+        
+    
     ;;; 4.5 Characters
     ; Characters range over Unicode scalar values, which includes characters whose values
     ; range from #x0 to #x10FFFF, but not including #xD800 to #xDFFF.
@@ -216,4 +245,6 @@
     (str (substring "foobar" 2 4))
     (str (string-length "foobar"))
     (str (string-length (string (make-char "a") (make-char "b") (make-char "c"))))
+    (str (append2 (string->list "123") (string->list "45")))
+    
   )))
