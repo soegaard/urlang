@@ -8,6 +8,11 @@
 ;; This module provide a few construct which are simple to 
 ;; translate to JavaScript.
 
+;; Available here:
+;     cond, case
+;     begin0, when, swhen, unless, sunless
+;    letrec, let*,
+
 ;; SYNTAX  (cond [test statement ... expr] ...)
 ;;   Like cond in Racket. The right hand sides are in a new scope.
 
@@ -22,6 +27,21 @@
          (if test
              (let () statement ... expr)
              (cond clause ...)))])))
+
+;; SYNTAX  (scond [test statement ...] ...)
+;;   Like cond in Racket. Return values of rhs not used.
+
+(define-urlang-macro scond
+  (λ (stx)
+    (syntax-parse stx
+      [(_scond)
+       (syntax/loc stx
+         undefined)]
+      [(_scond [test statement ...] clause ...)
+       (syntax/loc stx
+         (sif test
+              (let () statement ...)
+              (scond clause ...)))])))
 
 ;;; 3.15 Sequencing
 
@@ -217,6 +237,3 @@
                               [(1 2 3)    "small"]
                               [(10 11 12) "big"]))))
               'small)
-
-
-
