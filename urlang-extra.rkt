@@ -171,6 +171,14 @@
                               [#t      "huh"]))))
               'three)
 
+(check-equal? (rs (urlang (urmodule test-sconf
+                            (var r [n 3])
+                            (scond
+                              [(= n 2) (:= r "fail")]
+                              [(= n 3) (:= r "success")])
+                            r)))
+              'success)
+
 (check-equal? (rs (urlang (urmodule test-begin0
                             (begin0 1 2 3 4))))
               1)
@@ -237,3 +245,5 @@
                               [(1 2 3)    "small"]
                               [(10 11 12) "big"]))))
               'small)
+
+
