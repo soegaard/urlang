@@ -107,6 +107,7 @@
       (while (pair? xs) (+= n 1) (:= xs (cdr xs)))
       n)
     (define (list->array xs)
+      ;; convert list to (non-tagged) JavaScript array
       ; allocate array
       (var a [n (length xs)])
       (:= a (Array n))
@@ -114,6 +115,12 @@
       (for ([x i in-list xs])
         (array! a i x))
       a)
+    (define (array->list axs)
+      ;; convert JavaScript array to Racket list
+      (var [n axs.length] [n-1 (- n 1)] [xs NULL])
+      (for ([i in-range 0 n])
+        (:= xs (cons (ref axs (- n-1 i)) xs)))
+      xs)
     (define (reverse xs)
       ; Note: for/list uses reverse, so reverse can't use for/list
       (var [result NULL])
@@ -123,18 +130,21 @@
       result)
     (define (append2 xs ys)
       ; note xs and ys are immutable, so ys can be reused.
-      (var [ret NULL] rev-xs n n-1 axs)
+      (var [ret NULL])
       (scond
-       [(null? ys) (:= ret xs)]
-       [#t         (:= axs  (list->array xs))
-                   (:= n axs.length)
-                   (:= n-1 (- n 1))
+       [(null? ys) xs]
+       [#t        (var [axs  (list->array xs)]
+                       [n axs.length]
+                       [n-1 (- n 1)])
                    (:= ret ys)
                    (for ([i in-range 0 n])
                      (:= ret (cons (ref axs (- n-1 i)) ret)))])
       ret)
-      
-        
+    (define (make-list k v)
+      ; Returns a newly constructed list of length k, holding v in all positions.
+      (for/list ([i in-range 0 k]) v))
+    
+    
     
     ;;; 4.5 Characters
     ; Characters range over Unicode scalar values, which includes characters whose values
@@ -246,5 +256,6 @@
     (str (string-length "foobar"))
     (str (string-length (string (make-char "a") (make-char "b") (make-char "c"))))
     (str (append2 (string->list "123") (string->list "45")))
-    
+    (str (make-list 5 "foo"))
+    (str (array->list (list->array (string->list "123"))))
   )))
