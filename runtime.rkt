@@ -100,8 +100,53 @@
       (array! a 0 VECTOR)
       (for ([j in-range 0 n])
         (array! a (+ j 1) (ref args j)))
-      a)        
-    ;;; Lists
+      a)
+    ;;;
+    ;;; 4.1 Booleans and equality
+    ;;;
+
+    ;; Representation: #t and #f are represented as true and false respectively,
+    ;; where true and false are JavaScript booleans.
+    (define (boolean? v)
+      (= (typeof v) "boolean"))
+    ; (define (not x) (if x #f #t)) ; not is a predefined function
+    (define (equal? v1 v2)
+      (= v1 v2))   ; TODO ...
+    (define (eqv? v1 v2)  ; TODO
+      (= v1 v2))
+    (define (eq? v1 v2)
+      (= v1 v2))
+    ; (define (equal/retur v1 v2) ...) TODO
+    #;(define (immutable? v)
+        ; Note: This follows the spec. It is not a general
+        ;       immutability predicate, so immutable pairs are not checked here.
+        (or #t
+            #;(immutable-string? v)
+            #;(immutable-bytes? v)
+            #;(immutable-vector? v)
+            #;(immutable-hash? v)
+            #;(immutable-box? v)))
+
+    ;;;
+    ;;; 4.4 Byte Strings
+    ;;;
+
+    ;; A byte string is a fixed-length array of bytes.
+    ;; A byte is an exact integer between 0 and 255 inclusive.
+    ;; A byte string can be mutable or immutable.
+
+    
+    
+    
+    ;;;
+    ;;; 4.9,4.10 Lists
+    ;;;
+
+    ;; Representation:
+    ;;   A list is either NULL or a pair with a true list? flag.
+    ;;   That is, a list is either:
+    ;;      NULL or {array PAIR true a d}
+    ;;   where d is a list.
     (define (length xs)
       (var (n 0))
       (while (pair? xs) (+= n 1) (:= xs (cdr xs)))
@@ -143,13 +188,24 @@
     (define (make-list k v)
       ; Returns a newly constructed list of length k, holding v in all positions.
       (for/list ([i in-range 0 k]) v))
+    (define (list-ref xs i)
+      ;; Return the i'th index of xs.
+      ;; Use fast path for i=0 and i=1.
+      (var ret)
+      (scond [(= i 0) (:= ret (car xs))]
+             [(= i 1) (:= ret (car (cdr xs)))]
+             [#t      (for ([j in-range 0 (- i 1)])
+                        (:= xs (cdr xs)))
+                      (:= ret (car xs))])
+      ret)
     
-    
-    
+    ;;;
     ;;; 4.5 Characters
-    ; Characters range over Unicode scalar values, which includes characters whose values
-    ; range from #x0 to #x10FFFF, but not including #xD800 to #xDFFF.
-    ; The scalar values are a subset of the Unicode code points.
+    ;;;
+    
+    ;; Characters range over Unicode scalar values, which includes characters whose values
+    ;; range from #x0 to #x10FFFF, but not including #xD800 to #xDFFF.
+    ;; The scalar values are a subset of the Unicode code points.
     (define (make-char js-string) (array CHAR js-string))
     (define (char->string c)      (ref c 1))
     (define (char->integer c)
@@ -258,4 +314,5 @@
     (str (append2 (string->list "123") (string->list "45")))
     (str (make-list 5 "foo"))
     (str (array->list (list->array (string->list "123"))))
+    (str (list-ref (string->list "abcde") 4))
   )))
