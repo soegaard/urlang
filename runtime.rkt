@@ -69,9 +69,10 @@
       (Array.isArray v))
     ;;; Tags
     (define (tag a) (ref a 0))
-    (define PAIR   (array "pair"))
-    (define VECTOR (array "vector"))
-    (define CHAR   (array "char"))
+    (define PAIR           (array "pair"))
+    (define VECTOR         (array "vector"))
+    (define CHAR           (array "char"))
+    (define MUTABLE-STRING (array "mutable-string"))
     ;; Empty
     (define NULL (array))
     (define (null? v) (= v NULL))
@@ -101,21 +102,15 @@
       n)
     (define (reverse xs)
       ; Note: for/list uses reverse, so reverse can't use for/list
-      (var [n (length xs)]
-           [a (Array n)]
-           [i 0]
-           [t xs])
-      (while (not (null? t))
-             (array! a i (car t))
-             (+= i 1)
-             (:= t (cdr t)))
-      (var [rs NULL])
-      (:= i 0)
-      (while (< i n)
-             (:= rs (cons (ref a i) rs))
-             (+= i 1))
-      rs)
-    ;;; Chars
+      (var [result NULL])
+      (while (not (null? xs))
+             (:= result (cons (car xs) result))
+             (:= xs (cdr xs)))
+      result)
+    ;;; 4.5 Characters
+    ; Characters range over Unicode scalar values, which includes characters whose values
+    ; range from #x0 to #x10FFFF, but not including #xD800 to #xDFFF.
+    ; The scalar values are a subset of the Unicode code points.
     (define (make-char js-string) (array CHAR js-string))
     (define (char->string c)      (ref c 1))
     (define (char->integer c)
@@ -123,10 +118,66 @@
       (s.charCodeAt 0))
       
     ;;; Strings
-    (define (string? v)           (= (typeof v) "string"))
-    (define (string-ref s i)      (make-char (ref s i)))
-    (define (string-append s t)   (+ s t))
-    (define (string->list s)      (for/list ([c in-string s]) c))
+    ;; Representation
+    ;;   - immutable Racket strings are represented as JavaScript strings
+    ;;   - mutable Racket string
+    ;;       {array MUTABLE-STRING "char0" "char1" ...}
+    (define (string? v)
+      (or (= (typeof v) "string")
+          (and (= (typeof v) "array")
+               (= (tag v) MUTABLE-STRING))))
+    (define (make-string k ch) ; TODO: make ch optional
+      ; make-string produces a mutable string
+      (var [a (Array (+ k 1))])
+      (array! a 0 MUTABLE-STRING)
+      (for ([i in-range 1 (+ k 1)])
+        (array! a i ch))
+      a)
+     ; (define (string->immutable-string s)
+     ; (define (fail) (/ 1 0) #;(error 'string->immutable-string "expected string, got" s))
+     ; (case (typeof s)
+     ;   [("string") s]
+     ;   [("array") (if (= (tag v) MUTABLE-STRING)
+                       
+                       
+             
+    
+    (define (string) ; ch ... multiple arguments
+      (var [args arguments] [n args.length])
+      (var [a (Array (+ n 1))])
+      (array! a 0 MUTABLE-STRING)
+      (for ([i in-range 0 n])
+        (array! a (+ i 1) (ref args i)))
+      a)
+    (define (string-length s)
+      (if (= (typeof s) "string")
+          s.length
+          (- s.length 1)))
+    (define (string-ref s i)
+      (if (= (typeof s) "string")
+          (array CHAR (ref s    i))
+          (array CHAR (ref s (+ i 1)))))
+    (define (string-set! s i c)
+      ; (unless (mutable-string? s) (raise ...))
+      ; (unless (char? c)           (raise ...))
+      (array! s (+ i 1) (ref c 1)))
+    (define (substring3 str start end) (str.substring start end))
+    (define (substring2 str start)     (str.substring start (string-length str)))
+    (define substring substring3)      ; todo: handle optional arguments
+    ; todo: string-copy
+    ; todo: string-copy!
+    ; todo: string-fill!
+    ; todo: string-append
+    ; todo: string->list
+    ; todo: list->string
+    ; todo: build-string
+    ; todo: string comparisons    
+    (define (string->list s)          (for/list ([c in-string s]) c))
+    (define (string-append str1 str2) (str1.concat str2))
+    (define (string-downcase str)     (str.toLowerCase))
+    (define (string-upcase   str)     (str.toUpperCase))
+    
+    
     ;;; Numbers
     (define (number? v) (= (typeof v) "number"))
     
@@ -158,8 +209,11 @@
     ; (str (cons 10 (cons 11 (cons 12 NULL))))
     ; (str (vector 10 11 12))
     ; (str (string-append "foo" "bar"))
-    (str-list (string->list "foobar"))
-    (str-list (for/list ([x in-range 0 5]) x))
-    (str-list (reverse (for/list ([x in-range 0 5]) x)))
-    (str-list (reverse (string->list "foobar")))
+    (str (string->list "foobar"))
+    (str (for/list ([x in-range 0 5]) x))
+    (str (reverse (for/list ([x in-range 0 5]) x)))
+    (str (reverse (string->list "foobar")))
+    (str (substring "foobar" 2 4))
+    (str (string-length "foobar"))
+    (str (string-length (string (make-char "a") (make-char "b") (make-char "c"))))
   )))
