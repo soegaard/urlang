@@ -239,12 +239,13 @@
 ; <let>               ::= (let ((x <expr>) ...) <statement> ... <expr>)
 ; <lambda>            ::= (lambda (<formal> ...) <body>)
 
-; <keyword>           ::= define | begin | urmodule | if | := | ...se code...
+; <keyword>           ::= define | begin | urmodule | if | := | ...see code...
 
-; <datum>             ::= <fixnum> | <string> | #t | #f
+; <datum>             ::= <fixnum> | <flonum> | <string> | #t | #f
 
 ; <identifier>     an identifier that is not a keyword
 ; <fixnum>         an integer between -2^53 and 2^53
+; <flonum>         an inexact real number represented as an IEEE 754 floating point number
 ; <module-name>    a symbol or string
 ; <label>          a JavaScript label
 
@@ -399,7 +400,7 @@
   (if (identifier? s) (syntax-e s) '_))
 
 (define (id? v)            (identifier? v))
-(define (datum? v)         (or (fixnum? v) (string? v) (boolean? v)))
+(define (datum? v)         (or (fixnum? v) (flonum? v) (string? v) (boolean? v)))
 (define (module-name? v)   (or (symbol? v) (string? v)))
 (define (property-name? v) (or (symbol? v) (string? v)
                                (and (syntax? v)
@@ -471,28 +472,15 @@
 ; Parsing from syntax-object to nanopass structures will use syntax-parse.
 ; Defining syntax-classes makes the translation easy.
 
-(define-syntax-class Fixnum
-  #:opaque
-  (pattern d
-           #:fail-unless (fixnum? (syntax-e #'d)) #f))
-
-(define-syntax-class String
-  #:opaque
-  (pattern d
-           #:fail-unless (string? (syntax-e #'d)) #f))
-
-(define-syntax-class Symbol
-  #:opaque
-  (pattern d
-           #:fail-unless (symbol? (syntax-e #'d)) #f))
-
-(define-syntax-class Boolean
-  #:opaque
-  (pattern (~or #t #f)))
+(define-syntax-class Fixnum #:opaque (pattern d #:fail-unless (fixnum? (syntax-e #'d)) #f))
+(define-syntax-class Flonum #:opaque (pattern d #:fail-unless (flonum? (syntax-e #'d)) #f))
+(define-syntax-class String #:opaque (pattern d #:fail-unless (string? (syntax-e #'d)) #f))
+(define-syntax-class Symbol #:opaque (pattern d #:fail-unless (symbol? (syntax-e #'d)) #f))
+(define-syntax-class Boolean #:opaque (pattern (~or #t #f)))
 
 (define-syntax-class Datum
   #:description "<datum>"
-  (pattern (~or d:Fixnum d:String bool:Boolean)))
+  (pattern (~or d:Fixnum d:Flonum d:String bool:Boolean)))
 
 (define-syntax-class ModuleName
   #:description "<module-name>"
@@ -1002,10 +990,12 @@
     (syntax-parse d
       #:literal-sets (keywords)
       [f:Fixnum  `(quote ,(parse-fixnum  #'f))]
+      [f:Flonum  `(quote ,(parse-flonum  #'f))]
       [s:String  `(quote ,(parse-string  #'s))]
       [b:boolean `(quote ,(parse-boolean #'b))])))
 
 (define (parse-fixnum f)  (syntax-e f))
+(define (parse-flonum f)  (syntax-e f))
 (define (parse-string f)  (syntax-e f))
 (define (parse-boolean f) (syntax-e f))
 

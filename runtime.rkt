@@ -1,19 +1,5 @@
 #lang racket
 
-;; TODO Fix the bug below. The second s has not been alpha-renamed.
-
-;> function string__glist(s){
-;    return ((function(xs){{
-;              var s=s,n=s.length,i=0;
-;              while((true&&true&&(i<n))){
-;                ((function(c){
-;                  (xs=(cons(c,xs)));
-;                  return (i+=1);})(s[i]));
-;               };undefined;
-;             }
-;            return xs;
-;         })(NULL));};
-
 (require "urlang.rkt" "urlang-extra.rkt" "for.rkt" syntax/parse)
 
 (current-urlang-run?                           #t)
@@ -70,7 +56,7 @@
  (urlang
   (urmodule runtime
     (export null? pair? list? cons car cdr)
-    (import Array Number String typeof)
+    (import Array Int8Array Number String typeof bit-or)
     ;;; Array
     (define (array? v) ; todo : inline array?
       (Array.isArray v))
@@ -80,6 +66,8 @@
     (define VECTOR         (array "vector"))
     (define CHAR           (array "char"))
     (define MUTABLE-STRING (array "mutable-string"))
+    (define BYTES          (array "bytes"))
+    (define MUTABLE-BYTES  (array "mutable-bytes"))
     ;; Empty
     (define NULL (array))
     (define (null? v) (= v NULL))
@@ -126,6 +114,15 @@
             #;(immutable-vector? v)
             #;(immutable-hash? v)
             #;(immutable-box? v)))
+    ;;;
+    ;;; 4.2 Numbers
+    ;;;
+    (define (exact-integer? v)
+      ; http://stackoverflow.com/questions/3885817/how-to-check-that-a-number-is-float-or-integer
+      (and (= (typeof v) "number")
+           (= v (+ v))
+           (= v (bit-or v 0))))
+
 
     ;;;
     ;;; 4.4 Byte Strings
@@ -135,8 +132,40 @@
     ;; A byte is an exact integer between 0 and 255 inclusive.
     ;; A byte string can be mutable or immutable.
 
-    
-    
+    ;; Representation: Byte strings are represented as Int8Array
+    ; http://caniuse.com/#feat=typedarrays
+    (define (bytes? v)
+      (and (= (typeof v) "array")
+           (or (= (tag v) BYTES)
+               (= (tag v) MUTABLE-BYTES))))
+    (define (bytes->Int8Array bs)
+      (ref bs 1))    
+    (define (make-bytes2 k b) ; b is optional
+      ; Returns a new mutable byte string of length k where each position
+      ; in the byte string is initialized with the byte b.
+      (var [bs (Int8Array k)])
+      (sunless (= b 0)
+               (bs.fill 0 k b))
+      (array MUTABLE-BYTES bs))
+    (define (make-bytes1 k) ; b = 0 is optional
+      ; Returns a new mutable byte string of length k where each position
+      ; in the byte string is initialized with the byte b.
+      (var [is (Int8Array k)])
+      (array MUTABLE-BYTES is))
+    (define (bytes) ; (bytes b ...)
+      ; make new mutable byte string
+      (var [args arguments]
+           [n    args.length]
+           [is   (Int8Array n)])
+      (is.set args)
+      (array MUTABLE-BYTES is))
+    (define (bytes->immutable-bytes bs)
+      (array BYTES (Int8Array.from (ref bs 1))))
+    (define (immutable-bytes->bytes bs)
+      (array MUTABLE-BYTES (Int8Array.from (ref bs 1))))
+    (define (byte? v)
+      (and (exact-integer? v)
+           (<= 0 v 255)))
     
     ;;;
     ;;; 4.9,4.10 Lists
@@ -292,7 +321,22 @@
       (var [a (for/array ([x in-vector v]) (str x))])
       (+ "#(" (a.join " ") ")"))
     (define (str-pair v)   (+ "(" (str (car v)) " . " (str (cdr v)) ")"))
+    (define (str-boolean v)
+      (cond [(= v #t) "#t"]
+            [(= v #f) "#f"]
+            [#t       "str -internal error"]))
     (define (str v)
+      (cond
+        [(null? v)    (str-null)]
+        [(string? v)  (str-string v)]
+        [(number? v)  (str-number v)]
+        [(list? v)    (str-list v)]
+        [(pair? v)    (str-pair v)]
+        [(vector? v)  (str-vector v)]
+        [(boolean? v) (str-boolean v)]
+        [#t          "str - internal error"]))
+
+    #;(define (str v)
       (if (null? v) (str-null)
           (if (string? v) (str-string v)
               (if (number? v) (str-number v)
@@ -315,4 +359,8 @@
     (str (make-list 5 "foo"))
     (str (array->list (list->array (string->list "123"))))
     (str (list-ref (string->list "abcde") 4))
+    (str (exact-integer? 42))
+    (str (exact-integer? 42.0))
+    (str (exact-integer? 42.1))
+    ;(str (exact-integer? 42.123))
   )))
