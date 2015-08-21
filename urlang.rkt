@@ -235,7 +235,7 @@
 ; <reference>         ::= x
 ; <application>       ::= (<expr> <expr> ...)
 ; <sequence>          ::= (begin <expr> ...)
-; <assignment>        ::= (:= x <expr>)
+; <assignment>        ::= (:= x <expr>) | (:= x <expr> <expr>)
 ; <let>               ::= (let ((x <expr>) ...) <statement> ... <expr>)
 ; <lambda>            ::= (lambda (<formal> ...) <body>)
 
@@ -457,7 +457,8 @@
   (Expr (e)
     x                             ; reference
     (app e0 e ...) => (e0 e ...)  ; application
-    (:= x e)                      ; assignment
+    (:= x e)                      ; assignment    x = e
+    (:= x e0 e1)                  ; assignment    x[e0] = e1
     (begin e ...)                 ; sequence
     (if e0 e1 e2)                 ; ternary
     (let ((x e) ...) b)           ; local binding
@@ -972,7 +973,11 @@
       #:literal-sets (keywords)
       [(:= x:Id e)
        (let ((e (parse-expr #'e)))
-         `(:= ,#'x ,e))])))
+         `(:= ,#'x ,e))]
+      [(:= x:Id e0 e1)
+       (let ((e0 (parse-expr #'e0))
+             (e1 (parse-expr #'e1)))
+         `(:= ,#'x ,e0 ,e1))])))
 
 (define (parse-ternary t)
   (debug (list 'parse-ternary (syntax->datum t)))
@@ -1458,6 +1463,8 @@
                               (~parens (~commas e)))]
     [(:= ,x ,e)             (let ((e (Expr e)))
                               (~parens x "=" e))]
+    [(:= ,x ,e0 ,e1)        (let ((e0 (Expr e0)) (e1 (Expr e1)))
+                              (~parens x (~brackets e0) "=" e1))]
     [(let ((,x ,e) ...) ,ab) (let ((e (map Expr e)) (ab (AnnotatedBody ab)))
                                (list (~parens (~parens "function" (~parens (~commas x)) ab)
                                               (~parens (~commas e)))))]
