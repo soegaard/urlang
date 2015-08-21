@@ -56,7 +56,8 @@
  (urlang
   (urmodule runtime
     (export null? pair? list? cons car cdr)
-    (import Array Int8Array Number String typeof bit-or)
+    (import Array Int8Array Number String
+            new typeof)
     ;;; Array
     (define (array? v) ; todo : inline array?
       (Array.isArray v))
@@ -85,9 +86,9 @@
     (define (vector-ref v i)  (ref v (+ i 1)))      
     (define (vector) ; multiple arguments
       (var [args arguments] [n args.length] [a (Array (+ n 1))])
-      (array! a 0 VECTOR)
+      (:= a 0 VECTOR)
       (for ([j in-range 0 n])
-        (array! a (+ j 1) (ref args j)))
+        (:= a (+ j 1) (ref args j)))
       a)
     ;;;
     ;;; 4.1 Booleans and equality
@@ -143,14 +144,15 @@
     (define (make-bytes2 k b) ; b is optional
       ; Returns a new mutable byte string of length k where each position
       ; in the byte string is initialized with the byte b.
-      (var [bs (Int8Array k)])
-      (sunless (= b 0)
-               (bs.fill 0 k b))
+      (var [bs (new Int8Array k)])
+      ; (sunless (= b 0) (bs.fill 0 k b))  ; ES6 not supported in Node/Chrome
+      (for ([i in-range 0 k])
+        (:= bs i b))
       (array MUTABLE-BYTES bs))
     (define (make-bytes1 k) ; b = 0 is optional
       ; Returns a new mutable byte string of length k where each position
       ; in the byte string is initialized with the byte b.
-      (var [is (Int8Array k)])
+      (var [is (new Int8Array k)])
       (array MUTABLE-BYTES is))
     (define (bytes) ; (bytes b ...)
       ; make new mutable byte string
@@ -166,7 +168,47 @@
     (define (byte? v)
       (and (exact-integer? v)
            (<= 0 v 255)))
-    
+    (define (bytes-length bs)
+      (ref (ref bs 1) "length"))
+    (define (bytes-ref bs k)
+      (ref (ref bs 1) k))
+    (define (bytes-set! bs k b)
+      (var [is (ref bs 1)])
+      (:= is k b))
+    (define (subbytes3 bs start end) ; end is optional
+      (var [is (ref bs 1)]
+           [k  (- end start)]
+           [t  (new Int8Array k)])
+      (for ([i in-range start end])
+        (:= t i (ref is i)))
+      (array MUTABLE-BYTES is))
+    (define (subbytes2 bs start) ; end is optional
+      (var [is  (ref bs 1)]
+           [end (ref is "length")]
+           [k   (- end start)]
+           [t   (new Int8Array k)])
+      (for ([i in-range start end])
+        (:= t i (ref is i)))
+      (array MUTABLE-BYTES is))
+    (define (bytes-copy bs)
+      (subbytes2 bs 0))
+    ; bytes-copy!       ; todo
+    ; bytes-fill!       ; todo
+    ; bytes-append      ; todo
+    ; bytes->list       ; todo
+    ; list->bytes       ; todo
+    ; make-shared-bytes ; todo
+    ; shared-bytes      ; todo
+
+    ;;; 4.4.2 Byte String Comparisons
+    (define (bytes=? bs1 bs2)
+      (var [n1 (bytes-length bs1)]
+           [n2 (bytes-length bs2)]
+           [is1 (ref bs1 1)]
+           [is2 (ref bs2 1)])
+      (and (= n1 n2)
+           (for/and ([i in-range 0 n1])
+             (= (ref is1 i) (ref is2 i)))))
     ;;;
     ;;; 4.9,4.10 Lists
     ;;;
@@ -187,7 +229,7 @@
       (:= a (Array n))
       ; fill it
       (for ([x i in-list xs])
-        (array! a i x))
+        (:= a i x))
       a)
     (define (array->list axs)
       ;; convert JavaScript array to Racket list
@@ -253,9 +295,9 @@
     (define (make-string k ch) ; TODO: make ch optional
       ; make-string produces a mutable string
       (var [a (Array (+ k 1))])
-      (array! a 0 MUTABLE-STRING)
+      (:= a 0 MUTABLE-STRING)
       (for ([i in-range 1 (+ k 1)])
-        (array! a i ch))
+        (:= a i ch))
       a)
      ; (define (string->immutable-string s)
      ; (define (fail) (/ 1 0) #;(error 'string->immutable-string "expected string, got" s))
@@ -269,9 +311,9 @@
     (define (string) ; ch ... multiple arguments
       (var [args arguments] [n args.length])
       (var [a (Array (+ n 1))])
-      (array! a 0 MUTABLE-STRING)
+      (:= a 0 MUTABLE-STRING)
       (for ([i in-range 0 n])
-        (array! a (+ i 1) (ref args i)))
+        (:= a (+ i 1) (ref args i)))
       a)
     (define (string-length s)
       (if (= (typeof s) "string")
@@ -284,7 +326,7 @@
     (define (string-set! s i c)
       ; (unless (mutable-string? s) (raise ...))
       ; (unless (char? c)           (raise ...))
-      (array! s (+ i 1) (ref c 1)))
+      (:= s (+ i 1) (ref c 1)))
     (define (substring3 str start end) (str.substring start end))
     (define (substring2 str start)     (str.substring start (string-length str)))
     (define substring substring3)      ; todo: handle optional arguments
@@ -324,7 +366,7 @@
     (define (str-boolean v)
       (cond [(= v #t) "#t"]
             [(= v #f) "#f"]
-            [#t       "str -internal error"]))
+            [#t       "str -internal error"]))    
     (define (str v)
       (cond
         [(null? v)    (str-null)]
@@ -335,15 +377,6 @@
         [(vector? v)  (str-vector v)]
         [(boolean? v) (str-boolean v)]
         [#t          "str - internal error"]))
-
-    #;(define (str v)
-      (if (null? v) (str-null)
-          (if (string? v) (str-string v)
-              (if (number? v) (str-number v)
-                  (if (list? v) (str-list v)
-                      (if (pair? v) (str-pair v)
-                          (if (vector? v) (str-vector v)
-                              "str - internal error")))))))
       
     ; (str (cons 10 (cons 11 (cons 12 NULL))))
     ; (str (vector 10 11 12))
@@ -363,4 +396,9 @@
     (str (exact-integer? 42.0))
     (str (exact-integer? 42.1))
     ;(str (exact-integer? 42.123))
+    (make-bytes2 10 65)
+    (bytes-length (make-bytes2 10 65))
+    (str (bytes=? (make-bytes2 10 65) (make-bytes2 10 65)))  ; #t
+    (str (bytes=? (make-bytes2 10 65) (make-bytes2 10 66)))  ; #f
+    
   )))
