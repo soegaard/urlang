@@ -9,6 +9,7 @@
 ;; Keywords
 (provide begin block break catch continue define do-while export finally if import
          label lambda λ let sempty sif throw try urmodule var while :=)
+(provide bit-and bit-not bit-or bit-xor)
 ;; Compiler 
 (provide compile  ; syntax -> *         prints JavaScript
          eval)    ; syntax -> string    compiles, saves, runs - output returned as string
@@ -1488,9 +1489,9 @@
                                                                               (list e1 "." (~a pn)))]
                                 [(list 'ref e1 (and (? pn?) (app pn? pn)))    (list e1 "." (~a pn))]
                                 [(list 'ref e1 e2)                          (list e1 (~brackets e2))]
-                                [(list 'array e ...)                         (~brackets (~commas e))]
-                                [(list 'new    e0 e ...)      (list "new " e0 (~parens (~commas e)))]
-                                [(list 'array! e0 i e)                (list e0 (~brackets i) "=" e)]
+                                [(list 'array e ...)                        (~brackets (~commas e))]
+                                [(list 'new    e0 e ...)    (list "new " e0 (~parens   (~commas e)))]
+                                [(list 'array! e0 i e)             (list e0 (~brackets i) "=" e)]
                                 [(list* 'ref _)
                                  (raise-syntax-error 'ref "(ref expr expr) expected, at " e0)]
                                 [(list (? infix?) e1)    (~parens f e1)]                      ; unary
