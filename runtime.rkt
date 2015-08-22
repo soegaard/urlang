@@ -287,7 +287,7 @@
     ;;; Strings
     ;; Representation
     ;;   - immutable Racket strings are represented as JavaScript strings
-    ;;   - mutable Racket string
+    ;;   - mutable Racket string are repsented as a tagged array:
     ;;       {array MUTABLE-STRING "char0" "char1" ...}
     (define (string? v)
       (or (= (typeof v) "string")

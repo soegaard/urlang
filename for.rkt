@@ -138,7 +138,13 @@
          [t to])
         (< i t)         ; termination condition
         ([x i])         ; let bindings (needs to bind x)
-        ((+= i 1)))]))  ; statements to step state forward
+        ((+= i 1)))]    ; statements to step state forward
+    [[x in-range from to step]
+     #'(([i from]          ; list of var clauses to create initial state
+         [t to])
+        (< i t)            ; termination condition
+        ([x i])            ; let bindings (needs to bind x)
+        ((+= i step)))]))  ; statements to step state forward
 
 (define (handle-in-array clause)
   (syntax-parse clause
@@ -320,12 +326,14 @@
     [(_for/array #:length length-expr (clause ...) statement-or-break ... expr)
      ; Allocate array of length length-expr and fill in the values afterwards.
      ; This is faster than pushing repeatedly.
+     (displayln "HERE")
+     (displayln stx)
      (syntax/loc stx
        (let ()
          (var [n length-expr] [a (new Array n)] [i 0])
          (for (clause ...)
            statement-or-break ...
-           (array! a i expr)
+           (:= a i expr)
            (+= i 1))
          ; fill in remaining elements with 0
          (sif (< i n)
@@ -338,7 +346,8 @@
          (for (clause ...)
            statement-or-break ...
            (a.push expr))
-         a))]))
+         a))]
+    [_ (error 'urlang:for/array "got" stx)]))
 
 (define (expand-for*/array stx)
   (syntax-parse stx
