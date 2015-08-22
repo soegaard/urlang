@@ -326,8 +326,6 @@
     [(_for/array #:length length-expr (clause ...) statement-or-break ... expr)
      ; Allocate array of length length-expr and fill in the values afterwards.
      ; This is faster than pushing repeatedly.
-     (displayln "HERE")
-     (displayln stx)
      (syntax/loc stx
        (let ()
          (var [n length-expr] [a (new Array n)] [i 0])
