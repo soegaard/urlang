@@ -55,7 +55,8 @@
 (display
  (urlang
   (urmodule runtime
-    (export null? pair? list? cons car cdr)
+    (import document window prompt alert)  ; Browser functions
+    ; (export null? pair? list? cons car cdr)
     (import Array Int8Array Number String
             new typeof)
     ;;; Array
@@ -210,7 +211,7 @@
            (for/and ([i in-range 0 n1])
              (= (ref is1 i) (ref is2 i)))))
     ;;;
-    ;;; 4.9,4.10 Lists
+    ;;; 4.9-10 Lists
     ;;;
 
     ;; Representation:
@@ -333,16 +334,18 @@
     ; todo: string-copy
     ; todo: string-copy!
     ; todo: string-fill!
-    ; todo: string-append
     ; todo: string->list
     ; todo: list->string
     ; todo: build-string
     ; todo: string comparisons    
     (define (string->list s)          (for/list ([c in-string s]) c))
-    (define (string-append str1 str2) (str1.concat str2))
+    (define (string-append2 str1 str2) (str1.concat str2))
+    (define (string-append) ; variadic
+      (var [args arguments])
+      (var [as (for/array #:length args.length ([a in-array args]) a)])
+      (as.join ""))           
     (define (string-downcase str)     (str.toLowerCase))
     (define (string-upcase   str)     (str.toUpperCase))
-    
     
     ;;; Numbers
     (define (number? v) (= (typeof v) "number"))
@@ -366,7 +369,7 @@
     (define (str-boolean v)
       (cond [(= v #t) "#t"]
             [(= v #f) "#f"]
-            [#t       "str -internal error"]))    
+            [#t       "str -internal error"]))
     (define (str v)
       (cond
         [(null? v)    (str-null)]
@@ -377,28 +380,32 @@
         [(vector? v)  (str-vector v)]
         [(boolean? v) (str-boolean v)]
         [#t          "str - internal error"]))
-      
-    ; (str (cons 10 (cons 11 (cons 12 NULL))))
-    ; (str (vector 10 11 12))
-    ; (str (string-append "foo" "bar"))
-    (str (string->list "foobar"))
-    (str (for/list ([x in-range 0 5]) x))
-    (str (reverse (for/list ([x in-range 0 5]) x)))
-    (str (reverse (string->list "foobar")))
-    (str (substring "foobar" 2 4))
-    (str (string-length "foobar"))
-    (str (string-length (string (make-char "a") (make-char "b") (make-char "c"))))
-    (str (append2 (string->list "123") (string->list "45")))
-    (str (make-list 5 "foo"))
-    (str (array->list (list->array (string->list "123"))))
-    (str (list-ref (string->list "abcde") 4))
-    (str (exact-integer? 42))
-    (str (exact-integer? 42.0))
-    (str (exact-integer? 42.1))
-    ;(str (exact-integer? 42.123))
-    (make-bytes2 10 65)
-    (bytes-length (make-bytes2 10 65))
-    (str (bytes=? (make-bytes2 10 65) (make-bytes2 10 65)))  ; #t
-    (str (bytes=? (make-bytes2 10 65) (make-bytes2 10 66)))  ; #f
+
+    #;("tests"
+       ; (str (cons 10 (cons 11 (cons 12 NULL))))
+       ; (str (vector 10 11 12))
+       ; (str (string-append "foo" "bar"))
+       (str (string->list "foobar"))
+       (str (for/list ([x in-range 0 5]) x))
+       (str (reverse (for/list ([x in-range 0 5]) x)))
+       (str (reverse (string->list "foobar")))
+       (str (substring "foobar" 2 4))
+       (str (string-length "foobar"))
+       (str (string-length (string (make-char "a") (make-char "b") (make-char "c"))))
+       (str (append2 (string->list "123") (string->list "45")))
+       (str (make-list 5 "foo"))
+       (str (array->list (list->array (string->list "123"))))
+       (str (list-ref (string->list "abcde") 4))
+       (str (exact-integer? 42))
+       (str (exact-integer? 42.0))
+       (str (exact-integer? 42.1))
+       ;(str (exact-integer? 42.123))
+       (make-bytes2 10 65)
+       (bytes-length (make-bytes2 10 65))                       ; 10
+       (str (bytes=? (make-bytes2 10 65) (make-bytes2 10 65)))  ; #t
+       (str (bytes=? (make-bytes2 10 65) (make-bytes2 10 66))))  ; #f
+
+    
+
     
   )))
