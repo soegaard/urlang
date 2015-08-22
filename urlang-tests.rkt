@@ -9,7 +9,7 @@
 (require "urlang.rkt" rackunit)
 
 (current-urlang-run?                           #t) ; run using Node?
-(current-urlang-echo?                          #f) ; print generated JavaScript?
+(current-urlang-echo?                          #t) ; print generated JavaScript?
 (current-urlang-console.log-module-level-expr? #t) ; print top-level expression?
 
 (define (rs s) (read (open-input-string s)))
@@ -55,6 +55,10 @@
 ; Lambda with optional arguments
 (check-equal? (rs (urlang (urmodule t17 ((lambda (x [y 2]) (+ x y)) 3)))) 5)
 (check-equal? (rs (urlang (urmodule t18 ((lambda (x [y 2]) (+ x y)) 3 4)))) 7)
+; Object literals
+(check-equal? (rs (urlang (urmodule t19 (ref (object [foo 10] [11 12] ["bar" 13]) "foo")))) 10)
+(check-equal? (rs (urlang (urmodule t19 (ref (object [foo 10] [11 12] ["bar" 13]) 11))))    12)
+(check-equal? (rs (urlang (urmodule t19 (ref (object [foo 10] [11 12] ["bar" 13]) "bar")))) 13)
 
 ;;;
 ;;; EXPORT AND IMPORT

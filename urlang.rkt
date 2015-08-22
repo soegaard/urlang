@@ -8,8 +8,8 @@
 
 ;; Keywords
 (provide begin block break catch continue define do-while export finally if import
-         label lambda λ let sempty sif throw try urmodule var while :=)
-(provide bit-and bit-not bit-or bit-xor)
+         object label lambda λ let sempty sif throw try urmodule var while :=)
+(provide bit-and bit-not bit-or bit-xor ===)
 ;; Compiler 
 (provide compile  ; syntax -> *         prints JavaScript
          eval)    ; syntax -> string    compiles, saves, runs - output returned as string
@@ -230,7 +230,7 @@
 ; <body>              ::= <statement> ... <expr>
 
 ; <expr>              ::= <datum>   | <reference> | <application> | <sequence>
-;                      |  <ternary> | <assignment> | <let> | <lambda> | <dot>
+;                      |  <ternary> | <assignment> | <let> | <lambda> | <dot> | <object>
 ; <ternary>           ::= (if <expr> <expr> <expr>)
 ; <reference>         ::= x
 ; <application>       ::= (<expr> <expr> ...)
@@ -238,16 +238,21 @@
 ; <assignment>        ::= (:= x <expr>) | (:= x <expr> <expr>)
 ; <let>               ::= (let ((x <expr>) ...) <statement> ... <expr>)
 ; <lambda>            ::= (lambda (<formal> ...) <body>)
+; <object>            ::= (object (<property-name> <expr>) ...)
+; <property-name>     ::= x | <string> | <number>
 
 ; <keyword>           ::= define | begin | urmodule | if | := | ...see code...
 
+; <number>            ::= <fixnum> | <flonum>
 ; <datum>             ::= <fixnum> | <flonum> | <string> | #t | #f
 
 ; <identifier>     an identifier that is not a keyword
+
 ; <fixnum>         an integer between -2^53 and 2^53
 ; <flonum>         an inexact real number represented as an IEEE 754 floating point number
 ; <module-name>    a symbol or string
 ; <label>          a JavaScript label
+
 
 ;;;
 ;;; NOTES
@@ -362,6 +367,7 @@
 (define-syntax finally     (λ (stx) (raise-syntax-error 'finally     "used out of context" stx)))
 (define-syntax import      (λ (stx) (raise-syntax-error 'import      "used out of context" stx)))
 (define-syntax label       (λ (stx) (raise-syntax-error 'label       "used out of context" stx)))
+(define-syntax object      (λ (stx) (raise-syntax-error 'object      "used out of context" stx)))
 (define-syntax sempty      (λ (stx) (raise-syntax-error 'sempty      "used out of context" stx)))
 (define-syntax sif         (λ (stx) (raise-syntax-error 'sif         "used out of context" stx)))
 (define-syntax throw       (λ (stx) (raise-syntax-error 'throw       "used out of context" stx)))
@@ -373,7 +379,7 @@
 
 ; Note: Rememember to provide all keywords
 (define-literal-set keywords (begin block break catch continue define do-while export finally
-                                    if import label lambda λ let
+                                    if import object label lambda λ let
                                     sempty sif throw try urmodule var while :=))
 (define keyword? (literal-set->predicate keywords))
 
@@ -402,9 +408,8 @@
 (define (id? v)            (identifier? v))
 (define (datum? v)         (or (fixnum? v) (flonum? v) (string? v) (boolean? v)))
 (define (module-name? v)   (or (symbol? v) (string? v)))
-(define (property-name? v) (or (symbol? v) (string? v)
-                               (and (syntax? v)
-                                    (property-name? (syntax-e v)))))
+(define (property-name? v) (or (symbol? v) (string? v) (fixnum? v) (flonum? v)
+                               (and (syntax? v) (property-name? (syntax-e v)))))
 ;;;
 ;;; URLANG AS NANOPASS LANGUAGE
 ;;;
@@ -417,7 +422,8 @@
    ; l statement label
    ; x identifier
    ((datum       (d))     . => . unparse-datum)
-   (module-name  (mn)))
+   (module-name  (mn))
+   (property-name (pn)))
   (Module (u)
     (urmodule mn m ...))
   (ModuleLevelForm (m)
@@ -463,7 +469,9 @@
     (if e0 e1 e2)                 ; ternary
     (let ((x e) ...) b)           ; local binding
     (lambda (x ...) b)            ; anonymous function
-    (quote d)))                   ; quotation (the parser quotes all datums)
+    (quote d)                     ; quotation (the parser quotes all datums)
+    (object (pn e) ...)))         ; object literal
+
 
 ;;;
 ;;; GRAMMAR AS SYNTAX CLASSES
@@ -478,6 +486,11 @@
 (define-syntax-class String #:opaque (pattern d #:fail-unless (string? (syntax-e #'d)) #f))
 (define-syntax-class Symbol #:opaque (pattern d #:fail-unless (symbol? (syntax-e #'d)) #f))
 (define-syntax-class Boolean #:opaque (pattern (~or #t #f)))
+
+(define-syntax-class Number
+  #:description "<number>"
+  (pattern (~or d:Fixnum d:Flonum)))
+
 
 (define-syntax-class Datum
   #:description "<datum>"
@@ -494,6 +507,11 @@
 
 (define-syntax-class Id
   (pattern (~and x:id (~not y:Keyword))))
+
+(define-syntax-class PropertyName
+  (pattern (~or (~and x:id (~not y:Keyword))
+                d:Number
+                s:String)))
 
 #;(define-syntax-class Label
    (pattern x:Id))
@@ -603,7 +621,12 @@
                 e:Ternary
                 e:Assignment
                 e:Let
-                el:Lambda)))
+                el:Lambda
+                e:Object)))
+
+(define-syntax-class Object
+  #:literal-sets (keywords)
+  (pattern (object [pn:PropertyName e] ...)))  ; e is a an expression or macro application
 
 (define-syntax-class Export
   #:literal-sets (keywords)
@@ -882,7 +905,7 @@
       [(define (f:Id φ:Formal ...) . b)
        (let ((x (attribute φ.x)))                                           ; all parameters
          (with-syntax ([((x0 e0) ...) (filter identity (attribute φ.xe))])  ; parameters with defaults
-           (with-syntax ([(σ0 ...) #'((sif (=== x0 undefined) (:= x0 e0) (block)) ...)])
+           (with-syntax ([(σ0 ...) #'((sif (= x0 undefined) (:= x0 e0) (block)) ...)])
              (with-syntax ([(σ ... en) #'b])
                (let ((b (parse-body #'(σ0 ... σ ... en))))
                  `(define (,#'f ,x ...) ,b))))))])))
@@ -895,7 +918,7 @@
       [(_lambda (φ:Formal ...) . b)
        (let ((x (attribute φ.x)))                                           ; all parameters
          (with-syntax ([((x0 e0) ...) (filter identity (attribute φ.xe))])  ; parameters with defaults
-           (with-syntax ([(σ0 ...) #'((sif (=== x0 undefined) (:= x0 e0) (block)) ...)])
+           (with-syntax ([(σ0 ...) #'((sif (= x0 undefined) (:= x0 e0) (block)) ...)])
              (with-syntax ([(σ ... en) #'b])
                (let ((b (parse-body #'(σ0 ... σ ... en))))
                  `(lambda (,x ...) ,b))))))])))
@@ -926,9 +949,22 @@
       [(~and a  (:=    . _))                  (parse-assignment  #'a)]
       [(~and l  (let   . _))                  (parse-let         #'l)]
       [(~and la (~or (lambda . _) (λ . _)))   (parse-lambda      #'la)]
+      [(~and o  (object . _))                 (parse-object      #'o)]
       [(~and a  (e ...)
              (~not (k:keyword . _)))          (parse-application #'a)]
       [_ (raise-syntax-error 'parse-expr (~a "expected an expression, got " e) e)])))
+
+(define (parse-object o)
+  (debug (list 'parse-object (syntax->datum o)))
+  (with-output-language (L Expr)
+    (syntax-parse o
+      #:literal-sets (keywords)
+      [(object [pn:PropertyName e] ...)
+       (let ([pn (syntax->list #'(pn ...))]
+             [e  (stx-map parse-expr #'(e  ...))])
+         `(object [,pn ,e] ...))])))
+
+
 
 (define (parse-application a)
   (debug (list 'parse-application (syntax->datum a)))
@@ -1386,6 +1422,7 @@
     (define (~displayln t)   (list "console.log" (~parens t)))
     (define (~top-expr t)     (if (current-urlang-console.log-module-level-expr?)
                                   (~displayln t) t))
+    (define (~property-name t) (syntax-e t))
     (define (exports.id x)   (format-id x "exports.~a" x)))
   (Module : Module (u) -> * ()
     [(urmodule ,mn (,an ...) ,m ...) (list (~newline (~Statement "\"use strict\""))
@@ -1470,6 +1507,8 @@
                                               (~parens (~commas e)))))]
     [(lambda (,x ...) ,ab)   (let ((ab (AnnotatedBody ab)))
                                (~parens "function" (~parens (~commas x)) ab))]
+    [(object (,pn* ,e*) ...) (~braces (~commas (for/list ([pn pn*] [e e*])
+                                                 (list (~property-name pn) ":" (Expr e)))))]
     [(app ,e0 ,e ...)      (cond
                              [(identifier? e0)
                               (define f e0)
@@ -1477,7 +1516,7 @@
                               (define (assignment? _) (assignment-operator? f))
                               (define (pn? _)
                                 (nanopass-case (L1 Expr) (second e)
-                                  [(quote ,d) (and (property-name? d) d)]
+                                  [(quote ,d) (and (property-name? d) (not (number? d)) d)]
                                   [else       #f]))
                               (match (cons (syntax-e f) (map Expr e))
                                 [(list 'ref e1 (and (? pn?)
@@ -1486,6 +1525,7 @@
                                                                               (list e1 "." (~a pn)))]
                                 [(list 'ref e1 (and (? pn?) (app pn? pn)))    (list e1 "." (~a pn))]
                                 [(list 'ref e1 e2)                          (list e1 (~brackets e2))]
+                                [(list 'array e ...)                        (~brackets (~commas e))]
                                 [(list 'array e ...)                        (~brackets (~commas e))]
                                 [(list 'new    e0 e ...)    (list "new " e0 (~parens   (~commas e)))]
                                 [(list 'array! e0 i e)             (list e0 (~brackets i) "=" e)]
@@ -1510,6 +1550,7 @@
 (define-syntax bit-or  (λ (stx) (raise-syntax-error 'bit-or  "used out of context" stx)))
 (define-syntax bit-xor (λ (stx) (raise-syntax-error 'bit-xor "used out of context" stx)))
 (define-syntax bit-not (λ (stx) (raise-syntax-error 'bit-not "used out of context" stx)))
+(define-syntax ===     (λ (stx) (raise-syntax-error '===     "used out of context" stx)))
 
 (require syntax/id-table racket/syntax)
 (define bound-ids (make-bound-id-table))
@@ -1550,12 +1591,13 @@
   ; (displayln (list "  " 'mangle 'id (syntax-e id) 'id* (syntax-e id*)))
   ; (set! id id*)  
   (syntax-parse id
-    #:literals (and or not = bit-and bit-or bit-xor bit-not < > <= >= + - * /)
+    #:literals (and or not = === bit-and bit-or bit-xor bit-not < > <= >= + - * /)
     ;; Take care of JavaScript operators first
     ;;  - assignment operators
     [ao:AssignmentOperator (symbol->string (syntax-e #'ao))]
     ;;  - infix operators
     [=       "==="]
+    [===     "==="]
     [<       "<"]
     [>       ">"]
     [<=      "<="]
