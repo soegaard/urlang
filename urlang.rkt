@@ -555,7 +555,7 @@
 
 (define-syntax-class VarBinding
   #:literal-sets (keywords)
-  (pattern (~or x:Id (x:Id e:Expr))))
+  (pattern (~or x:Id (x:Id (~or e:Expr e:MacroApplication)))))
 
 (define-syntax-class Formal
   #:literal-sets (keywords)
@@ -916,7 +916,7 @@
     (syntax-parse e
       #:literal-sets (keywords)
       [ma:MacroApplication                    (define expansion (parse-macro-application #'ma))
-                                             ; (displayln (list 'parse-expr 'expansion: expansion))
+                                              ; (displayln (list 'parse-expr 'expansion: expansion))
                                               (parameterize ([macro-expansion-context parent-context])
                                               (context-parse expansion))]
       [d:Datum                                (parse-datum       #'d)]
@@ -1046,7 +1046,7 @@
 ;;; PREDEFINED NAMES AND RESERVED WORDS
 ;;;
 
-(define predefined-names '(Array array array! arguments console ref undefined))
+(define predefined-names '(Array array array! arguments console ref undefined new typeof))
 ; (besides operators)
 
 (define reserved-words-ids (symbols->ids ecma6-reservered-keywords))
