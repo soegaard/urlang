@@ -126,7 +126,142 @@
            (= v (+ v))
            (= v (bit-or v 0))))
 
+    ;;;  
+    ;;; 4.3 Strings
+    ;;;
 
+    ; todo: string-copy
+    ; todo: string-copy!
+    ; todo: string-fill!
+    ; todo: string->list
+    ; todo: list->string
+    ; todo: build-string
+      
+    ;; Representation
+    ;;   - immutable Racket strings are represented as JavaScript strings
+    ;;   - mutable Racket string are represented as a tagged array:
+    ;;       {array MUTABLE-STRING "char0" "char1" ...}
+    ;;     where char0 is a javascript string with length 1.
+    (define (string? v)
+      (or (= (typeof v) "string")
+          (and (array? v) (= (tag v) MUTABLE-STRING))))
+    (define (immutable-string? v) (= (typeof v) "string"))
+    (define (mutable-string? v) (and (array? v) (= (tag v) MUTABLE-STRING)))
+    (define (make-string k ch) ; ch optional
+      (case arguments.length
+        [(1) (make-string1 k)]
+        [(2) (make-string2 k ch)]
+        [else (error "make-string" "expected at one or two argument")]))
+    (define (make-string1 k)
+      (make-string2 k "\u0000"))
+    (define (make-string2 k ch)
+      ; make-string produces a mutable string
+      (var [a (Array (+ k 1))])
+      (:= a 0 MUTABLE-STRING)
+      (for ([i in-range 1 (+ k 1)])
+        (:= a i (ref ch 1)))
+      a)      
+    (define (make-primitive-string n c) ; make primitive js string of length n
+      ; http://stackoverflow.com/questions/202605/repeat-string-javascript?rq=1
+      (var [s ""])
+      (while #t
+             (sunless (= (bit-and n 1) 0) (+= s c))
+             (>>= n 1)
+             (sif (= n 0) (break) (+= c c)))
+      s)
+    (define (string->immutable-string s)
+      (cond
+        [(= (typeof s) "string") s]
+        [#t (var [n+1 s.length] [n (- n+1 1)] [a (Array n)])
+            (for ([i in-range 0 n])
+              (:= a i (ref s (+ i 1))))
+            (String (a.join ""))]))
+    (define (immutable-string->string str)
+      (var [n str.length] [a (Array (+ n 1))])
+      (:= a 0 MUTABLE-STRING)
+      (for ([i in-range 0 n])
+        (:= a (+ i 1) (ref str i)))
+      a)      
+    (define (string) ; ch ... multiple arguments
+      (var [args arguments] [n args.length])
+      (var [a (Array (+ n 1))])
+      (:= a 0 MUTABLE-STRING)
+      (for ([i in-range 0 n])
+        (:= a (+ i 1) (ref (ref args i) 1)))
+      a)
+    (define (string-length s)
+      (if (= (typeof s) "string")
+          s.length
+          (- s.length 1)))
+    (define (string-ref s i)
+      (if (= (typeof s) "string")
+          (array CHAR (ref s    i))
+          (array CHAR (ref s (+ i 1)))))
+    (define (string-set! s i c)
+      ; (unless (mutable-string? s) (raise ...))
+      ; (unless (char? c)           (raise ...))
+      (:= s (+ i 1) (ref c 1)))
+    (define (substring3 str start end) (str.substring start end))
+    (define (substring2 str start)     (str.substring start (string-length str)))
+    (define (substring) ; case-lambda
+      (case arguments.length
+        [(2) (substring2 (ref arguments 0) (ref arguments 1))]
+        [(3) (substring3 (ref arguments 0) (ref arguments 1) (ref arguments 2))]
+        [else (error "substring" "expected two to three arguments")]))
+    (define (string=? str1 str2)
+      (if (immutable-string? str1)
+          (if (immutable-string? str2)
+              (= str1 str2)
+              (= str1 (string->immutable-string str2)))
+          (if (immutable-string? str2)
+              (= (string->immutable-string str1) str2)
+              (= (string->immutable-string str1) (string->immutable-string str2)))))
+    (define (string<? str1 str2)
+      (if (immutable-string? str1)
+          (if (immutable-string? str2)
+              (< str1 str2)
+              (< str1 (string->immutable-string str2)))
+          (if (immutable-string? str2)
+              (< (string->immutable-string str1) str2)
+              (< (string->immutable-string str1) (string->immutable-string str2)))))
+    (define (string>? str1 str2)
+      (if (immutable-string? str1)
+          (if (immutable-string? str2)
+              (> str1 str2)
+              (> str1 (string->immutable-string str2)))
+          (if (immutable-string? str2)
+              (> (string->immutable-string str1) str2)
+              (> (string->immutable-string str1) (string->immutable-string str2)))))
+    (define (string<=? str1 str2)
+      (if (immutable-string? str1)
+          (if (immutable-string? str2)
+              (<= str1 str2)
+              (<= str1 (string->immutable-string str2)))
+          (if (immutable-string? str2)
+              (<= (string->immutable-string str1) str2)
+              (<= (string->immutable-string str1) (string->immutable-string str2)))))
+    (define (string>=? str1 str2)
+      (if (immutable-string? str1)
+          (if (immutable-string? str2)
+              (>= str1 str2)
+              (>= str1 (string->immutable-string str2)))
+          (if (immutable-string? str2)
+              (>= (string->immutable-string str1) str2)
+              (>= (string->immutable-string str1) (string->immutable-string str2)))))
+    (define (string-upcase str) ; creates mutable string
+      (if (immutable-string? str)
+          (immutable-string->string (String (str.toUpperCase)))
+          (string-upcase (string->immutable-string str))))
+    (define (string-downcase str) ; creates mutable string
+      (if (immutable-string? str)
+          (immutable-string->string (String (str.toLowerCase)))
+          (string-downcase (string->immutable-string str))))         
+    (define (string->list s)          (for/list ([c in-string s]) c))
+    (define (string-append2 str1 str2) (str1.concat str2))
+    (define (string-append) ; variadic
+      (var [args arguments])
+      (var [as (for/array #:length args.length ([a in-array args]) a)])
+      (as.join ""))
     ;;;
     ;;; 4.4 Byte Strings
     ;;;
@@ -137,13 +272,33 @@
 
     ;; Representation: Byte strings are represented as Int8Array
     ; http://caniuse.com/#feat=typedarrays
+
+    ; bytes-copy!       ; todo
+    ; bytes-fill!       ; todo
+    ; bytes-append      ; todo
+    ; bytes->list       ; todo
+    ; list->bytes       ; todo
+    ; make-shared-bytes ; todo
+    ; shared-bytes      ; todo
+
+    
     (define (bytes? v)
       (and (array? v)
            (or (= (tag v) BYTES)
                (= (tag v) MUTABLE-BYTES))))
     (define (bytes->Int8Array bs)
-      (ref bs 1))    
-    (define (make-bytes2 k b) ; b is optional
+      (ref bs 1))
+    (define (make-bytes k b) ; b optional
+      (case arguments.length
+        [(1) (make-bytes1 k)]
+        [(2) (make-bytes2 k b)]
+        [else (error "make-bytes" "expected one or two arguments")]))
+    (define (make-bytes1 k) ; b = 0 
+      ; Returns a new mutable byte string of length k where each position
+      ; in the byte string is initialized with the byte b.
+      (var [is (new Int8Array k)])
+      (array MUTABLE-BYTES is))
+    (define (make-bytes2 k b)
       ; Returns a new mutable byte string of length k where each position
       ; in the byte string is initialized with the byte b.
       (var [bs (new Int8Array k)])
@@ -151,11 +306,7 @@
       (for ([i in-range 0 k])
         (:= bs i b))
       (array MUTABLE-BYTES bs))
-    (define (make-bytes1 k) ; b = 0 is optional
-      ; Returns a new mutable byte string of length k where each position
-      ; in the byte string is initialized with the byte b.
-      (var [is (new Int8Array k)])
-      (array MUTABLE-BYTES is))
+    
     (define (bytes) ; (bytes b ...)
       ; make new mutable byte string
       (var [args arguments]
@@ -177,14 +328,12 @@
     (define (bytes-set! bs k b)
       (var [is (ref bs 1)])
       (:= is k b))
-    (define (subbytes3 bs start end) ; end is optional
-      (var [is (ref bs 1)]
-           [k  (- end start)]
-           [t  (new Int8Array k)])
-      (for ([i in-range start end])
-        (:= t i (ref is i)))
-      (array MUTABLE-BYTES is))
-    (define (subbytes2 bs start) ; end is optional
+    (define (subbytes bs start end) ; end is optional
+      (case arguments.length
+        [(2) (subbytes2 bs start)]
+        [(3) (subbytes3 bs start end)]
+        [else (error "subbytes" "expected two or three arguments")]))
+    (define (subbytes2 bs start) ; end = bs.length
       (var [is  (ref bs 1)]
            [end (ref is "length")]
            [k   (- end start)]
@@ -192,15 +341,16 @@
       (for ([i in-range start end])
         (:= t i (ref is i)))
       (array MUTABLE-BYTES is))
+    (define (subbytes3 bs start end)
+      (var [is (ref bs 1)]
+           [k  (- end start)]
+           [t  (new Int8Array k)])
+      (for ([i in-range start end])
+        (:= t i (ref is i)))
+      (array MUTABLE-BYTES is))
+    
     (define (bytes-copy bs)
       (subbytes2 bs 0))
-    ; bytes-copy!       ; todo
-    ; bytes-fill!       ; todo
-    ; bytes-append      ; todo
-    ; bytes->list       ; todo
-    ; list->bytes       ; todo
-    ; make-shared-bytes ; todo
-    ; shared-bytes      ; todo
 
     ;;; 4.4.2 Byte String Comparisons
     (define (bytes=? bs1 bs2)
@@ -212,6 +362,26 @@
            (for/and ([i in-range 0 n1])
              (= (ref is1 i) (ref is2 i)))))
 
+    ;;;
+    ;;; 4.5 Characters
+    ;;;
+
+    ; char-utf-8-length TODO
+    
+    ;; Characters range over Unicode scalar values, which includes characters whose values
+    ;; range from #x0 to #x10FFFF, but not including #xD800 to #xDFFF.
+    ;; The scalar values are a subset of the Unicode code points.
+
+    ;; Representation:
+    ;;      {array CHAR primtive-javascript-string-of-length-1}
+    (define (char? v)               (and (array? v) (= (tag v) CHAR)))
+    (define (make-char prim-js-str) (array CHAR prim-js-str))             ; internal
+    (define (char->integer c)       (var [s (ref c 1)]) (s.charCodeAt 0))
+    (define (integer->char i)       (String (String.fromCharCode i)))
+    (define (char=? c1 c2)          (= (ref c1 1) (ref c2 1))) ; todo: variadic
+    
+    
+    
     ;;;
     ;;; 4.6 Symbols
     ;;;    
@@ -265,6 +435,11 @@
       ; (new String ...) returns a non-primitive string
       (array SYMBOL (new String str)))
     (define gensym-counter 0)
+    (define (gensym base) ; base is optional
+      (case arguments.length
+        [(0) (gensym0)]
+        [(1) (gensym1 base)]
+        [else (error "gensym" "expected at most one argument")]))
     (define (gensym0)
       ; returns new uninterned symbol with automatically generated name
       (+= gensym-counter 1)
@@ -274,11 +449,7 @@
       ; returns new uninterned symbol with automatically generated name
       (+= gensym-counter 1)
       (array SYMBOL (new String (+ base gensym-counter))))
-    (define (gensym base) ; base is optional
-      (case arguments.length
-        [(0) (gensym0)]
-        [(1) (gensym1 base)]
-        [else (error "gensym" "expected at most one argument")]))
+    
     (define (symbol<? a-sym b-sym)
       (string<? (symbol->string a-sym) (symbol->string b-sym)))
     
@@ -346,152 +517,9 @@
                       (:= ret (car xs))])
       ret)
     
-    ;;;
-    ;;; 4.5 Characters
-    ;;;
-    
-    ;; Characters range over Unicode scalar values, which includes characters whose values
-    ;; range from #x0 to #x10FFFF, but not including #xD800 to #xDFFF.
-    ;; The scalar values are a subset of the Unicode code points.
-    (define (make-char js-string) (array CHAR js-string))
-    (define (char->string c)      (ref c 1))
-    (define (char->integer c)
-      (var [s (ref c 1)])
-      (s.charCodeAt 0))
-    ;;;  
-    ;;; Strings
-    ;;;
-      
-    ;; Representation
-    ;;   - immutable Racket strings are represented as JavaScript strings
-    ;;   - mutable Racket string are represented as a tagged array:
-    ;;       {array MUTABLE-STRING "char0" "char1" ...}
-    ;;     where char0 is a javascript string with length 1.
-    (define (string? v)
-      (or (= (typeof v) "string")
-          (and (array? v) (= (tag v) MUTABLE-STRING))))
-    (define (immutable-string? v) (= (typeof v) "string"))
-    (define (mutable-string? v) (and (array? v) (= (tag v) MUTABLE-STRING)))
-    (define (make-string2 k ch) ; TODO: make ch optional
-      ; make-string produces a mutable string
-      (var [a (Array (+ k 1))])
-      (:= a 0 MUTABLE-STRING)
-      (for ([i in-range 1 (+ k 1)])
-        (:= a i (ref ch 1)))
-      a)
-    (define (make-string1 k)
-      (make-string2 k "\u0000"))
-    (define (make-string k ch) ; ch optional
-      (case arguments.length
-        [(1) (make-string1 k)]
-        [(2) (make-string2 k ch)]
-        [else (error "make-string" "expected at one or two argument")]))
-      
-    (define (make-primitive-string n c) ; make primitive js string of length n
-      ; http://stackoverflow.com/questions/202605/repeat-string-javascript?rq=1
-      (var [s ""])
-      (while #t
-             (sunless (= (bit-and n 1) 0) (+= s c))
-             (>>= n 1)
-             (sif (= n 0) (break) (+= c c)))
-      s)
-    (define (string->immutable-string s)
-      (cond
-        [(= (typeof s) "string") s]
-        [#t (var [n+1 s.length] [n (- n+1 1)] [a (Array n)])
-            (for ([i in-range 0 n])
-              (:= a i (ref s (+ i 1))))
-            (String (a.join ""))]))
-    (define (immutable-string->string str)
-      (var [n str.length] [a (Array (+ n 1))])
-      (:= a 0 MUTABLE-STRING)
-      (for ([i in-range 0 n])
-        (:= a (+ i 1) (ref str i)))
-      a)      
-    (define (string) ; ch ... multiple arguments
-      (var [args arguments] [n args.length])
-      (var [a (Array (+ n 1))])
-      (:= a 0 MUTABLE-STRING)
-      (for ([i in-range 0 n])
-        (:= a (+ i 1) (ref (ref args i) 1)))
-      a)
-    (define (string-length s)
-      (if (= (typeof s) "string")
-          s.length
-          (- s.length 1)))
-    (define (string-ref s i)
-      (if (= (typeof s) "string")
-          (array CHAR (ref s    i))
-          (array CHAR (ref s (+ i 1)))))
-    (define (string-set! s i c)
-      ; (unless (mutable-string? s) (raise ...))
-      ; (unless (char? c)           (raise ...))
-      (:= s (+ i 1) (ref c 1)))
-    (define (substring3 str start end) (str.substring start end))
-    (define (substring2 str start)     (str.substring start (string-length str)))
-    (define (substring) ; case-lambda
-      (case arguments.length
-        [(2) (substring2 (ref arguments 0) (ref arguments 1))]
-        [(3) (substring3 (ref arguments 0) (ref arguments 1) (ref arguments 2))]
-        [else (error "substring" "expected two to three arguments")]))
-    ; todo: string-copy
-    ; todo: string-copy!
-    ; todo: string-fill!
-    ; todo: string->list
-    ; todo: list->string
-    ; todo: build-string
-    (define (string=? str1 str2)
-      (if (immutable-string? str1)
-          (if (immutable-string? str2)
-              (= str1 str2)
-              (= str1 (string->immutable-string str2)))
-          (if (immutable-string? str2)
-              (= (string->immutable-string str1) str2)
-              (= (string->immutable-string str1) (string->immutable-string str2)))))
-    (define (string<? str1 str2)
-      (if (immutable-string? str1)
-          (if (immutable-string? str2)
-              (< str1 str2)
-              (< str1 (string->immutable-string str2)))
-          (if (immutable-string? str2)
-              (< (string->immutable-string str1) str2)
-              (< (string->immutable-string str1) (string->immutable-string str2)))))
-    (define (string>? str1 str2)
-      (if (immutable-string? str1)
-          (if (immutable-string? str2)
-              (> str1 str2)
-              (> str1 (string->immutable-string str2)))
-          (if (immutable-string? str2)
-              (> (string->immutable-string str1) str2)
-              (> (string->immutable-string str1) (string->immutable-string str2)))))
-    (define (string<=? str1 str2)
-      (if (immutable-string? str1)
-          (if (immutable-string? str2)
-              (<= str1 str2)
-              (<= str1 (string->immutable-string str2)))
-          (if (immutable-string? str2)
-              (<= (string->immutable-string str1) str2)
-              (<= (string->immutable-string str1) (string->immutable-string str2)))))
-    (define (string>=? str1 str2)
-      (if (immutable-string? str1)
-          (if (immutable-string? str2)
-              (>= str1 str2)
-              (>= str1 (string->immutable-string str2)))
-          (if (immutable-string? str2)
-              (>= (string->immutable-string str1) str2)
-              (>= (string->immutable-string str1) (string->immutable-string str2)))))
-    (define (string-upcase str)
-      ; creates mutable string
-      (if (immutable-string? str)
-          (immutable-string->string (String (str.toUpperCase)))
-          (string-upcase (string->immutable-string str))))
-         
-    (define (string->list s)          (for/list ([c in-string s]) c))
-    (define (string-append2 str1 str2) (str1.concat str2))
-    (define (string-append) ; variadic
-      (var [args arguments])
-      (var [as (for/array #:length args.length ([a in-array args]) a)])
-      (as.join ""))           
+
+
+
     
     ;;; Numbers
     (define (number? v) (= (typeof v) "number"))
