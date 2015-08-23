@@ -229,6 +229,7 @@
     ;;   For the time being we will assume that the JS implementation
     ;;   interns primitive strings. If this happens to be false, we need
     ;;   to change the representation to do its own interning.
+    ;;   Note: String(s) without new in front turns s into a primitive string.
 
     ; string->unreadable-symbol  ; TODO
     
@@ -246,17 +247,9 @@
         (:= a (+ i 1) (ref js-str i)))
       a)
     (define (symbol->immutable-string sym)
-      (var [js-str (ref sym 1)]
-           [n      js-str.length]
-           [a      (Array n)])
-      (for ([i in-range 0 n])
-        (:= a i (ref js-str i)))
-      (String (a.join "")))
-    ;    (define (symbol->immutable-string sym)
-    ;      (cond
-    ;        [(string-interned? sym) (ref sym 1)]
-    ;        [else                   (var
-    ;         (String 
+      ; String returns a primitive (interned by js) string
+      (String (ref sym 1))) 
+    
     (define (string->symbol str)
       ; returns interned symbol
       (var [t (typeof str)] r)
@@ -268,6 +261,27 @@
                         (:= r (array SYMBOL (String (a.join ""))))]
        [#t (error "string->symbol" "expected a string")])
       r)
+    (define (string->uninterned-symbol str)
+      ; (new String ...) returns a non-primitive string
+      (array SYMBOL (new String str)))
+    (define gensym-counter 0)
+    (define (gensym0)
+      ; returns new uninterned symbol with automatically generated name
+      (+= gensym-counter 1)
+      (array SYMBOL (new String (+ "g" gensym-counter))))
+    (define (gensym1 base)
+      (console.log (+ "gensym1: " base))
+      ; returns new uninterned symbol with automatically generated name
+      (+= gensym-counter 1)
+      (array SYMBOL (new String (+ base gensym-counter))))
+    (define (gensym base) ; base is optional
+      (case arguments.length
+        [(0) (gensym0)]
+        [(1) (gensym1 base)]
+        [else (error "gensym" "expected at most one argument")]))
+    (define (symbol<? a-sym b-sym)
+      (string<? (symbol->string a-sym) (symbol->string b-sym)))
+    
     (define (error who msg)
       (console.log (+ "error: " who ": " msg)))
     
@@ -356,6 +370,9 @@
     (define (string? v)
       (or (= (typeof v) "string")
           (and (array? v) (= (tag v) MUTABLE-STRING))))
+    (define (immutable-string? v) (= (typeof v) "string"))
+    (define (mutable-string? v) (and (array? v) (= (tag v) MUTABLE-STRING)))
+    
     (define (make-string k ch) ; TODO: make ch optional
       ; make-string produces a mutable string
       (var [a (Array (+ k 1))])
@@ -371,11 +388,13 @@
              (>>= n 1)
              (sif (= n 0) (break) (+= c c)))
       s)
-     ; (define (string->immutable-string s)
-     ; (define (fail) (/ 1 0) #;(error 'string->immutable-string "expected string, got" s))
-     ; (case (typeof s)
-     ;   [("string") s]
-     ;   [("array") (if (= (tag v) MUTABLE-STRING)  ; FIX arrays has type object
+    (define (string->immutable-string s)
+      (cond
+        [(= (typeof s) "string") s]
+        [#t (var [n+1 s.length] [n (- n+1 1)] [a (Array n)])
+            (for ([i in-range 0 n])
+              (:= a i (ref s (+ i 1))))
+            (String (a.join ""))]))
     (define (string) ; ch ... multiple arguments
       (var [args arguments] [n args.length])
       (var [a (Array (+ n 1))])
@@ -407,7 +426,16 @@
     ; todo: string->list
     ; todo: list->string
     ; todo: build-string
-    ; todo: string comparisons    
+    ; todo: string comparisons
+    (define (string<? str1 str2)
+      (if (immutable-string? str1)
+          (if (immutable-string? str2)
+              (< str1 str2)
+              (< str1 (string->immutable-string str2)))
+          (if (immutable-string? str2)
+              (< (string->immutable-string str1) str2)
+              (< (string->immutable-string str1) (string->immutable-string str2)))))
+         
     (define (string->list s)          (for/list ([c in-string s]) c))
     (define (string-append2 str1 str2) (str1.concat str2))
     (define (string-append) ; variadic
@@ -498,4 +526,9 @@
     (typeof (array 3 4 5))
     (symbol->string (string->symbol "foo"))
     (symbol->immutable-string (string->symbol "foo"))
+    (gensym)
+    (gensym)
+    (gensym "foo")
+    (symbol<? "foo" "bar")
+    (symbol<? "bar" "foo")
   )))
