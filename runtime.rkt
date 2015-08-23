@@ -245,7 +245,13 @@
       (for ([i in-range 0 n])
         (:= a (+ i 1) (ref js-str i)))
       a)
-
+    (define (symbol->immutable-string sym)
+      (var [js-str (ref sym 1)]
+           [n      js-str.length]
+           [a      (Array n)])
+      (for ([i in-range 0 n])
+        (:= a i (ref js-str i)))
+      (String (a.join "")))
     ;    (define (symbol->immutable-string sym)
     ;      (cond
     ;        [(string-interned? sym) (ref sym 1)]
@@ -491,4 +497,5 @@
     (typeof (string->symbol "foo"))
     (typeof (array 3 4 5))
     (symbol->string (string->symbol "foo"))
+    (symbol->immutable-string (string->symbol "foo"))
   )))
