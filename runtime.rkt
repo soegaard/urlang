@@ -70,6 +70,7 @@
     (define MUTABLE-STRING (array "mutable-string"))
     (define BYTES          (array "bytes"))
     (define MUTABLE-BYTES  (array "mutable-bytes"))
+    (define SYMBOL         (array "symbol"))
     ;; Empty
     (define NULL (array))
     (define (null? v) (= v NULL))
@@ -137,7 +138,7 @@
     ;; Representation: Byte strings are represented as Int8Array
     ; http://caniuse.com/#feat=typedarrays
     (define (bytes? v)
-      (and (= (typeof v) "array")
+      (and (array? v)
            (or (= (tag v) BYTES)
                (= (tag v) MUTABLE-BYTES))))
     (define (bytes->Int8Array bs)
@@ -210,6 +211,60 @@
       (and (= n1 n2)
            (for/and ([i in-range 0 n1])
              (= (ref is1 i) (ref is2 i)))))
+
+    ;;;
+    ;;; 4.6 Symbols
+    ;;;    
+
+    ; A symbol is like an immutable string, but symbols are normally interned,
+    ; so that two symbols with the same character content are normally eq?.
+    ; All symbols produced by the default reader (see Reading Symbols) are interned.
+
+    ;; Representation:
+    ;;   A interned symbol
+    ;;      {array SYMBOL primtive-javascript-string}
+    ;;   Non-interned symbol:
+    ;;      {array SYMBOL javascript-string-object}
+
+    ;;   For the time being we will assume that the JS implementation
+    ;;   interns primitive strings. If this happens to be false, we need
+    ;;   to change the representation to do its own interning.
+
+    ; string->unreadable-symbol  ; TODO
+    
+    (define (symbol? v)
+      (and (array? v) (= (tag v) SYMBOL)))
+    (define (symbol-interned? sym) ; symbol? -> boolean?
+      (= (typeof sym) "string"))   ; note : an uninterned strings has type "object"
+    (define (symbol->string sym)
+      ; returns freshly allocated mutable string
+      (var [js-str (ref sym 1)]
+           [n      js-str.length]
+           [a      (Array (+ n 1))])
+      (:= a 0 MUTABLE-STRING)
+      (for ([i in-range 0 n])
+        (:= a (+ i 1) (ref js-str i)))
+      a)
+
+    ;    (define (symbol->immutable-string sym)
+    ;      (cond
+    ;        [(string-interned? sym) (ref sym 1)]
+    ;        [else                   (var
+    ;         (String 
+    (define (string->symbol str)
+      ; returns interned symbol
+      (var [t (typeof str)] r)
+      (scond        
+       [(= t "string")  (:= r (array SYMBOL str))] ; primtive string
+       [(= t "object")  (var [n+1 t.length] [n (- n+1 1)] [a (Array n)])
+                        (for ([i in-range 0 n])
+                          (:= a i (ref str (+ i 1))))
+                        (:= r (array SYMBOL (String (a.join ""))))]
+       [#t (error "string->symbol" "expected a string")])
+      r)
+    (define (error who msg)
+      (console.log (+ "error: " who ": " msg)))
+    
     ;;;
     ;;; 4.9-10 Lists
     ;;;
@@ -283,38 +338,44 @@
     (define (char->integer c)
       (var [s (ref c 1)])
       (s.charCodeAt 0))
-      
+    ;;;  
     ;;; Strings
+    ;;;
+      
     ;; Representation
     ;;   - immutable Racket strings are represented as JavaScript strings
     ;;   - mutable Racket string are represented as a tagged array:
     ;;       {array MUTABLE-STRING "char0" "char1" ...}
+    ;;     where char0 is a javascript string with length 1.
     (define (string? v)
       (or (= (typeof v) "string")
-          (and (= (typeof v) "array")
-               (= (tag v) MUTABLE-STRING))))
+          (and (array? v) (= (tag v) MUTABLE-STRING))))
     (define (make-string k ch) ; TODO: make ch optional
       ; make-string produces a mutable string
       (var [a (Array (+ k 1))])
       (:= a 0 MUTABLE-STRING)
       (for ([i in-range 1 (+ k 1)])
-        (:= a i ch))
+        (:= a i (ref ch 1)))
       a)
+    (define (make-primitive-string n c) ; make primitive js string of length n
+      ; http://stackoverflow.com/questions/202605/repeat-string-javascript?rq=1
+      (var [s ""])
+      (while #t
+             (sunless (= (bit-and n 1) 0) (+= s c))
+             (>>= n 1)
+             (sif (= n 0) (break) (+= c c)))
+      s)
      ; (define (string->immutable-string s)
      ; (define (fail) (/ 1 0) #;(error 'string->immutable-string "expected string, got" s))
      ; (case (typeof s)
      ;   [("string") s]
-     ;   [("array") (if (= (tag v) MUTABLE-STRING)
-                       
-                       
-             
-    
+     ;   [("array") (if (= (tag v) MUTABLE-STRING)  ; FIX arrays has type object
     (define (string) ; ch ... multiple arguments
       (var [args arguments] [n args.length])
       (var [a (Array (+ n 1))])
       (:= a 0 MUTABLE-STRING)
       (for ([i in-range 0 n])
-        (:= a (+ i 1) (ref args i)))
+        (:= a (+ i 1) (ref (ref args i) 1)))
       a)
     (define (string-length s)
       (if (= (typeof s) "string")
@@ -330,7 +391,10 @@
       (:= s (+ i 1) (ref c 1)))
     (define (substring3 str start end) (str.substring start end))
     (define (substring2 str start)     (str.substring start (string-length str)))
-    (define substring substring3)      ; todo: handle optional arguments
+    #;(define (substring) ; case-lambda
+        (case arguments.length
+          [(2) (substring2 (ref arguments 0) (ref arguments 1))]
+          [(3) (substring3 (ref arguments 0) (ref arguments 1) (ref arguments 2))]))    
     ; todo: string-copy
     ; todo: string-copy!
     ; todo: string-fill!
@@ -370,6 +434,7 @@
       (cond [(= v #t) "#t"]
             [(= v #f) "#f"]
             [#t       "str -internal error"]))
+    (define (str-symbol v) (string-append "'" (symbol->string v)))
     (define (str v)
       (cond
         [(null? v)    (str-null)]
@@ -379,6 +444,7 @@
         [(pair? v)    (str-pair v)]
         [(vector? v)  (str-vector v)]
         [(boolean? v) (str-boolean v)]
+        [(symbol? v)  (str-symbol v)]
         [#t          "str - internal error"]))
 
     #;("tests"
@@ -399,13 +465,30 @@
        (str (exact-integer? 42))
        (str (exact-integer? 42.0))
        (str (exact-integer? 42.1))
-       ;(str (exact-integer? 42.123))
+       ; (str (exact-integer? 42.123))
        (make-bytes2 10 65)
-       (bytes-length (make-bytes2 10 65))                       ; 10
-       (str (bytes=? (make-bytes2 10 65) (make-bytes2 10 65)))  ; #t
+       (bytes-length (make-bytes2 10 65))                        ; 10
+       (str (bytes=? (make-bytes2 10 65) (make-bytes2 10 65)))   ; #t
        (str (bytes=? (make-bytes2 10 65) (make-bytes2 10 66))))  ; #f
-
     
-
-    
+    (string->symbol "foo")
+    (string (make-char "a") (make-char "b") (make-char "c"))
+    (string->symbol (string (make-char "a") (make-char "b") (make-char "c")))
+    (make-primitive-string 0 "a")
+    (make-primitive-string 1 "a")
+    (make-primitive-string 2 "a")
+    (make-primitive-string 3 "a")
+    (make-primitive-string 4 "a")
+    (make-primitive-string 5 "a")
+    (make-primitive-string 6 "a")
+    (make-primitive-string 7 "a")
+    (typeof (make-primitive-string 7 "a"))
+    (define as (array "a" "b"))
+    (as.join "")
+    (string->symbol "foo")
+    (symbol? (string->symbol "foo"))
+    (str (string->symbol "foo"))
+    (typeof (string->symbol "foo"))
+    (typeof (array 3 4 5))
+    (symbol->string (string->symbol "foo"))
   )))
