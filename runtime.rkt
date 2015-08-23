@@ -372,14 +372,21 @@
           (and (array? v) (= (tag v) MUTABLE-STRING))))
     (define (immutable-string? v) (= (typeof v) "string"))
     (define (mutable-string? v) (and (array? v) (= (tag v) MUTABLE-STRING)))
-    
-    (define (make-string k ch) ; TODO: make ch optional
+    (define (make-string2 k ch) ; TODO: make ch optional
       ; make-string produces a mutable string
       (var [a (Array (+ k 1))])
       (:= a 0 MUTABLE-STRING)
       (for ([i in-range 1 (+ k 1)])
         (:= a i (ref ch 1)))
       a)
+    (define (make-string1 k)
+      (make-string2 k "\u0000"))
+    (define (make-string k ch) ; ch optional
+      (case arguments.length
+        [(1) (make-string1 k)]
+        [(2) (make-string2 k ch)]
+        [else (error "make-string" "expected at one or two argument")]))
+      
     (define (make-primitive-string n c) ; make primitive js string of length n
       ; http://stackoverflow.com/questions/202605/repeat-string-javascript?rq=1
       (var [s ""])
@@ -395,6 +402,12 @@
             (for ([i in-range 0 n])
               (:= a i (ref s (+ i 1))))
             (String (a.join ""))]))
+    (define (immutable-string->string str)
+      (var [n str.length] [a (Array (+ n 1))])
+      (:= a 0 MUTABLE-STRING)
+      (for ([i in-range 0 n])
+        (:= a (+ i 1) (ref str i)))
+      a)      
     (define (string) ; ch ... multiple arguments
       (var [args arguments] [n args.length])
       (var [a (Array (+ n 1))])
@@ -416,17 +429,25 @@
       (:= s (+ i 1) (ref c 1)))
     (define (substring3 str start end) (str.substring start end))
     (define (substring2 str start)     (str.substring start (string-length str)))
-    #;(define (substring) ; case-lambda
-        (case arguments.length
-          [(2) (substring2 (ref arguments 0) (ref arguments 1))]
-          [(3) (substring3 (ref arguments 0) (ref arguments 1) (ref arguments 2))]))    
+    (define (substring) ; case-lambda
+      (case arguments.length
+        [(2) (substring2 (ref arguments 0) (ref arguments 1))]
+        [(3) (substring3 (ref arguments 0) (ref arguments 1) (ref arguments 2))]
+        [else (error "substring" "expected two to three arguments")]))
     ; todo: string-copy
     ; todo: string-copy!
     ; todo: string-fill!
     ; todo: string->list
     ; todo: list->string
     ; todo: build-string
-    ; todo: string comparisons
+    (define (string=? str1 str2)
+      (if (immutable-string? str1)
+          (if (immutable-string? str2)
+              (= str1 str2)
+              (= str1 (string->immutable-string str2)))
+          (if (immutable-string? str2)
+              (= (string->immutable-string str1) str2)
+              (= (string->immutable-string str1) (string->immutable-string str2)))))
     (define (string<? str1 str2)
       (if (immutable-string? str1)
           (if (immutable-string? str2)
@@ -435,6 +456,35 @@
           (if (immutable-string? str2)
               (< (string->immutable-string str1) str2)
               (< (string->immutable-string str1) (string->immutable-string str2)))))
+    (define (string>? str1 str2)
+      (if (immutable-string? str1)
+          (if (immutable-string? str2)
+              (> str1 str2)
+              (> str1 (string->immutable-string str2)))
+          (if (immutable-string? str2)
+              (> (string->immutable-string str1) str2)
+              (> (string->immutable-string str1) (string->immutable-string str2)))))
+    (define (string<=? str1 str2)
+      (if (immutable-string? str1)
+          (if (immutable-string? str2)
+              (<= str1 str2)
+              (<= str1 (string->immutable-string str2)))
+          (if (immutable-string? str2)
+              (<= (string->immutable-string str1) str2)
+              (<= (string->immutable-string str1) (string->immutable-string str2)))))
+    (define (string>=? str1 str2)
+      (if (immutable-string? str1)
+          (if (immutable-string? str2)
+              (>= str1 str2)
+              (>= str1 (string->immutable-string str2)))
+          (if (immutable-string? str2)
+              (>= (string->immutable-string str1) str2)
+              (>= (string->immutable-string str1) (string->immutable-string str2)))))
+    (define (string-upcase str)
+      ; creates mutable string
+      (if (immutable-string? str)
+          (immutable-string->string (String (str.toUpperCase)))
+          (string-upcase (string->immutable-string str))))
          
     (define (string->list s)          (for/list ([c in-string s]) c))
     (define (string-append2 str1 str2) (str1.concat str2))
@@ -442,8 +492,6 @@
       (var [args arguments])
       (var [as (for/array #:length args.length ([a in-array args]) a)])
       (as.join ""))           
-    (define (string-downcase str)     (str.toLowerCase))
-    (define (string-upcase   str)     (str.toUpperCase))
     
     ;;; Numbers
     (define (number? v) (= (typeof v) "number"))
@@ -531,4 +579,10 @@
     (gensym "foo")
     (symbol<? "foo" "bar")
     (symbol<? "bar" "foo")
+    (string=? "foo" "bar")
+    (string=? "foo" "foo")
+    (string=? "foo" (immutable-string->string "foo"))
+    (string=? "1" "1.0")
+    (string-upcase "foo")
+    (string-upcase (immutable-string->string "foo"))
   )))
