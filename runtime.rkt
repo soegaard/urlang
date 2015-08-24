@@ -72,6 +72,7 @@
     (define BYTES            (array "bytes"))
     (define MUTABLE-BYTES    (array "mutable-bytes"))
     (define SYMBOL           (array "symbol"))
+    (define KEYWORD          (array "keyword"))
     ;; Void (singleton)
     (define VOID (array))
     (define (void? v) (= v VOID))
@@ -257,6 +258,7 @@
       (var [args arguments])
       (var [as (for/array #:length args.length ([a in-array args]) a)])
       (as.join ""))
+
     ;;;
     ;;; 4.4 Byte Strings
     ;;;
@@ -465,10 +467,10 @@
     (define (keyword? v)
       (and (array? v) (= (tag v) KEYWORD)))
     (define (keyword->string key) ; returns mutable string
-      (immutable-string->string (array IMMUTABLE-STRING (ref key 1))))
+      (immutable-string->string (ref key 1)))
     (define (string->keyword str)
-      (var ([istr (string->immutable-string str)])
-           (array KEYWORD (ref istr 1))))
+      (var [istr (string->immutable-string str)])
+      (array KEYWORD istr))
     (define (keyword<? key1 key2)
       (< (ref key1 1) (ref key1 2)))
     
@@ -637,7 +639,8 @@
       (cond [(= v #t) "#t"]
             [(= v #f) "#f"]
             [#t       "str -internal error"]))
-    (define (str-symbol v) (string-append "'" (symbol->string v)))
+    (define (str-symbol  v) (string-append "'"  (symbol->string v)))
+    (define (str-keyword v) (+ "#:" (ref v 1)))
     (define (str v)
       (cond
         [(null? v)    (str-null)]
@@ -648,6 +651,7 @@
         [(vector? v)  (str-vector v)]
         [(boolean? v) (str-boolean v)]
         [(symbol? v)  (str-symbol v)]
+        [(keyword? v) (str-keyword v)]
         [#t          "str - internal error"]))
 
     #;("tests"
@@ -711,4 +715,6 @@
     (str (vector->immutable-vector (vector "a" "b" "c")))
     (str (let ([v (vector 1 2 3)]) (vector-fill! v 4) v))
     (str (build-vector 5 (λ (x) (+ x 1))))
+    (string->keyword "foo")
+    (str (string->keyword "foo"))
   )))
