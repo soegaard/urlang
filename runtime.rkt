@@ -64,14 +64,18 @@
       (Array.isArray v))
     ;;; Tags
     (define (tag a) (ref a 0))
-    (define PAIR           (array "pair"))
-    (define VECTOR         (array "vector"))
-    (define CHAR           (array "char"))
-    (define MUTABLE-STRING (array "mutable-string"))
-    (define BYTES          (array "bytes"))
-    (define MUTABLE-BYTES  (array "mutable-bytes"))
-    (define SYMBOL         (array "symbol"))
-    ;; Empty
+    (define PAIR             (array "pair"))
+    (define VECTOR           (array "vector"))
+    (define IMMUTABLE-VECTOR (array "immutable-vector"))
+    (define CHAR             (array "char"))
+    (define MUTABLE-STRING   (array "mutable-string"))
+    (define BYTES            (array "bytes"))
+    (define MUTABLE-BYTES    (array "mutable-bytes"))
+    (define SYMBOL           (array "symbol"))
+    ;; Void (singleton)
+    (define VOID (array))
+    (define (void? v) (= v VOID))
+    ;; Empty (singleton)
     (define NULL (array))
     (define (null? v) (= v NULL))
     ;;; Pairs
@@ -82,16 +86,6 @@
     (define (unsafe-cdr p) (ref p 3))
     (define car unsafe-car)
     (define cdr unsafe-cdr)
-    ;;; Vectors
-    (define (vector? v)       (and (array? v) (= (tag v) VECTOR)))
-    (define (vector-length v) (- v.length 1)) ; disregard tag
-    (define (vector-ref v i)  (ref v (+ i 1)))      
-    (define (vector) ; multiple arguments
-      (var [args arguments] [n args.length] [a (Array (+ n 1))])
-      (:= a 0 VECTOR)
-      (for ([j in-range 0 n])
-        (:= a (+ j 1) (ref args j)))
-      a)
     ;;;
     ;;; 4.1 Booleans and equality
     ;;;
@@ -111,15 +105,16 @@
     #;(define (immutable? v)
         ; Note: This follows the spec. It is not a general
         ;       immutability predicate, so immutable pairs are not checked here.
-        (or #t
-            #;(immutable-string? v)
+        (or (immutable-string? v)
             #;(immutable-bytes? v)
-            #;(immutable-vector? v)
+            (immutable-vector? v)
             #;(immutable-hash? v)
             #;(immutable-box? v)))
     ;;;
     ;;; 4.2 Numbers
     ;;;
+    (define (number? v) (= (typeof v) "number"))
+
     (define (exact-integer? v)
       ; http://stackoverflow.com/questions/3885817/how-to-check-that-a-number-is-float-or-integer
       (and (= (typeof v) "number")
@@ -379,8 +374,7 @@
     (define (char->integer c)       (var [s (ref c 1)]) (s.charCodeAt 0))
     (define (integer->char i)       (String (String.fromCharCode i)))
     (define (char=? c1 c2)          (= (ref c1 1) (ref c2 1))) ; todo: variadic
-    
-    
+    ; (define (char-alphabetic? c)    TODO
     
     ;;;
     ;;; 4.6 Symbols
@@ -516,13 +510,90 @@
                         (:= xs (cdr xs)))
                       (:= ret (car xs))])
       ret)
+
+    ;;;
+    ;;; 4.11 Vectors
+    ;;;
+
+    ;; TODO:
+    ;;   vector->values
     
-
-
-
+    ;; Representation:
+    ;;   (array VECTOR           elm0 elm1 ...)  ; mutable vector
+    ;;   (array IMMUTABLE-VECTOR elm0 elm1 ...)  ; immutable vector
     
-    ;;; Numbers
-    (define (number? v) (= (typeof v) "number"))
+    (define (vector? v)
+      (and (array? v)
+           (or (= (tag v) VECTOR)
+               (= (tag v) IMMUTABLE-VECTOR))))
+    (define (make-vector size v) ; v optional
+      (case arguments.length
+        [(1) (make-vector2 size 0)]
+        [(2) (make-vector2 size v)]
+        [else (error "make-vector" "expected one or two arguments")]))
+    (define (make-vector2 size v)
+      (var [a (Array (+ size 1))])
+      (:= a 0 VECTOR)
+      (for ([i in-range 1 (+ size 1)])
+        (:= a i v)))
+    (define (vector) ; multiple arguments
+      (var [args arguments] [n args.length] [a (Array (+ n 1))])
+      (:= a 0 VECTOR)
+      (for ([j in-range 0 n])
+        (:= a (+ j 1) (ref args j)))
+      a)
+    (define (vector-immutable) ; multiple arguments
+      (var [args arguments] [n args.length] [a (Array (+ n 1))])
+      (:= a 0 IMMUTABLE-VECTOR)
+      (for ([j in-range 0 n])
+        (:= a (+ j 1) (ref args j)))
+      a)
+    (define (vector-length v)     (- v.length 1)) ; disregard tag
+    (define (vector-ref v i)      (ref v (+ i 1)))
+    (define (vector-set! vec i v) (:= vec (+ i 1) v))
+    (define (vector->list vec)
+      (var [n vec.length] [xs NULL])
+      (for ([i in-range 1 n])
+        (:= xs (cons (ref vec (- n i)) xs)))
+      xs)
+    (define (list->vector vs)
+      (var [n   (length vs)]
+           [vec (Array (+ n 1))]
+           [i 1])
+      (:= vec 0 VECTOR)
+      (while (not (null? vs))
+             (:= vec i (car vs))
+             (+= i 1)
+             (:= vs (cdr vs)))
+      vec)
+    (define (vector->immutable-vector vec)
+      (var [n vec.length] [a (Array n)])
+      (:= a 0 IMMUTABLE-VECTOR)
+      (for ([j in-range 1 n])
+        (:= a j (ref vec j)))
+      vec)
+    (define (vector-fill! vec v)
+      (var [n vec.length])
+      (for ([i in-range 1 n])
+        (:= vec i v))
+      VOID)
+    (define (vector-copy! dest dest-start src src-start src-end) ; src-start, src-end optional
+      (case arguments.length
+        [(3) (vector-copy!5 dest dest-start src 0         (vector-length src))]
+        [(4) (vector-copy!5 dest dest-start src src-start (vector-length src))]
+        [(5) (vector-copy!5 dest dest-start src src-start src-end)]
+        [else (error "vector-copy!" "expected 3, 4, or, 5 arguments")]))
+    (define (vector-copy!5 dest dest-start src src-start src-end)
+      (for ([i in-naturals dest-start]
+            [j in-range     src-start src-end])
+        (:= dest i (ref src j)))
+      VOID)
+    (define (build-vector n proc)
+      (var [a (Array (+ n 1))])
+      (:= a 0 VECTOR)
+      (for ([i in-range 0 n])
+        (:= a (+ i 1) (proc i)))
+      a)
     
     ;;;
     ;;; Higher Order
@@ -613,4 +684,9 @@
     (string=? "1" "1.0")
     (string-upcase "foo")
     (string-upcase (immutable-string->string "foo"))
+    (str (vector->list (vector "a" "b" "c")))
+    (str (list->vector (vector->list (vector "a" "b" "c"))))
+    (str (vector->immutable-vector (vector "a" "b" "c")))
+    (str (let ([v (vector 1 2 3)]) (vector-fill! v 4) v))
+    (str (build-vector 5 (λ (x) (+ x 1))))
   )))
