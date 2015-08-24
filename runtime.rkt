@@ -449,6 +449,28 @@
     
     (define (error who msg)
       (console.log (+ "error: " who ": " msg)))
+
+    ;;;
+    ;;; 4.8 Keywords
+    ;;;
+
+    ;; A keyword is like an interned symbol, but its printed form starts with #:,
+    ;; and a keyword cannot be used as an identifier. Furthermore, a keyword by
+    ;; itself is not a valid expression, though a keyword can be quoted to form
+    ;; an expression that produces the symbol.
+
+    ;; Representation:
+    ;;   {array KEYWORD primitive-js-str}
+    ;; Note: The representation assumes primitive JavaScript strings are interned.
+    (define (keyword? v)
+      (and (array? v) (= (tag v) KEYWORD)))
+    (define (keyword->string key) ; returns mutable string
+      (immutable-string->string (array IMMUTABLE-STRING (ref key 1))))
+    (define (string->keyword str)
+      (var ([istr (string->immutable-string str)])
+           (array KEYWORD (ref istr 1))))
+    (define (keyword<? key1 key2)
+      (< (ref key1 1) (ref key1 2)))
     
     ;;;
     ;;; 4.9-10 Lists
