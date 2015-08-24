@@ -1,5 +1,7 @@
 #lang racket
 
+; TODO: Implement map (and friends in 4.9.3
+
 (require "urlang.rkt" "urlang-extra.rkt" "for.rkt" syntax/parse)
 
 (current-urlang-run?                           #t)
@@ -75,18 +77,8 @@
     (define KEYWORD          (array "keyword"))
     ;; Void (singleton)
     (define VOID (array))
-    (define (void? v) (= v VOID))
     ;; Empty (singleton)
     (define NULL (array))
-    (define (null? v) (= v NULL))
-    ;;; Pairs
-    (define (pair? v)      (and (array? v) (= (tag v) PAIR)))
-    (define (list? v)      (or (= v NULL) (and (array? v) (= (tag v) PAIR) (ref v 1))))
-    (define (cons a d)     (array PAIR (list? d) a d))
-    (define (unsafe-car p) (ref p 2))
-    (define (unsafe-cdr p) (ref p 3))
-    (define car unsafe-car)
-    (define cdr unsafe-cdr)
     ;;;
     ;;; 4.1 Booleans and equality
     ;;;
@@ -129,7 +121,6 @@
     ; todo: string-copy
     ; todo: string-copy!
     ; todo: string-fill!
-    ; todo: string->list
     ; todo: list->string
     ; todo: build-string
       
@@ -483,10 +474,92 @@
     ;;   That is, a list is either:
     ;;      NULL or {array PAIR true a d}
     ;;   where d is a list.
+    (define (pair? v)      (and (array? v) (= (tag v) PAIR)))
+    (define (null? v) (= v NULL))
+    (define (cons a d)     (array PAIR (list? d) a d))
+    (define (unsafe-car p) (ref p 2))
+    (define car unsafe-car)
+    (define (unsafe-cdr p) (ref p 3))
+    (define cdr unsafe-cdr)
+    (define Null NULL)  ;; the name  null  is reserved in EcmaScript 6
+    (define (list? v)      (or (= v NULL) (and (array? v) (= (tag v) PAIR) (ref v 1))))
+    (define (list) ; (list v ...)
+      ; Note:  [args arguments]  is needed
+      (var [args arguments] [n args.length] [n-1 (- n 1)] [xs NULL])
+      (for ([i in-range 0 n])
+        (:= xs (cons (ref args (- n-1 i)) xs)))
+      xs)
+    (define (list*) ; (list* v ... tail)
+      (var [args arguments] [n args.length])
+      (cond
+        [(= n 0) (error "list*" "expected one or more arguments")]
+        [#t      (var [n-2 (- n 2)] [xs (ref args (+ n-2 1))])
+                 (for ([i in-range 0 (- n 1)])
+                   (:= xs (cons (ref args (- n-2 i)) xs)))
+                 xs]))
+    (define (build-list n proc)
+      (var [a (Array n)])
+      (for ([i in-range 0 n])
+        (:= a i (proc i)))
+      (array->list a))
     (define (length xs)
       (var (n 0))
       (while (pair? xs) (+= n 1) (:= xs (cdr xs)))
       n)
+    (define (list-ref xs i)
+      ;; Return the i'th index of xs.
+      ;; Use fast path for i=0 and i=1.
+      (var ret)
+      (scond [(= i 0) (:= ret (car xs))]
+             [(= i 1) (:= ret (car (cdr xs)))]
+             [#t      (for ([j in-range 0 (- i 1)])
+                        (:= xs (cdr xs)))
+                      (:= ret (car xs))])
+      ret)
+    (define (list-tail xs pos)
+      (while (not (= pos 0))
+             ; TODO ; (swhen (null? xs) (return (error "list-tail" " --- exn:fail:contract ---")))
+             (:= xs (cdr xs))
+             (-= pos 1))
+      xs)
+    (define (append) ; variadic (append xs ...)
+      (var [args arguments] [n args.length])
+      (case n
+        [(0)  NULL]
+        [(1)  (ref args 0)]
+        [(2)  (append2 (ref args 0) (ref args 1))]
+        [else (var [ret (ref args (- n 1))] [i (- n 2)])
+              (while (>= i 0)
+                     (:= ret (append2 (ref args i) ret))
+                     (-= i 1))
+              ret]))
+    (define (append2 xs ys)
+      (var [ret ys])
+      (sunless (null? xs) 
+               (var [axs (list->array xs)]
+                    [n axs.length]
+                    [n-1 (- n 1)])
+               (for ([i in-range 0 n])
+                 (:= ret (cons (ref axs (- n-1 i)) ret))))
+      ret)
+    (define (reverse xs)
+      ; Note: for/list uses reverse, so reverse can't use for/list
+      (var [result NULL])
+      (while (not (null? xs))
+             (:= result (cons (car xs) result))
+             (:= xs (cdr xs)))
+      result)
+    #;(define (map proc xs ys zs) ; optional (map proc xs ...+)
+      (case arguments.length
+        [(1) (for/list ([x in-list xs])
+               (proc x))]
+        [(2) (for/list ([x in-list xs] [y in-list ys])
+               (proc x y))]
+        [(3) (for/list ([x in-list xs] [y in-list ys] [z in-list zs])
+               (proc x y z))]
+        [else (/ 1 0) ; TODO
+              ]))
+        
     (define (list->array xs)
       ;; convert list to (non-tagged) JavaScript array
       ; allocate array
@@ -502,38 +575,12 @@
       (for ([i in-range 0 n])
         (:= xs (cons (ref axs (- n-1 i)) xs)))
       xs)
-    (define (reverse xs)
-      ; Note: for/list uses reverse, so reverse can't use for/list
-      (var [result NULL])
-      (while (not (null? xs))
-             (:= result (cons (car xs) result))
-             (:= xs (cdr xs)))
-      result)
-    (define (append2 xs ys)
-      ; note xs and ys are immutable, so ys can be reused.
-      (var [ret NULL])
-      (scond
-       [(null? ys) xs]
-       [#t        (var [axs  (list->array xs)]
-                       [n axs.length]
-                       [n-1 (- n 1)])
-                   (:= ret ys)
-                   (for ([i in-range 0 n])
-                     (:= ret (cons (ref axs (- n-1 i)) ret)))])
-      ret)
+    
+    
     (define (make-list k v)
       ; Returns a newly constructed list of length k, holding v in all positions.
       (for/list ([i in-range 0 k]) v))
-    (define (list-ref xs i)
-      ;; Return the i'th index of xs.
-      ;; Use fast path for i=0 and i=1.
-      (var ret)
-      (scond [(= i 0) (:= ret (car xs))]
-             [(= i 1) (:= ret (car (cdr xs)))]
-             [#t      (for ([j in-range 0 (- i 1)])
-                        (:= xs (cdr xs)))
-                      (:= ret (car xs))])
-      ret)
+    
 
     ;;;
     ;;; 4.11 Vectors
@@ -618,6 +665,48 @@
       (for ([i in-range 0 n])
         (:= a (+ i 1) (proc i)))
       a)
+
+    ;;;
+    ;;; 4.17 Procedures
+    ;;;
+    (define (procedure? v)
+      (= (typeof v) "function"))
+    (define (apply proc xs)
+      ; (apply proc v ... lst #:<kw> kw-arg ...) → any
+      ; we ignore #:<kw> kw-arg ...  for the moment
+      (var [n arguments.length])
+      (case n
+        [(0 1) (error "procedure?" "expected two or more arguments")]
+        [(2)   (apply3 proc NULL xs)]
+        [(3)   (apply3 proc (cons (ref arguments 1) NULL) xs)]
+        [(4)   (apply3 proc (cons (ref arguments 1) (cons (ref arguments 2) NULL)) xs)]
+        [(5)   (apply3 proc (cons (ref arguments 1)
+                                  (cons (ref arguments 2) (cons (ref arguments 3) NULL))) xs)]
+        [(6)   (apply3 proc (for/list ([i in-range 1 (- n 2)]) (ref arguments i)) xs)]))
+    (define (apply3 proc vs xs)
+      (var [nvs (length vs)]
+           [nxs (length xs)]
+           [n   (+ nvs nxs)]
+           [a   (Array n)])
+      (for ([i in-range 0 nvs]
+            [v in-list vs])
+        (:= a i v))
+      (for ([i in-range nvs n]
+            [x in-list xs])
+        (:= a i x))
+      (proc.apply #f a))
+    
+    ;;;
+    ;;; 4.18 Void
+    ;;;
+
+    ;; Representation:
+    ;;   The void value is represented as the singleton VOID.
+    ;; Note: The name  void  is reserved in EcmaScript 6,
+    ;;       so we use the name Void.
+
+    (define (void? v) (= v VOID))
+    (define (Void) VOID) ; variadic
     
     ;;;
     ;;; Higher Order
@@ -641,6 +730,7 @@
             [#t       "str -internal error"]))
     (define (str-symbol  v) (string-append "'"  (symbol->string v)))
     (define (str-keyword v) (+ "#:" (ref v 1)))
+    (define (str-void v)    "#<void>")
     (define (str v)
       (cond
         [(null? v)    (str-null)]
@@ -652,7 +742,9 @@
         [(boolean? v) (str-boolean v)]
         [(symbol? v)  (str-symbol v)]
         [(keyword? v) (str-keyword v)]
-        [#t          "str - internal error"]))
+        [(void? v)    (str-void v)]
+        [#t          (console.log v)
+                     "str - internal error"]))
 
     #;("tests"
        ; (str (cons 10 (cons 11 (cons 12 NULL))))
@@ -715,6 +807,16 @@
     (str (vector->immutable-vector (vector "a" "b" "c")))
     (str (let ([v (vector 1 2 3)]) (vector-fill! v 4) v))
     (str (build-vector 5 (λ (x) (+ x 1))))
-    (string->keyword "foo")
     (str (string->keyword "foo"))
+    (str (apply vector (string->list "abc")))
+    (str (list 1 2 3))
+    (str (list-tail (list 1 2 3 4 5 6 7 8) 3))
+    (str (for/list ([i in-range 0 9]) i))
+    (str (list* 1 2 3 (list 4 5)))
+    (str (append))
+    (str (append (list 1 2 3)))
+    (str (append (list 1 2 3) (list 4 5 6)))
+    (str (append (list 1 2 3) (list 4 5 6) (list 7 8 9)))
+    (str (append (list 1 2 3) (list 4 5 6) (list 7 8 9) (list 10 11 12)))
+    ; TODO (str (map (λ (x) (+ x 2)) (list 1 2 3 4)))
   )))
