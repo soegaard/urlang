@@ -654,9 +654,6 @@
       ; Returns a newly constructed list of length k, holding v in all positions.
       (for/list ([i in-range 0 k]) v))
     
-    
-    
-    
     ;;;
     ;;; 4.11 Vectors
     ;;;
@@ -740,6 +737,21 @@
       (for ([i in-range 0 n])
         (:= a (+ i 1) (proc i)))
       a)
+    ;;;
+    ;;; 4.12 Boxes
+    ;;;
+
+    ;; Representation:
+    ;;   (array BOX value )
+
+    (define (box? v)             (and (array? v) (= (tag v) BOX)))
+    (define (box v)              (array BOX v))
+    (define (box-immutable v)    (array IMMUTABLE-BOX v))
+    (define (unbox b)            (ref b 1))
+    (define (set-box! b v)       (:= b 1 v))
+    (define (box-cas! b old new) (if (eq? (ref b 1) old)
+                                     (begin (:= b 1 new) #t)
+                                     #f))
 
     ;;;
     ;;; 4.17 Procedures
