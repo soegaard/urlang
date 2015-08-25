@@ -1,6 +1,6 @@
 #lang racket
 
-; TODO: Implement map (and friends in 4.9.3
+; TODO: Implement map (and friends in 4.9.3)
 
 (require "urlang.rkt" "urlang-extra.rkt" "for.rkt" syntax/parse)
 
@@ -106,13 +106,18 @@
     ;;;
     ;;; 4.2 Numbers
     ;;;
-    (define (number? v) (= (typeof v) "number"))
-
+    (define (number? v)  (= (typeof v) "number"))
+    (define (complex? v) (number? v))
+    ; (define (real? v)    (
     (define (exact-integer? v)
       ; http://stackoverflow.com/questions/3885817/how-to-check-that-a-number-is-float-or-integer
       (and (= (typeof v) "number")
            (= v (+ v))
            (= v (bit-or v 0))))
+    (define (positive? v) (> v 0))
+    (define (negative? v) (< v 0))
+    (define (even? n) (= 0 (% n 2)))
+    (define (odd? n)  (= 1 (% n 2)))
 
     ;;;  
     ;;; 4.3 Strings
@@ -469,6 +474,9 @@
     ;;; 4.9-10 Lists
     ;;;
 
+    ; foldl TODO
+    ; foldr TODO
+
     ;; Representation:
     ;;   A list is either NULL or a pair with a true list? flag.
     ;;   That is, a list is either:
@@ -549,17 +557,65 @@
              (:= result (cons (car xs) result))
              (:= xs (cdr xs)))
       result)
-    #;(define (map proc xs ys zs) ; optional (map proc xs ...+)
+    (define (map proc xs ys zs) ; optional (map proc xs ...+)
       (case arguments.length
-        [(1) (for/list ([x in-list xs])
-               (proc x))]
-        [(2) (for/list ([x in-list xs] [y in-list ys])
-               (proc x y))]
-        [(3) (for/list ([x in-list xs] [y in-list ys] [z in-list zs])
-               (proc x y z))]
-        [else (/ 1 0) ; TODO
-              ]))
-        
+        [(2) (for/list ([x in-list xs])
+               (proc.call #f x))]
+        [(3) (for/list ([x in-list xs] [y in-list ys])
+               (proc.call #f x y))]
+        [(4) (for/list ([x in-list xs] [y in-list ys] [z in-list zs])
+               (proc.call #f x y z))]
+        [(0) (error "map" "expected at least two arguments")]        
+        [else (/ 1 0)  ])) ; TODO
+    (define (andmap proc xs ys zs) ; optional (map proc xs ...+)
+      (case arguments.length
+        [(2) (for/and ([x in-list xs])
+               (proc.call #f x))]
+        [(3) (for/and ([x in-list xs] [y in-list ys])
+               (proc.call #f x y))]
+        [(4) (for/and ([x in-list xs] [y in-list ys] [z in-list zs])
+               (proc.call #f x y z))]
+        [(0) (error "andmap" "expected at least two arguments")]
+        [else (/ 1 0)  ]))
+    (define (ormap proc xs ys zs) ; optional (map proc xs ...+)
+      (case arguments.length
+        [(2) (for/or ([x in-list xs])
+               (proc.call #f x))]
+        [(3) (for/or ([x in-list xs] [y in-list ys])
+               (proc.call #f x y))]
+        [(4) (for/or ([x in-list xs] [y in-list ys] [z in-list zs])
+               (proc.call #f x y z))]
+        [(0) (error "ormap" "expected at least two arguments")]
+        [else (/ 1 0)  ]))
+    (define (for-each proc xs ys zs) ; optional (map proc xs ...+)
+      (case arguments.length
+        [(2) (for ([x in-list xs])
+               (proc.call #f x))]
+        [(3) (for ([x in-list xs] [y in-list ys])
+               (proc.call #f x y))]
+        [(4) (for ([x in-list xs] [y in-list ys] [z in-list zs])
+               (proc.call #f x y z))]
+        [(0) (error "map" "expected at least two arguments")]        
+        [else (/ 1 0)  ])) ; TODO
+    ; foldl TODO
+    ; foldr TODO
+    (define (filter pred xs)
+      (var [n (length xs)]
+           [a (Array n)]
+           [i 0])
+      ; fill in array with non-false values
+      (for ([x in-list xs])
+        (var [t (pred.call #f x)])
+        (swhen t
+               (:= a i x)
+               (+= i 1)))
+      ; create list with elements in the array
+      (var [xs NULL])
+      (while (> i 0)
+             (-= i 1)
+             (:= xs (cons (ref a i) xs)))
+      xs)
+    
     (define (list->array xs)
       ;; convert list to (non-tagged) JavaScript array
       ; allocate array
@@ -575,13 +631,32 @@
       (for ([i in-range 0 n])
         (:= xs (cons (ref axs (- n-1 i)) xs)))
       xs)
-    
-    
+    ;;;
+    ;;; racket/list
+    ;;;
+    (define empty NULL)
+    (define (cons? v)      (pair? v))
+    (define (empty? v)     (null? v))
+    (define (first xs)     (car xs))
+    (define (rest xs)      (cdr xs))
+    (define (second xs)    (car (cdr xs)))
+    (define (third xs)     (car (cdr (cdr xs))))
+    (define (fourth xs)    (car (cdr (cdr (cdr xs)))))
+    (define (fifth xs)     (car (cdr (cdr (cdr (cdr xs))))))
+    (define (sixth xs)     (car (cdr (cdr (cdr (cdr (cdr xs)))))))
+    (define (seventh xs)   (car (cdr (cdr (cdr (cdr (cdr (cdr xs))))))))
+    (define (eighth xs)    (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr xs)))))))))
+    (define (ningth xs)    (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr xs))))))))))
+    (define (tenth xs)     (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr xs)))))))))))
+    (define (last-pair xs) (while (not (null? (cdr xs))) (:= xs (cdr xs))) xs)
+    (define (last xs)      (car (last-pair xs)))
     (define (make-list k v)
       ; Returns a newly constructed list of length k, holding v in all positions.
       (for/list ([i in-range 0 k]) v))
     
-
+    
+    
+    
     ;;;
     ;;; 4.11 Vectors
     ;;;
@@ -818,5 +893,18 @@
     (str (append (list 1 2 3) (list 4 5 6)))
     (str (append (list 1 2 3) (list 4 5 6) (list 7 8 9)))
     (str (append (list 1 2 3) (list 4 5 6) (list 7 8 9) (list 10 11 12)))
-    ; TODO (str (map (λ (x) (+ x 2)) (list 1 2 3 4)))
+    (str (reverse (list)))
+    (str (reverse (list 1)))
+    (str (reverse (list 1 2)))
+    (str (reverse (list 1 2 3)))
+    (str (reverse (list 1 2 3 4)))
+    (str (map (λ (x)   (+ x 2)) (list 1 2 3 4)))
+    (str (map (λ (x y) (+ x y)) (list 1 2 3 4) (list 11 12 13 14)))
+    (str (andmap positive? (list 1  2 3)))
+    (str (andmap positive? (list 1 -2 3)))
+    (str (ormap positive? (list -1 -2 3)))
+    (str (ormap positive?  (list -1 -2 -3)))
+    (str (filter positive? (list -1 -2 -3 4 5 6 -7 8)))
+    (str (last (list 1 2 3 4)))
+    
   )))
