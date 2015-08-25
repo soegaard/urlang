@@ -69,16 +69,18 @@
     (define PAIR             (array "pair"))
     (define VECTOR           (array "vector"))
     (define IMMUTABLE-VECTOR (array "immutable-vector"))
+    (define BOX              (array "box"))
+    (define IMMUTABLE-BOX    (array "immutable-box"))
     (define CHAR             (array "char"))
     (define MUTABLE-STRING   (array "mutable-string"))
     (define BYTES            (array "bytes"))
     (define MUTABLE-BYTES    (array "mutable-bytes"))
     (define SYMBOL           (array "symbol"))
     (define KEYWORD          (array "keyword"))
-    ;; Void (singleton)
-    (define VOID (array))
-    ;; Empty (singleton)
-    (define NULL (array))
+    (define VALUES           (array "values"))
+    
+    (define VOID (array))    ; singleton
+    (define NULL (array))    ; singleton
     ;;;
     ;;; 4.1 Booleans and equality
     ;;;
@@ -794,6 +796,37 @@
 
     (define (void? v) (= v VOID))
     (define (Void) VOID) ; variadic
+
+    ;;;
+    ;;; 10. Control Flow
+    ;;;
+
+    ;;; 10.1 Multiple Values
+    
+    ;; Representation:
+    ;;   Multiple values are passed as a tagged array.
+    ;; Note:
+    ;;   At some point consider removing the tag.
+
+    (define (values? v) (and (array? v) (= (tag v) VALUES)))  ; internal
+    
+    (define (values) ; (values v ...)  variadic
+      (var [args arguments] [n args.length] [a (Array (+ n 1))])
+      (:= a 0 VALUES)
+      (for ([j in-range 0 n])
+        (:= a (+ j 1) (ref args j)))
+      a)
+    (define (call-with-values generator receiver)
+      ; generator : (-> any)
+      ; receiver  : procedure?
+      (var [vals (generator.call #f)])
+      (cond
+        ;; multiple values
+        [(values? vals) (vals.shift) ; removes tag
+                        (receiver.apply #f vals)]
+        ;; generator produced one value
+        [#t             (receiver.apply #f vals)]))
+    
     
     ;;;
     ;;; Higher Order
@@ -818,6 +851,7 @@
     (define (str-symbol  v) (string-append "'"  (symbol->string v)))
     (define (str-keyword v) (+ "#:" (ref v 1)))
     (define (str-void v)    "#<void>")
+    (define (str-box v)     (+ "#&" (str (unbox v))))
     (define (str v)
       (cond
         [(null? v)    (str-null)]
@@ -830,8 +864,9 @@
         [(symbol? v)  (str-symbol v)]
         [(keyword? v) (str-keyword v)]
         [(void? v)    (str-void v)]
-        [#t          (console.log v)
-                     "str - internal error"]))
+        [(box? v)     (str-box v)]
+        [#t           (console.log v)
+                      "str - internal error"]))
 
     #;("tests"
        ; (str (cons 10 (cons 11 (cons 12 NULL))))
@@ -918,5 +953,8 @@
     (str (ormap positive?  (list -1 -2 -3)))
     (str (filter positive? (list -1 -2 -3 4 5 6 -7 8)))
     (str (last (list 1 2 3 4)))
-    
+    (str (box 42))
+    (str (box (list 1 2 3)))
+    (call-with-values (λ () (values 1 2))
+                      (λ (x y) (+ x y)))
   )))
