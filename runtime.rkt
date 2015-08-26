@@ -108,19 +108,35 @@
     ;;;
     ;;; 4.2 Numbers
     ;;;
-    (define (number? v)  (= (typeof v) "number"))
-    (define (complex? v) (number? v))
-    ; (define (real? v)    (
+    (define (number? v)   (= (typeof v) "number"))
+    (define (complex? v)  (number? v))
+    (define (real? v)     (number? v)) ; +inf.0, -inf.0, +nan.0 are real numbers
+    (define (rational? v) (and (number? v) (Number.isFinite v)))  
+    (define (integer? v)  (Number.isInteger v))
     (define (exact-integer? v)
       ; http://stackoverflow.com/questions/3885817/how-to-check-that-a-number-is-float-or-integer
       (and (= (typeof v) "number")
            (= v (+ v))
            (= v (bit-or v 0))))
-    (define (positive? v) (> v 0))
-    (define (negative? v) (< v 0))
-    (define (even? n) (= 0 (% n 2)))
-    (define (odd? n)  (= 1 (% n 2)))
-
+    (define (exact-nonnegative-integer? v) (and (exact-integer? v) (>= v 0)))
+    (define (exact-positive-integer? v)    (and (exact-integer? v) (> v 0)))
+    (define (inexact-real? v)              (and (real? v) (inexact? v)))
+    (define (fixnum? v)                    (exact-integer? v))
+    (define (flonum? v)                    (and (number? v) (not (exact-integer? v))))
+    (define (double-flonum? v)             (flonum? v))
+    (define (single-flonum? v)             (flonum? v))
+    (define (zero? z)                      (= z 0))
+    (define (positive? x)                  (> x 0))
+    (define (negative? x)                  (< x 0))
+    (define (even? n)                      (= 0 (% n 2)))
+    (define (odd? n)                       (= 1 (% n 2)))
+    (define (exact? z)                     (exact-integer? z))
+    (define (inexact? z)                   (and (number? z) (not (exact? z))))
+    (define (inexact->exact z)      z) ; todo
+    (define (exact->inexact z)      z) ; todo
+    (define (real->single-flonum x) x) ; todo 
+    (define (real->double-flonum x) x) ; todo
+    
     ;;;  
     ;;; 4.3 Strings
     ;;;
