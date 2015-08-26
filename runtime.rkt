@@ -1,5 +1,4 @@
 #lang racket
-
 ; TODO: Implement map (and friends in 4.9.3)
 
 (require "urlang.rkt" "urlang-extra.rkt" "for.rkt" syntax/parse)
@@ -59,7 +58,7 @@
   (urmodule runtime
     (import document window prompt alert)  ; Browser functions
     ; (export null? pair? list? cons car cdr)
-    (import Array Int8Array Number String
+    (import Array Int8Array Math Number String
             new typeof)
     ;;; Array
     (define (array? v) ; todo : inline array?
@@ -136,6 +135,94 @@
     (define (exact->inexact z)      z) ; todo
     (define (real->single-flonum x) x) ; todo 
     (define (real->double-flonum x) x) ; todo
+    ;;;
+    ;;; 4.2.2 Generic Numbers
+    ;;;
+
+    ;; Note: JavaScript addition has the name +.
+    ;;       Racket generic number operations are prefixed with $,
+    ;;       so Racket addition is $+
+
+    (define ($+ z1 z2) ; (+ z ...) variadic
+      (var [n arguments.length] res)
+      (sif (= n 2)
+           (:= res (+ z1 z2)) ; fast path
+           (sif (= n 1)
+                (:= res z1)
+                (sif (= n 0)
+                     (:= res 0)
+                     (block
+                      (var [sum (+ z1 z2)] [i 2]
+                           ; only reify arguments if needed
+                           [args arguments])
+                      (while (< i n)
+                             (+= sum (ref args i))
+                             (+= i 1))
+                      (:= res sum)))))
+      res)
+    (define ($- z1 z2) ; (- z1 z2 ...) variadic (at least one argument)
+      (var [n arguments.length] res)
+      (sif (= n 2)
+           (:= res (- z1 z2)) ; fast path
+           (sif (= n 1)
+                (:= res (- z1))
+                (block ; n>= 3
+                 (var [sum (- z1 z2)] [i 2]
+                      ; only reify arguments if needed
+                      [args arguments])
+                 (while (< i n)
+                        (-= sum (ref args i))
+                        (+= i 1))
+                 (:= res sum))))
+      res)
+    (define ($* z1 z2) ; (* z ...) variadic
+      (var [n arguments.length] res)
+      (sif (= n 2)
+           (:= res (* z1 z2)) ; fast path
+           (sif (= n 1)
+                (:= res z1)
+                (sif (= n 0)
+                     (:= res 1)
+                     (block
+                      (var [prod (* z1 z2)] [i 2]
+                           ; only reify arguments if needed
+                           [args arguments])
+                      (while (< i n)
+                             (*= prod (ref args i))
+                             (+= i 1))
+                      (:= res prod)))))
+      res)
+    (define ($/ z1 z2) ; (+ z1 z2 ...) variadic (at least one argument)
+      (var [n arguments.length] res)
+      (sif (= n 2)
+           (:= res (/ z1 z2)) ; fast path
+           (sif (= n 1)
+                (:= res (/ 1 z1))
+                (block ; n>= 3
+                 (var [quot (/ z1 z2)] [i 2]
+                      ; only reify arguments if needed
+                      [args arguments])
+                 (while (< i n)
+                        (/= quot (ref args i))
+                        (+= i 1))
+                 (:= res quot))))
+      res)
+    (define (quotient n m) 
+      (Math.floor (/ n m)))
+    (define (remainder n m)
+      (% n m))
+    (define (quotient/remainder n m)
+      (values (quotient n m) (remainder n m)))
+    #;(define (modulo n m)
+        (error "modulo" "todo")) ; todo
+    (define (add1 z) (+ z 1))
+    (define (sub1 z) (- z 1))
+    (define (abs x)  (Math.abs x))
+    #;(define (max x1 x2) ; (max x ...+) variadic
+        (var [args arguments])
+        (apply Math.max args))
+    
+
     
     ;;;  
     ;;; 4.3 Strings
@@ -973,4 +1060,16 @@
     (str (box (list 1 2 3)))
     (call-with-values (λ () (values 1 2))
                       (λ (x y) (+ x y)))
+    ($+)
+    ($+ 1)
+    ($+ 1 2)
+    ($+ 1 2 3)
+    ($- 1)
+    ($- 1 2)
+    ($- 1 2 3)
+    ($*)
+    ($* 1)
+    ($* 1 2)
+    ($* 1 2 3)
+    (max 1 2 3 4 2 3 1)
   )))
