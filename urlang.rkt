@@ -1494,10 +1494,16 @@
     [(quote ,d)             (cond
                               [(string? d)  (list "\"" d "\"")]
                               [(boolean? d) (if d "true" "false")]
-                              [(number? d)  d]
+                              [(number? d)  (match d
+                                              [+inf.0    "Infinity"]
+                                              [-inf.0 "(-Infinity)"]
+                                              [+nan.0         "NaN"]
+                                              [else               d])]
                               [else (error 'generate-code "expedcted datum, got ~a" d)])]
     [(if ,e0 ,e1 ,e2)       (let ((e0 (Expr e0)) (e1 (Expr e1)) (e2 (Expr e2)))
                               (~parens (~parens e0 "===false") "?" e2 ":" e1))]
+    #;[(if ,e0 ,e1 ,e2)       (let ((e0 (Expr e0)) (e1 (Expr e1)) (e2 (Expr e2)))
+                              (~parens e0 "?" e1 ":" e2))]
     [(begin ,e ...)         (let ((e (map Expr e)))
                               (~parens (~commas e)))]
     [(:= ,x ,e)             (let ((e (Expr e)))
