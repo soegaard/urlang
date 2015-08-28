@@ -227,6 +227,10 @@
       (if (= (% (if (> x 0) x (- x)) 1) 0.5)
           (if (even? r) r (- r 1))
           r))
+    (define (floor x)    (Math.floor x))
+    (define (ceiling x)  (Math.ceil x))
+    (define (truncate x) (Math.trunc x))
+    ; (define (numerator q) ; q rational TODO
     
     ;;;  
     ;;; 4.3 Strings
@@ -1076,8 +1080,10 @@
     ($* 1 2)
     ($* 1 2 3)
     (max 1 2 3 4 2 3 1)
-    (str (map round      (list 0.5 1.5 2.5 3.5 4.5 -0.5 -1.5 -2.5 -3.5)))
-    (str (map Math.round (list 0.5 1.5 2.5 3.5 4.5 -0.5 -1.5 -2.5 -3.5)))
+    (str (map round      (list 0.5 1.5 2.5 3.5 4.5 -0.5 -1.5 -2.5 -3.5 +inf.0 -inf.0 +nan.0)))
+    (str (map Math.round (list 0.5 1.5 2.5 3.5 4.5 -0.5 -1.5 -2.5 -3.5 +inf.0 -inf.0 +nan.0)))
     (even? -2)
-    
+    (floor -4.5)
+    (ceiling -4.5)
+    (truncate -4.5)
   )))
