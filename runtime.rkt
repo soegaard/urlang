@@ -218,11 +218,15 @@
     (define (add1 z) (+ z 1))
     (define (sub1 z) (- z 1))
     (define (abs x)  (Math.abs x))
-    #;(define (max x1 x2) ; (max x ...+) variadic
-        (var [args arguments])
-        (apply Math.max args))
-    
-
+    (define (max) ; (max x ...+) variadic
+      (Math.max.apply #f arguments))
+    (define (min) ; (min x ...+) variadic
+      (Math.min.apply #f arguments))
+    (define (round x) ; break ties in favor of nearest even number
+      (var [r (Math.round x)])
+      (if (= (% (if (> x 0) x (- x)) 1) 0.5)
+          (if (even? r) r (- r 1))
+          r))
     
     ;;;  
     ;;; 4.3 Strings
@@ -1072,4 +1076,8 @@
     ($* 1 2)
     ($* 1 2 3)
     (max 1 2 3 4 2 3 1)
+    (str (map round      (list 0.5 1.5 2.5 3.5 4.5 -0.5 -1.5 -2.5 -3.5)))
+    (str (map Math.round (list 0.5 1.5 2.5 3.5 4.5 -0.5 -1.5 -2.5 -3.5)))
+    (even? -2)
+    
   )))
