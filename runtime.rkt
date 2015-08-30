@@ -1,5 +1,5 @@
 #lang racket
-(require "urlang.rkt" "urlang-extra.rkt" "for.rkt" syntax/parse)
+(require "urlang.rkt" "urlang-extra.rkt" "for.rkt" syntax/parse syntax/stx)
 
 (current-urlang-run?                           #t)
 (current-urlang-echo?                          #t)
@@ -50,6 +50,23 @@
 
 (define-urlang-macro for/list expand-for/list)
 
+(define (expand-let-values stx)
+  (syntax-parse stx
+    [(_let-values ([(id ...) expr] ...) statement ... body-expr)
+     (with-syntax ([(t ...)        (generate-temporaries #'(expr ...))])
+       (with-syntax ([((t1 ...) ...) (for/list ([t   (in-list (syntax->list #'(t ...)))]
+                                                [ids (in-list (syntax->list #'((id ...) ...)))])
+                                       (stx-map (λ (id) t) ids))]                                     
+                     [((i ...) ...)  (stx-map (λ (ids) (range 1 (+ 1 (length (syntax->list ids)))))
+                                              #'((id ...) ...))])
+         (syntax/loc stx
+           (let ([t expr] ...)
+             (let ([id (ref t1 i)] ... ...)
+               statement ... body-expr)))))]))
+
+(define-urlang-macro let-values expand-let-values)
+
+
 
 (display
  (urlang
@@ -63,18 +80,20 @@
       (Array.isArray v))
     ;;; Tags
     (define (tag a) (ref a 0))
-    (define PAIR             (array "pair"))
-    (define VECTOR           (array "vector"))
-    (define IMMUTABLE-VECTOR (array "immutable-vector"))
-    (define BOX              (array "box"))
-    (define IMMUTABLE-BOX    (array "immutable-box"))
-    (define CHAR             (array "char"))
-    (define MUTABLE-STRING   (array "mutable-string"))
-    (define BYTES            (array "bytes"))
-    (define MUTABLE-BYTES    (array "mutable-bytes"))
-    (define SYMBOL           (array "symbol"))
-    (define KEYWORD          (array "keyword"))
-    (define VALUES           (array "values"))
+    (define PAIR                   (array "pair"))
+    (define VECTOR                 (array "vector"))
+    (define IMMUTABLE-VECTOR       (array "immutable-vector"))
+    (define BOX                    (array "box"))
+    (define IMMUTABLE-BOX          (array "immutable-box"))
+    (define CHAR                   (array "char"))
+    (define MUTABLE-STRING         (array "mutable-string"))
+    (define BYTES                  (array "bytes"))
+    (define MUTABLE-BYTES          (array "mutable-bytes"))
+    (define SYMBOL                 (array "symbol"))
+    (define KEYWORD                (array "keyword"))
+    (define VALUES                 (array "values"))
+    (define STRUCT-TYPE-DESCRIPTOR (array "struct-type-descriptor"))
+    (define STRUCT                 (array "struct"))
     
     (define VOID (array))    ; singleton
     (define NULL (array))    ; singleton
@@ -1028,6 +1047,33 @@
     (define (Void) VOID) ; variadic
 
     ;;;
+    ;;; 5 Structures
+    ;;;
+    (define (make-struct-type name super-type init-field-cnt auto-field-cnt
+                              ; optionals: TODO ignored for now
+                              auto-v props inspector proc-spec immutables
+                              guard constructor-name)
+      (var [std (array STRUCT-TYPE-DESCRIPTOR name)]) ; unique
+      (values
+       ;; struct-type
+       std
+       ;; struct-constructor-procedure
+       (λ () (var [args arguments]
+                  [n    arguments.length]
+                  [a    (new Array (+ n 2))])
+         (:= a 0 STRUCT)                   ; is this needed?
+         (:= a 1 std)
+         (for ([i in-range 0 n])
+           (:= a (+ i 2) (ref args i)))
+         a)
+       ;; struct-predicate-procedure
+       (λ (v)             (= v std))
+       ;; struct-accessor-procedure
+       (λ (s index)       (ref s (+ index 2)))
+       ;; struct-mutator-procedure
+       (λ (s index value) (:= s (+ index 2) value) VOID)))
+    
+    ;;;
     ;;; 10. Control Flow
     ;;;
 
@@ -1228,4 +1274,11 @@
     (symbol=? (string->symbol "a") (string->uninterned-symbol "a"))  ; #f
     (equal? (list 1 "foo" (string->symbol "a")) (list 1 "foo" (string->symbol "a")))
     (equal? (list 1 "foo" (string->symbol "a")) (list 1 "foo" (string->symbol "b")))
+    (let-values ([(a b)   (values 10 11)]
+                 [(c d e) (values 20 21 22)])
+      (str (list a b c d e)))
+    (define foo-sym (string->symbol "foo"))
+    (let-values ([(struct_colon_foo foo foo? foo-a foo-b)
+                  (make-struct-type foo-sym #f 2 0 #f (list) #f #f (list 0 1) #f foo-sym)])
+      (foo 11 12))
   )))
