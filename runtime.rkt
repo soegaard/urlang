@@ -56,7 +56,7 @@
 (display
  (urlang
   (urmodule runtime
-    (import document window prompt alert)  ; Browser functions
+    (import document window prompt alert parseInt parseFloat)  ; Browser functions
     ; (export null? pair? list? cons car cdr)
     (import Array Int8Array Math Number String
             new typeof)
@@ -80,6 +80,7 @@
     
     (define VOID (array))    ; singleton
     (define NULL (array))    ; singleton
+
     ;;;
     ;;; 4.1 Booleans and equality
     ;;;
@@ -231,6 +232,55 @@
     (define (ceiling x)  (Math.ceil x))
     (define (truncate x) (Math.trunc x))
     ; (define (numerator q) ; q rational TODO
+    (define (sqrt x)     (Math.sqrt x))
+    ; integer-sqrt           TODO
+    ; integer-sqrt/remainder TODO
+    (define (expt z w)   (Math.pow z w))
+    (define (exp z)      (Math.exp z))
+    (define (log z)      (Math.log z))
+    (define (sin z)      (Math.sin z))
+    (define (cos z)      (Math.sin z))
+    (define (tan z)      (Math.tan z))
+    (define (asin z)     (Math.asin z))
+    (define (acos z)     (Math.acos z))
+    (define (atan y x)
+      (case arguments.length
+        [(1) (Math.atan y)]
+        [(2) (Math.atan y x)]
+        [else "error: atan - todo - raise exception"]))
+    ;; Complex numbers  (not supported)
+    ; make-rectangular - todo
+    ; make-polar       - todo
+    (define (real-part z)  z)  ; todo
+    (define (image-part z) 0)  ; works only for real numbers :-)
+    (define (magnitude z)  (Math.abs z))
+    (define (angle z)
+      (cond
+        [(> z 0) 0]
+        [(< z 0) Math.PI]
+        [#t      (error "angle" "undefined for 0")]))
+    ; integer-length  -  todo
+    (define (random k rand-gen)  ; TODO: don't ignore rand-gen
+      (Math.floor (* (Math.random) k)))
+    (define (random-seed k) (Void))            ; can't set the seed in JavaScript ?!?
+    (define (make-pseudo-random-generator) #f)
+    (define (pseudo-random-generator? v) (eq? v #f))
+    (define (current-pseudo-random-generator rand-gen) #f)
+    (define (pseudo-random-generator->vector rand-gen) (vector))
+    (define (vector->pseudo-random-generator vec) #f)
+    (define (vector->pseudo-random-generator! rand-gen vec) (Void))
+    (define (pseudo-random-generator-vector? v) (vector? v))
+    (define (number->string z radix)
+      (var [num (Number z)])
+      (num.toString radix))
+    (define (string->number s radix) ; radix optional
+      (case arguments.length
+        [(1) (parseFloat s)]
+        [(2) (parseFloat s radix)]
+        [else (error "string->number" "expected one or two arguments")]))
+      
+        
+    
     
     ;;;  
     ;;; 4.3 Strings
@@ -1086,4 +1136,11 @@
     (floor -4.5)
     (ceiling -4.5)
     (truncate -4.5)
+    (str (number->string 123))
+    (str (number->string 123 2))
+    (str (number->string 123 8))
+    (str (number->string 123 16))
+    (string->number "123")
+    (string->number "123.25")
+    (string->number "101" 2)
   )))
