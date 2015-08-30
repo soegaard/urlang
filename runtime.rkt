@@ -1,6 +1,4 @@
 #lang racket
-; TODO: Implement map (and friends in 4.9.3)
-
 (require "urlang.rkt" "urlang-extra.rkt" "for.rkt" syntax/parse)
 
 (current-urlang-run?                           #t)
@@ -90,21 +88,41 @@
     (define (boolean? v)
       (= (typeof v) "boolean"))
     ; (define (not x) (if x #f #t)) ; not is a predefined function
-    (define (equal? v1 v2)
-      (= v1 v2))   ; TODO ...
-    (define (eqv? v1 v2)  ; TODO
-      (= v1 v2))
+    (define (equal? v w) ; TODO: handle cyclic data structures
+      (cond
+        [(and (boolean? v)          (boolean?        w))   (= v w)]
+        [(and (number?  v)          (number?         w))   (= v w)]
+        [(and (symbol?  v)          (symbol?         w))   (symbol=? v w)]
+        [(and (null?  v)            (null?           w))   #t]
+        [(and (pair? v)             (pair?           w)) (and (equal? (unsafe-car v) (unsafe-car w))
+                                                              (equal? (unsafe-cdr v) (unsafe-cdr w)))]
+        [(and (void?  v)            (void?           w))   #t]
+        [(and (char?  v)            (char?           w))   (char=? v w)]
+        [(and (immutable-string? v) (immutable-string? w)) (= v w)]
+        [(and (mutable-string?   v) (mutable-string? w))   (string=? v w)]
+        [(and (vector? v)           (vector? w))           (for/and ([x in-vector v]
+                                                                     [y in-vector w])
+                                                             (equal? x y))]
+        [(and (box? v)              (box? w))              (equal? (unbox v) (unbox w))]
+        [(and (bytes?  v)           (bytes?          w))   (bytes=? v w)]
+        [(and (keyword?  v)         (keyword?        w))   (keyword=? v w)]
+        [#t #f]))
+    (define (eqv? v w)
+      (cond
+        [(and (number? v) (number? w)) (= v w)]
+        [(and (char?   v) (char?   w)) (= (char->integer v) (char->integer w))]
+        [#t                            (= v w)]))
     (define (eq? v1 v2)
       (= v1 v2))
     ; (define (equal/retur v1 v2) ...) TODO
-    #;(define (immutable? v)
-        ; Note: This follows the spec. It is not a general
-        ;       immutability predicate, so immutable pairs are not checked here.
-        (or (immutable-string? v)
-            #;(immutable-bytes? v)
-            (immutable-vector? v)
-            #;(immutable-hash? v)
-            #;(immutable-box? v)))
+    (define (immutable? v)
+      ; Note: This follows the spec. It is not a general
+      ;       immutability predicate, so immutable pairs are not checked here.
+      (or (immutable-string? v)
+          (immutable-bytes? v)
+          (immutable-vector? v)
+          #;(immutable-hash? v)
+          (immutable-box? v)))
     ;;;
     ;;; 4.2 Numbers
     ;;;
@@ -248,7 +266,7 @@
                               [(= a 0) (:= res b)]
                               [#t      (%= b a)])]))
       res)
-   
+    ; lcm todo
     (define (round x) ; break ties in favor of nearest even number
       (var [r (Math.round x)])
       (if (= (% (if (> x 0) x (- x)) 1) 0.5)
@@ -316,10 +334,8 @@
 
     ;;; from racket/math
     (define pi Math.pi)
-    
-    
-        
-    
+    (define (nan? x)      (= x +nan.0))
+    (define (infinite? x) (or (= x +inf.0) (= x -inf.0)))
     
     ;;;  
     ;;; 4.3 Strings
@@ -481,6 +497,8 @@
       (and (array? v)
            (or (= (tag v) BYTES)
                (= (tag v) MUTABLE-BYTES))))
+    (define (immutable-bytes? v) (and (array? v) (= (tag v) BYTES)))
+    (define (mutable-bytes?   v) (and (array? v) (= (tag v) MUTABLE-BYTES)))
     (define (bytes->Int8Array bs)
       (ref bs 1))
     (define (make-bytes k b) ; b optional
@@ -600,7 +618,14 @@
     (define (symbol? v)
       (and (array? v) (= (tag v) SYMBOL)))
     (define (symbol-interned? sym) ; symbol? -> boolean?
-      (= (typeof sym) "string"))   ; note : an uninterned strings has type "object"
+      (= (typeof (ref sym 1)) "string"))   ; note : an uninterned strings has type "object"
+    (define (symbol=? sym1 sym2)
+      (or (and (symbol-interned? sym1)
+               (symbol-interned? sym2)
+               (= (ref sym1 1) (ref sym2 1)))
+          ; uninterned symbols are only equal to themselves
+          (= sym1 sym2)))
+      
     (define (symbol->string sym)
       ; returns freshly allocated mutable string
       (var [js-str (ref sym 1)]
@@ -671,6 +696,8 @@
       (array KEYWORD istr))
     (define (keyword<? key1 key2)
       (< (ref key1 1) (ref key1 2)))
+    (define (keyword=? key1 key2)
+      (= (ref key1 1) (ref key2 1)))
     
     ;;;
     ;;; 4.9-10 Lists
@@ -871,6 +898,8 @@
       (and (array? v)
            (or (= (tag v) VECTOR)
                (= (tag v) IMMUTABLE-VECTOR))))
+    (define (immutable-vector? v) (and (array? v) (= (tag v) IMMUTABLE-VECTOR)))
+    (define (mutable-vector? v)   (and (array? v) (= (tag v) VECTOR)))
     (define (make-vector size v) ; v optional
       (case arguments.length
         [(1) (make-vector2 size 0)]
@@ -954,7 +983,8 @@
     (define (box-cas! b old new) (if (eq? (ref b 1) old)
                                      (begin (:= b 1 new) #t)
                                      #f))
-
+    (define (immutable-box? v)  (and (array? v) (= (tag v) IMMUTABLE-BOX)))
+    
     ;;;
     ;;; 4.17 Procedures
     ;;;
@@ -1193,5 +1223,9 @@
     (gcd)       ; 0
     (gcd 12)    ; 12
     (gcd 12 18) ; 6
-    (gcd (* 2 3 5 7) (* 2 3 5) (* 2 3   7)) ; 6
+    (gcd (* 2 3 5 7) (* 2 3 5) (* 2 3 7)) ; 6
+    (symbol=? (string->symbol "a") (string->symbol "a"))             ; #t
+    (symbol=? (string->symbol "a") (string->uninterned-symbol "a"))  ; #f
+    (equal? (list 1 "foo" (string->symbol "a")) (list 1 "foo" (string->symbol "a")))
+    (equal? (list 1 "foo" (string->symbol "a")) (list 1 "foo" (string->symbol "b")))
   )))
