@@ -223,6 +223,32 @@
       (Math.max.apply #f arguments))
     (define (min) ; (min x ...+) variadic
       (Math.min.apply #f arguments))
+    (define (gcd n m) ; (gcd n ...)
+      (var [args arguments] i g l)
+      (case arguments.length
+        [(2)  (gcd2 n m)]
+        [(1)  n]
+        [(0)  0]
+        [else (:= l args.length)
+              (:= g (ref args 0))
+              (for ([i in-range 1 l])
+                (:= g (gcd g (ref args i))))
+              g]))
+    (define (gcd2 n m)
+      (var a b)
+      (swhen (< n 0)  (:= n (- n)))
+      (swhen (< m 0)  (:= m (- m)))
+      (:= a (if (> n m) n m))
+      (:= b (if (< n m) n m))
+      (var [res #f])
+      (while (not res)
+             (cond [(= b 0) (:= res a)]
+                   [#t      (%= a b)
+                            (cond
+                              [(= a 0) (:= res b)]
+                              [#t      (%= b a)])]))
+      res)
+   
     (define (round x) ; break ties in favor of nearest even number
       (var [r (Math.round x)])
       (if (= (% (if (> x 0) x (- x)) 1) 0.5)
@@ -1164,4 +1190,8 @@
     (integer-sqrt/remainder 17)
     (integer-sqrt -17)
     (integer-sqrt/remainder -17)
+    (gcd)       ; 0
+    (gcd 12)    ; 12
+    (gcd 12 18) ; 6
+    (gcd (* 2 3 5 7) (* 2 3 5) (* 2 3   7)) ; 6
   )))
