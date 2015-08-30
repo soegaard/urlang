@@ -214,8 +214,8 @@
       (% n m))
     (define (quotient/remainder n m)
       (values (quotient n m) (remainder n m)))
-    #;(define (modulo n m)
-        (error "modulo" "todo")) ; todo
+    (define (modulo n m) ; TODO : throw exception unless n and m are finite
+      (% (+ (% n m) m) m))
     (define (add1 z) (+ z 1))
     (define (sub1 z) (- z 1))
     (define (abs x)  (Math.abs x))
@@ -233,8 +233,11 @@
     (define (truncate x) (Math.trunc x))
     ; (define (numerator q) ; q rational TODO
     (define (sqrt x)     (Math.sqrt x))
-    ; integer-sqrt           TODO
-    ; integer-sqrt/remainder TODO
+    (define (integer-sqrt n) ; n integer
+      (Math.floor (Math.sqrt n)))   ; TODO: handle negative x
+    (define (integer-sqrt/remainder n)
+      (var [s (Math.floor (Math.sqrt n))])
+      (values s (- n (* s s))))
     (define (expt z w)   (Math.pow z w))
     (define (exp z)      (Math.exp z))
     (define (log z)      (Math.log z))
@@ -278,7 +281,17 @@
         [(1) (parseFloat s)]
         [(2) (parseFloat s radix)]
         [else (error "string->number" "expected one or two arguments")]))
-      
+    ; real-> decimal-string ; todo
+    ; integer-bytes->integer ; todo
+    ; integer->integer-bytes ; todo
+    ; floating-point-bytes-> real ; todo
+    ; real->floating-point-bytes ; todo
+    ; system-big-endian? : todo
+
+    ;;; from racket/math
+    (define pi Math.pi)
+    
+    
         
     
     
@@ -1143,4 +1156,12 @@
     (string->number "123")
     (string->number "123.25")
     (string->number "101" 2)
+    (modulo  10    3)  ;  1
+    (modulo -10.0  3)  ;  2.0
+    (modulo  10.0 -3)  ; -2.0
+    (modulo +inf.0 3)  ; contract violoation
+    (integer-sqrt 17)
+    (integer-sqrt/remainder 17)
+    (integer-sqrt -17)
+    (integer-sqrt/remainder -17)
   )))
