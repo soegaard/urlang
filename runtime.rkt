@@ -1049,19 +1049,50 @@
     ;;;
     ;;; 5 Structures
     ;;;
-    (define (make-struct-type name super-type init-field-cnt auto-field-cnt
+
+    ;; Representation:
+    (define (struct-type-descriptor-name  std)              (ref std 1))
+    (define (struct-type-descriptor-super std)              (ref std 2))
+    (define (struct-type-descriptor-total-field-count  std) (ref std 3))
+    (define (struct-type-descriptor-init-field-indices std) (ref std 4))
+    (define (struct-type-descriptor-auto-field-indices std) (ref std 5))
+    (define (struct-type-descriptor-auto-field-values  std) (ref std 6))
+    
+    (define (make-struct-type-descriptor name super init-field-count auto-field-count auto-values)
+      (var [ifc init-field-count] [afc auto-field-count])
+      (if super
+          (let ([stfc                   (super-total-field-count super)]
+                [total-field-count      (+ ifc afc stfc)]
+                [new-init-field-indices (for/list ([i in-range 0 ifc]) (+ stfc i))]
+                [new-auto-field-indices (for/list ([i in-range 0 afc]) (+ stfc ifc i))])
+            (array STRUCT-TYPE-DESCRIPTOR name super total-field-count
+                   (append (struct-type-descriptor-init-field-indices super) init-field-indices)
+                   (append (struct-type-descriptor-auto-field-indices super) auto-field-indices)
+                   (append (struct-type-descriptor-auto-field-values  super) auto-field-values)))
+          (let ([total-field-count  (+ ifc afc)]
+                [init-field-indices (for/list ([i in-range 0 ifc])        i)]
+                [auto-field-indices (for/list ([i in-range 0 afc]) (+ ifc i))])
+            (array STRUCT-TYPE-DESCRIPTOR name #f total-field-count
+                   init-field-indices auto-field-indices auto-field-values))))
+
+    (define (make-struct-type name super init-field-count auto-field-count
                               ; optionals: TODO ignored for now
-                              auto-v props inspector proc-spec immutables
+                              auto-values props inspector proc-spec immutables
                               guard constructor-name)
-      (var [std (array STRUCT-TYPE-DESCRIPTOR name)]) ; unique
+      (var [super-field-count (if super-type (ref super-type 2) 0)]
+           [field-count       (+ init-field-cnt auto-field-cnt super-field-count)]
+           [std               (make-struct-type-descriptor
+                               name super
+                               init-field-count auto-field-count auto-values)]) ; unique
       (values
        ;; struct-type
        std
        ;; struct-constructor-procedure
+       ;; TODO TODO : handle super in constructor procedure
        (λ () (var [args arguments]
-                  [n    arguments.length]
+                  [n    arguments.length]      ; todo: check that n = field-count
                   [a    (new Array (+ n 2))])
-         (:= a 0 STRUCT)                   ; is this needed?
+         (:= a 0 STRUCT)
          (:= a 1 std)
          (for ([i in-range 0 n])
            (:= a (+ i 2) (ref args i)))
@@ -1278,7 +1309,10 @@
                  [(c d e) (values 20 21 22)])
       (str (list a b c d e)))
     (define foo-sym (string->symbol "foo"))
-    (let-values ([(struct_colon_foo foo foo? foo-a foo-b)
+    (let-values ([(struct_colon_foo foo foo? foo-ref foo-set!)
                   (make-struct-type foo-sym #f 2 0 #f (list) #f #f (list 0 1) #f foo-sym)])
-      (foo 11 12))
+      (var [foo-a (λ (s) (foo-ref s 0))]
+           [foo-b (λ (s) (foo-ref s 1))])
+      (var [f (foo 11 12)])
+      (str (list (foo-a f) (foo-b f))))
   )))
