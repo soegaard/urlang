@@ -1056,33 +1056,42 @@
     (define (struct-type-descriptor-total-field-count  std) (ref std 3))
     (define (struct-type-descriptor-init-field-indices std) (ref std 4))
     (define (struct-type-descriptor-auto-field-indices std) (ref std 5))
-    (define (struct-type-descriptor-auto-field-values  std) (ref std 6))
+    (define (struct-type-descriptor-auto-field-value  std)  (ref std 6))
     
-    (define (make-struct-type-descriptor name super init-field-count auto-field-count auto-values)
-      (var [ifc init-field-count] [afc auto-field-count])
-      (if super
-          (let ([stfc                   (super-total-field-count super)]
-                [total-field-count      (+ ifc afc stfc)]
+    (define (make-struct-type-descriptor name super-type
+                                         init-field-count auto-field-count auto-field-value)
+      (var [ifc   init-field-count]
+           [afc   auto-field-count]
+           [stfc  (if super-type (struct-type-descriptor-total-field-count super-type) 0)])
+      (console.log super-type)
+      (if super-type
+          (let ([total-field-count      (+ ifc afc stfc)]
                 [new-init-field-indices (for/list ([i in-range 0 ifc]) (+ stfc i))]
                 [new-auto-field-indices (for/list ([i in-range 0 afc]) (+ stfc ifc i))])
-            (array STRUCT-TYPE-DESCRIPTOR name super total-field-count
-                   (append (struct-type-descriptor-init-field-indices super) init-field-indices)
-                   (append (struct-type-descriptor-auto-field-indices super) auto-field-indices)
-                   (append (struct-type-descriptor-auto-field-values  super) auto-field-values)))
+            (console.log (+ "tfc" (str total-field-count)))
+            (console.log (+ "ifc" (str new-init-field-indices)))
+            (console.log (+ "afc" (str new-auto-field-indices)))
+            (console.log (str (append (struct-type-descriptor-init-field-indices super-type) new-init-field-indices)))
+            (console.log (str (append (struct-type-descriptor-auto-field-indices super-type) new-auto-field-indices)))
+            (array
+             STRUCT-TYPE-DESCRIPTOR name super-type total-field-count
+             (append (struct-type-descriptor-init-field-indices super-type) new-init-field-indices)
+             (append (struct-type-descriptor-auto-field-indices super-type) new-auto-field-indices)
+             auto-field-value))
           (let ([total-field-count  (+ ifc afc)]
                 [init-field-indices (for/list ([i in-range 0 ifc])        i)]
                 [auto-field-indices (for/list ([i in-range 0 afc]) (+ ifc i))])
             (array STRUCT-TYPE-DESCRIPTOR name #f total-field-count
-                   init-field-indices auto-field-indices auto-field-values))))
+                   init-field-indices auto-field-indices auto-field-value))))
 
-    (define (make-struct-type name super init-field-count auto-field-count
+    (define (make-struct-type name super-type init-field-count auto-field-count
                               ; optionals: TODO ignored for now
                               auto-values props inspector proc-spec immutables
                               guard constructor-name)
-      (var [super-field-count (if super-type (ref super-type 2) 0)]
-           [field-count       (+ init-field-cnt auto-field-cnt super-field-count)]
+      (var [super-field-count (if super-type (struct-type-descriptor-total-field-count super-type) 0)]
+           [field-count       (+ init-field-count auto-field-count super-field-count)]
            [std               (make-struct-type-descriptor
-                               name super
+                               name super-type
                                init-field-count auto-field-count auto-values)]) ; unique
       (values
        ;; struct-type
@@ -1309,10 +1318,20 @@
                  [(c d e) (values 20 21 22)])
       (str (list a b c d e)))
     (define foo-sym (string->symbol "foo"))
+    (define bar-sym (string->symbol "bar"))
     (let-values ([(struct_colon_foo foo foo? foo-ref foo-set!)
-                  (make-struct-type foo-sym #f 2 0 #f (list) #f #f (list 0 1) #f foo-sym)])
+                  (make-struct-type foo-sym #f
+                                    2 0 #f (list) #f #f (list 0 1) #f foo-sym)])
       (var [foo-a (λ (s) (foo-ref s 0))]
            [foo-b (λ (s) (foo-ref s 1))])
       (var [f (foo 11 12)])
-      (str (list (foo-a f) (foo-b f))))
+      (str (list (foo-a f) (foo-b f)))
+      (let-values ([(struct_colon_bar bar bar? bar-ref bar-set!)
+                    (make-struct-type bar-sym struct_colon_foo
+                                      2 0 #f (list) #f #f (list 2 3) #f bar-sym)])
+        (var [g (bar 11 12 13 14)])
+        (str (list (foo-a g)
+                   (foo-b g)
+                   (bar-ref g 2)
+                   (bar-ref g 3)))))
   )))
