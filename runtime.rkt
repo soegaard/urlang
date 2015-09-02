@@ -1056,7 +1056,12 @@
     (define (struct-type-descriptor-total-field-count  std) (ref std 3))
     (define (struct-type-descriptor-init-field-indices std) (ref std 4))
     (define (struct-type-descriptor-auto-field-indices std) (ref std 5))
-    (define (struct-type-descriptor-auto-field-value  std)  (ref std 6))
+    (define (struct-type-descriptor-auto-field-value   std) (ref std 6))
+    (define (struct-type-descriptor-properties         std) (ref std 7))
+    (define (struct-type-descriptor-inspector          std) (ref std 8))
+    (define (struct-type-descriptor-immutables         std) (ref std 9))
+    (define (struct-type-descriptor-guard              std) (ref std 10))
+    (define (struct-type-descriptor-constructor-name   std) (ref std 11))
     
     (define (make-struct-type-descriptor name super-type
                                          init-field-count auto-field-count auto-field-value)
@@ -1068,21 +1073,28 @@
           (let ([total-field-count      (+ ifc afc stfc)]
                 [new-init-field-indices (for/list ([i in-range 0 ifc]) (+ stfc i))]
                 [new-auto-field-indices (for/list ([i in-range 0 afc]) (+ stfc ifc i))])
-            (console.log (+ "tfc" (str total-field-count)))
-            (console.log (+ "ifc" (str new-init-field-indices)))
-            (console.log (+ "afc" (str new-auto-field-indices)))
-            (console.log (str (append (struct-type-descriptor-init-field-indices super-type) new-init-field-indices)))
-            (console.log (str (append (struct-type-descriptor-auto-field-indices super-type) new-auto-field-indices)))
             (array
              STRUCT-TYPE-DESCRIPTOR name super-type total-field-count
              (append (struct-type-descriptor-init-field-indices super-type) new-init-field-indices)
              (append (struct-type-descriptor-auto-field-indices super-type) new-auto-field-indices)
-             auto-field-value))
+             auto-field-value
+             NULL ; properties
+             #f   ; inspector
+             NULL ; immutables
+             #f   ; guard
+             #f   ; constructor name
+             ))
           (let ([total-field-count  (+ ifc afc)]
                 [init-field-indices (for/list ([i in-range 0 ifc])        i)]
                 [auto-field-indices (for/list ([i in-range 0 afc]) (+ ifc i))])
             (array STRUCT-TYPE-DESCRIPTOR name #f total-field-count
-                   init-field-indices auto-field-indices auto-field-value))))
+                   init-field-indices auto-field-indices auto-field-value
+                   NULL ; properties
+                   #f   ; inspector
+                   NULL ; immutables
+                   #f   ; guard
+                   #f   ; constructor name
+                   ))))
 
     (define (make-struct-type name super-type init-field-count auto-field-count
                               ; optionals: TODO ignored for now
