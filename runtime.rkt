@@ -1051,6 +1051,13 @@
     ;;;
 
     ;; Representation:
+    ;;   A structure is represented as an array tagged with STRUCT
+    ;;       (array STRUCT <a-struct-type-descriptor> field0 field1 ...)
+    ;;   A struct-type-descriptor is:
+    ;;       (array STRUCT-TYPE-DESCRIPTOR name super-type total-field-count
+    ;;              init-field-indices auto-field-indices auto-field-values
+    ;;              properties inspector immutables guard constructor-name)
+
     (define (struct-type-descriptor-name  std)              (ref std 1))
     (define (struct-type-descriptor-super std)              (ref std 2))
     (define (struct-type-descriptor-total-field-count  std) (ref std 3))
@@ -1062,16 +1069,17 @@
     (define (struct-type-descriptor-immutables         std) (ref std 9))
     (define (struct-type-descriptor-guard              std) (ref std 10))
     (define (struct-type-descriptor-constructor-name   std) (ref std 11))
+
     (define (struct-type-descriptor? v) (and (array? v) (= (ref v 0) STRUCT-TYPE-DESCRIPTOR)))
     (define (struct? v)                 (and (array? v) (= (ref v 0) STRUCT)))
+
     (define (str-struct-type-descriptor s)
       (+ "(struct-type-descriptor "
-         (str (ref s 1)) (str (ref s 2)) (str (ref s 3)) (str (ref s 4)) (str (ref s 5))
-         (str (ref s 6)) (str (ref s 7)) (str (ref s 8)) (str (ref s 9)) (str (ref s 10))
-         (str (ref s 11))
-         ")"))
+         (str (ref s 1)) " " (str (ref s 2))  " " (str (ref s 3)) " " (str (ref s 4)) " "
+         (str (ref s 5)) " " (str (ref s 6))  " " (str (ref s 7)) " " (str (ref s 8)) " "
+         (str (ref s 9)) " " (str (ref s 10)) " " (str (ref s 11)) ")"))
     (define (str-struct s)
-      (+ "(struct " (str-struct-type-descriptor s) " ... )"))
+      (+ "(struct " (str (ref s 1)) " ... )"))
     
     (define (make-struct-type-descriptor
              name super-type init-field-count auto-field-count
@@ -1227,7 +1235,9 @@
     ;; The str functions convert values into strings.
     (define (str-null)      "()")
     (define (str-number v)  (v.toString))
-    (define (str-string v)  (+ "\\\"" v "\\\""))
+    (define (str-string v)
+      (var [s (if (mutable-string? v) (string->immutable-string v) v)])
+      (+ "\\\"" s "\\\""))
     (define (str-list v)
       (var [a (for/array ([x in-list v]) (str x))])
       (+ "(" (a.join " ") ")"))
@@ -1239,7 +1249,7 @@
       (cond [(= v #t) "#t"]
             [(= v #f) "#f"]
             [#t       "str -internal error"]))
-    (define (str-symbol  v) (string-append "'"  (symbol->string v)))
+    (define (str-symbol  v) (string-append "'"  (string->immutable-string (symbol->string v))))
     (define (str-keyword v) (+ "#:" (ref v 1)))
     (define (str-void v)    "#<void>")
     (define (str-box v)     (+ "#&" (str (unbox v))))
@@ -1411,5 +1421,5 @@
                    (foo-b g)
                    (bar-ref g 4)
                    (bar-ref g 5)))
-        #;(str g)))
+        (str f)))
   )))
