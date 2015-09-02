@@ -1056,39 +1056,55 @@
     (define (struct-type-descriptor-total-field-count  std) (ref std 3))
     (define (struct-type-descriptor-init-field-indices std) (ref std 4))
     (define (struct-type-descriptor-auto-field-indices std) (ref std 5))
-    (define (struct-type-descriptor-auto-field-value   std) (ref std 6))
+    (define (struct-type-descriptor-auto-field-values  std) (ref std 6))
     (define (struct-type-descriptor-properties         std) (ref std 7))
     (define (struct-type-descriptor-inspector          std) (ref std 8))
     (define (struct-type-descriptor-immutables         std) (ref std 9))
     (define (struct-type-descriptor-guard              std) (ref std 10))
     (define (struct-type-descriptor-constructor-name   std) (ref std 11))
+    (define (struct-type-descriptor? v) (and (array? v) (= (ref v 0) STRUCT-TYPE-DESCRIPTOR)))
+    (define (struct? v)                 (and (array? v) (= (ref v 0) STRUCT)))
+    (define (str-struct-type-descriptor s)
+      (+ "(struct-type-descriptor "
+         (str (ref s 1)) (str (ref s 2)) (str (ref s 3)) (str (ref s 4)) (str (ref s 5))
+         (str (ref s 6)) (str (ref s 7)) (str (ref s 8)) (str (ref s 9)) (str (ref s 10))
+         (str (ref s 11))
+         ")"))
+    (define (str-struct s)
+      (+ "(struct " (str-struct-type-descriptor s) " ... )"))
     
-    (define (make-struct-type-descriptor name super-type
-                                         init-field-count auto-field-count auto-field-value)
+    (define (make-struct-type-descriptor
+             name super-type init-field-count auto-field-count
+             ; optionals: (handled by make-struct-type)
+             auto-field-value props inspector proc-spec immutables
+             guard constructor-name
+             )
       (var [ifc   init-field-count]
            [afc   auto-field-count]
            [stfc  (if super-type (struct-type-descriptor-total-field-count super-type) 0)])
-      (console.log super-type)
       (if super-type
           (let ([total-field-count      (+ ifc afc stfc)]
                 [new-init-field-indices (for/list ([i in-range 0 ifc]) (+ stfc i))]
-                [new-auto-field-indices (for/list ([i in-range 0 afc]) (+ stfc ifc i))])
+                [new-auto-field-indices (for/list ([i in-range 0 afc]) (+ stfc ifc i))]
+                [new-auto-field-values  (for/list ([i in-range 0 afc]) auto-field-value)])
             (array
              STRUCT-TYPE-DESCRIPTOR name super-type total-field-count
              (append (struct-type-descriptor-init-field-indices super-type) new-init-field-indices)
              (append (struct-type-descriptor-auto-field-indices super-type) new-auto-field-indices)
-             auto-field-value
+             (append (struct-type-descriptor-auto-field-values  super-type) new-auto-field-values)
              NULL ; properties
              #f   ; inspector
              NULL ; immutables
              #f   ; guard
              #f   ; constructor name
              ))
+          ;; no super-case (the simple case)
           (let ([total-field-count  (+ ifc afc)]
                 [init-field-indices (for/list ([i in-range 0 ifc])        i)]
-                [auto-field-indices (for/list ([i in-range 0 afc]) (+ ifc i))])
+                [auto-field-indices (for/list ([i in-range 0 afc]) (+ ifc i))]
+                [auto-field-values  (for/list ([i in-range 0 afc]) auto-field-value)])
             (array STRUCT-TYPE-DESCRIPTOR name #f total-field-count
-                   init-field-indices auto-field-indices auto-field-value
+                   init-field-indices auto-field-indices auto-field-values
                    NULL ; properties
                    #f   ; inspector
                    NULL ; immutables
@@ -1097,33 +1113,80 @@
                    ))))
 
     (define (make-struct-type name super-type init-field-count auto-field-count
-                              ; optionals: TODO ignored for now
-                              auto-values props inspector proc-spec immutables
+                              ; optionals: see docs for default value
+                              auto-value props inspector proc-spec immutables
                               guard constructor-name)
+      ; handle optional arguments, then call do-make-struct-type
+      (do-make-struct-type name super-type init-field-count auto-field-count
+                           (if (= auto-value       undefined) #f   auto-value)
+                           (if (= props            undefined) NULL props)
+                           ; TODO use current-inpector
+                           (if (= inspector        undefined) #f   inspector) 
+                           (if (= proc-spec        undefined) #f   proc-spec)
+                           (if (= immutables       undefined) NULL immutables)
+                           (if (= guard            undefined) #f   guard)
+                           (if (= constructor-name undefined) #f   constructor-name)))
+    
+    (define (do-make-struct-type name super-type init-field-count auto-field-count
+                                 auto-field-value ; one values is used in all auto-fields
+                                 props inspector proc-spec immutables guard constructor-name)
       (var [super-field-count (if super-type (struct-type-descriptor-total-field-count super-type) 0)]
            [field-count       (+ init-field-count auto-field-count super-field-count)]
            [std               (make-struct-type-descriptor
                                name super-type
-                               init-field-count auto-field-count auto-values)]) ; unique
-      (values
-       ;; struct-type
-       std
-       ;; struct-constructor-procedure
-       ;; TODO TODO : handle super in constructor procedure
-       (λ () (var [args arguments]
-                  [n    arguments.length]      ; todo: check that n = field-count
-                  [a    (new Array (+ n 2))])
-         (:= a 0 STRUCT)
-         (:= a 1 std)
-         (for ([i in-range 0 n])
-           (:= a (+ i 2) (ref args i)))
-         a)
-       ;; struct-predicate-procedure
-       (λ (v)             (= v std))
-       ;; struct-accessor-procedure
-       (λ (s index)       (ref s (+ index 2)))
-       ;; struct-mutator-procedure
-       (λ (s index value) (:= s (+ index 2) value) VOID)))
+                               init-field-count auto-field-count 
+                               auto-field-value props inspector proc-spec immutables
+                               guard constructor-name)]) ; unique
+      (if super-type
+          (values
+           ;; struct-type
+           std
+           ;; struct-constructor-procedure
+           (λ () (var [args arguments]
+                      [n    arguments.length]      ; todo: check that n = field-count
+                      [a    (new Array (+ field-count 2))]) ; (+2 is tag and type descriptor)
+             (:= a 0 STRUCT)
+             (:= a 1 std)
+             ;; fill init-fields
+             (for ([i in-list (struct-type-descriptor-init-field-indices std)]
+                   [j in-range 0 n])
+               (:= a (+ i 2) (ref args j)))
+             ;; fill auto-fields
+             (for ([j in-list (struct-type-descriptor-auto-field-indices std)]
+                   [v in-list (struct-type-descriptor-auto-field-values  std)])
+               (:= a (+ j 2) v))
+             a)
+           ;; struct-predicate-procedure
+           (λ (v)             (= v std))
+           ;; struct-accessor-procedure
+           (λ (s index)       (ref s (+ index 2)))
+           ;; struct-mutator-procedure
+           (λ (s index value) (:= s (+ index 2) value) VOID))
+          ;; ----
+          ;; No super-type (easy case)      
+          (values
+           ;; struct-type
+           std
+           ;; struct-constructor-procedure
+           (λ () (var [args arguments]
+                      [n    arguments.length]      ; todo: check that n = field-count
+                      [a    (new Array (+ n 2))])
+             (:= a 0 STRUCT)
+             (:= a 1 std)
+             ;; fill init-fields
+             (for ([i in-range 0 n])
+               (:= a (+ i 2) (ref args i)))
+             ;; fill auto-fields
+             (for ([j in-range n (+ n auto-field-count)])
+               (:= a (+ j 2) auto-field-value))
+             ;; done
+             a)
+           ;; struct-predicate-procedure
+           (λ (v)             (= v std))
+           ;; struct-accessor-procedure
+           (λ (s index)       (ref s (+ index 2)))
+           ;; struct-mutator-procedure
+           (λ (s index value) (:= s (+ index 2) value) VOID))))
     
     ;;;
     ;;; 10. Control Flow
@@ -1182,17 +1245,19 @@
     (define (str-box v)     (+ "#&" (str (unbox v))))
     (define (str v)
       (cond
-        [(null? v)    (str-null)]
-        [(string? v)  (str-string v)]
-        [(number? v)  (str-number v)]
-        [(list? v)    (str-list v)]
-        [(pair? v)    (str-pair v)]
-        [(vector? v)  (str-vector v)]
-        [(boolean? v) (str-boolean v)]
-        [(symbol? v)  (str-symbol v)]
-        [(keyword? v) (str-keyword v)]
-        [(void? v)    (str-void v)]
-        [(box? v)     (str-box v)]
+        [(null? v)                   (str-null)]
+        [(string? v)                 (str-string v)]
+        [(number? v)                 (str-number v)]
+        [(list? v)                   (str-list v)]
+        [(pair? v)                   (str-pair v)]
+        [(vector? v)                 (str-vector v)]
+        [(boolean? v)                (str-boolean v)]
+        [(symbol? v)                 (str-symbol v)]
+        [(keyword? v)                (str-keyword v)]
+        [(void? v)                   (str-void v)]
+        [(box? v)                    (str-box v)]
+        [(struct-type-descriptor? v) (str-struct-type-descriptor v)]
+        [(struct? v)                 (str-struct v)]
         [#t           (console.log v)
                       "str - internal error"]))
 
@@ -1333,17 +1398,18 @@
     (define bar-sym (string->symbol "bar"))
     (let-values ([(struct_colon_foo foo foo? foo-ref foo-set!)
                   (make-struct-type foo-sym #f
-                                    2 0 #f (list) #f #f (list 0 1) #f foo-sym)])
+                                    2 2 "auto-foo" (list) #f #f (list 0 1) #f foo-sym)])
       (var [foo-a (λ (s) (foo-ref s 0))]
            [foo-b (λ (s) (foo-ref s 1))])
       (var [f (foo 11 12)])
       (str (list (foo-a f) (foo-b f)))
       (let-values ([(struct_colon_bar bar bar? bar-ref bar-set!)
                     (make-struct-type bar-sym struct_colon_foo
-                                      2 0 #f (list) #f #f (list 2 3) #f bar-sym)])
+                                      2 3 "auto-bar"(list) #f #f (list 112 113) #f bar-sym)])
         (var [g (bar 11 12 13 14)])
         (str (list (foo-a g)
                    (foo-b g)
-                   (bar-ref g 2)
-                   (bar-ref g 3)))))
+                   (bar-ref g 4)
+                   (bar-ref g 5)))
+        #;(str g)))
   )))
