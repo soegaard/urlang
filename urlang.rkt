@@ -1,4 +1,13 @@
 #lang racket
+; Note: the language L- is being introduced between L and L0.
+;       desugar rewrites L to L-
+;       annotate-module now has L- has input.
+
+;TODO : In the process of introducing Formal (φ) in Definition and Lambda.
+;       Done: introducing φ to definition. Handle the x case.
+;       TODO  Handle [x e] case.
+;       TODO  handle Lambda too.
+
 (provide urlang)
 ;; Parameters
 (provide current-urlang-output-file                      ; overrides module-name as output file
@@ -206,7 +215,7 @@
 ; <import>            ::= (import x ...)
 ; <definition>        ::= (define (f <formal> ...) <body>)
 ;                      |  (define x <expr>)
-; <formal>           ::= x | [x <expr>]
+; <formal>            ::= x | [x <expr>]
 
 ; <statement>         ::= <var-decl> | <block> | <while> | <do-while> | <if>
 ;                      |  <break> | <continue> | <label> | <sempty> | <expr>
@@ -433,9 +442,9 @@
   (Definition (δ)
     (define (f x ...) b)          ; function definition
     (define x e))                 ; variable definition
-  #;(Formal (φ) ; When Nanpass Issue #39 is fixed this will be used in Definition and (lambda ...)
-    x                             ; parameter name
-    (x e))                        ; parameter name and default value
+  #;(Formal (φ)
+      (formal x)                    ; parameter name
+      (formal x e))                 ; parameter name and default value
   (Body (b)
     (body σ ... e))
   (VarBinding (vb)
@@ -1093,22 +1102,45 @@
 ;;; DESUGARED URLANG
 ;;;
 
-#;(define-language L9 (extends L)
+;; Desugaring rewrites functions with optional arguments to
+;; functions without.
+
+#;(define-language L- (extends L)
   (Definition (δ)
-    (- (define x e))    
-    (+ (define x e))
     (- (define (f φ ...) b))
     (+ (define (f x ...) b))
+    ; (- (define x e))
+    ; (+ (define x e))
     )
   (Formal (φ)
-    (- x)
-    (- (x e))))
+    (- (formal x))
+    (- (formal x e))))
+
+#;(define-pass desugar : L (U) -> L- ()
+  (definitions)
+  (Definition : Definition (δ) ->  Definition ()
+    [(define (,f ,φ* ...) ,b)
+     (match #f (for/list ([φ φ*])
+                 (nanopass-case (L Formal) φ
+                   [(formal ,x)      (list x #f)]
+                   [(formal ,x ,e)   (list x (with-output-language (L- Statement)
+                                               `(sif (app = ,x (quote undefined))
+                                                     (:= ,x ,e)
+                                                     (empty))))]))
+       [(list (list x s) ...)
+        (let ([s (filter identity s)])
+          (nanopass-case (L Body) b
+            [(body ,σ ... ,e)
+             `(define (,f ,x ...)
+                (body ,s ...
+                      ,σ ...
+                      ,e))]))])]))
 
 ;;;
 ;;; URLANG ANNOTATED MODULE 
 ;;;
 
-(define-language L0 (extends L)
+(define-language L0 (extends L)  ; L-
   (terminals
    (- ((id (f x l)) . => . unparse-id))
    (+ ((id (f x l)) . => . unparse-id)))
@@ -1140,7 +1172,10 @@
     (+ (annotated-body (x ...) σ ... e)))
   (Definition (δ)
     (- (define (f x ...) b))
-    (+ (define (f x ...) ab)))
+    (+ (define (f x ...) ab))
+    ;(- (define (f φ ...) b))
+    ;(+ (define (f φ ...) ab))
+    )
   (Expr (e)
     (- (let ((x e) ...) b))
     (+ (let ((x e) ...) ab))
@@ -1443,9 +1478,14 @@
   (Definition : Definition (δ) -> * ()
     [(define ,x ,e)            (let ([e (Expr e)])
                                  (~Statement `(var ,x "=" ,e)))]
-    [(define (,f ,x ...) ,ab) (let ((ab (AnnotatedBody ab)))
-                                (~Statement `(function ,f ,(~parens (~commas x))
-                                                       ,ab)))])
+    [(define (,f ,x ...) ,ab)  (let ()
+                                 #;(define (formal->x φ)
+                                     (nanopass-case (L1 Formal) φ
+                                       [,x x] [(,x ,e) x]))
+                                 (let ((ab (AnnotatedBody ab))
+                                       #;[x  (map formal->x φ)])
+                                   (~Statement `(function ,f ,(~parens (~commas x))
+                                                          ,ab))))])
   (CatchFinally : CatchFinally (cf) -> * ()
     [(catch ,x ,σ ...)                      (let ([σ (map Statement σ)])
                                               (list "catch" (~parens x) (~braces σ)))]
