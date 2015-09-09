@@ -1,8 +1,4 @@
 #lang racket
-; Note: the language L- is being introduced between L and L0.
-;       desugar rewrites L to L-
-;       annotate-module now has L- has input.
-
 ;TODO : In the process of introducing Formal (φ) in Definition and Lambda.
 ;       Done: introducing φ to definition. Handle the x case.
 ;       TODO  Handle [x e] case.
@@ -24,7 +20,8 @@
          eval)    ; syntax -> string    compiles, saves, runs - output returned as string
 ;; Compiler Phases
 (provide parse            ; syntax -> L      parse and expand syntax object into L
-         annotate-module  ; L      -> L0     annotate module with exports, imports, funs and vars 
+         desugar          ; L      -> L-     remove optional arguments
+         annotate-module  ; L-     -> L0     annotate module with exports, imports, funs and vars 
          annotate-bodies  ; L0     -> L1     annotate bodies with local variables
          α-rename         ; L1     -> L1     make all variable names unique
          generate-code    ; L1     -> tree   make tree of JavaScript
@@ -43,8 +40,8 @@
          ;; Statements         
          Block If While DoWhile)
 ;; Languages
-(provide L L0 L1
-         unparse-L unparse-L0 unparse-L1)
+(provide L L- L0 L1
+         unparse-L unparse-L- unparse-L0 unparse-L1)
 
 ;;;
 ;;; IDEAS
@@ -439,12 +436,15 @@
     (export x ...)
     (import x ...)
     δ σ)
-  (Definition (δ)
+  #;(Definition (δ)
     (define (f x ...) b)          ; function definition
     (define x e))                 ; variable definition
-  #;(Formal (φ)
-      (formal x)                    ; parameter name
-      (formal x e))                 ; parameter name and default value
+  (Definition (δ)
+    (define (f φ ...) b)          ; function definition
+    (define x e))
+  (Formal (φ)
+    x                      ; parameter name
+    [x e])                 ; parameter name and default value
   (Body (b)
     (body σ ... e))
   (VarBinding (vb)
@@ -1105,7 +1105,7 @@
 ;; Desugaring rewrites functions with optional arguments to
 ;; functions without.
 
-#;(define-language L- (extends L)
+(define-language L- (extends L)
   (Definition (δ)
     (- (define (f φ ...) b))
     (+ (define (f x ...) b))
@@ -1113,20 +1113,21 @@
     ; (+ (define x e))
     )
   (Formal (φ)
-    (- (formal x))
-    (- (formal x e))))
+    (- x)
+    (- [x e])))
 
-#;(define-pass desugar : L (U) -> L- ()
+(define-pass desugar : L (U) -> L- ()
   (definitions)
+  (Expr : Expr (e) ->  Expr ())
   (Definition : Definition (δ) ->  Definition ()
     [(define (,f ,φ* ...) ,b)
-     (match #f (for/list ([φ φ*])
-                 (nanopass-case (L Formal) φ
-                   [(formal ,x)      (list x #f)]
-                   [(formal ,x ,e)   (list x (with-output-language (L- Statement)
-                                               `(sif (app = ,x (quote undefined))
-                                                     (:= ,x ,e)
-                                                     (empty))))]))
+     (match (for/list ([phi (in-list φ*)])
+              (nanopass-case (L Formal) phi
+                [,x      (list x #f)]
+                [[,x ,e] (list x (with-output-language (L- Statement)
+                                   `(sif (app = ,x (quote undefined))
+                                         (:= ,x ,(Expr e))
+                                         (empty))))]))
        [(list (list x s) ...)
         (let ([s (filter identity s)])
           (nanopass-case (L Body) b
@@ -1134,13 +1135,13 @@
              `(define (,f ,x ...)
                 (body ,s ...
                       ,σ ...
-                      ,e))]))])]))
+                      ,(Expr e)))]))])]))
 
 ;;;
 ;;; URLANG ANNOTATED MODULE 
 ;;;
 
-(define-language L0 (extends L)  ; L-
+(define-language L0 (extends L-)  ; L-
   (terminals
    (- ((id (f x l)) . => . unparse-id))
    (+ ((id (f x l)) . => . unparse-id)))
@@ -1200,7 +1201,7 @@
 ;;   * checks that there are no duplicate function names
 ;;   * checks that all exports are defined as functions
 
-(define-pass annotate-module : L (U) -> L0 ()
+(define-pass annotate-module : L- (U) -> L0 ()
   (definitions
     (define-free-table  export)
     (define-free-table  import)
@@ -1674,7 +1675,8 @@
      (α-rename
       (annotate-bodies
        (annotate-module
-        (parse u))))))
+        (desugar
+         (parse u)))))))
   (if emit? (emit t) t))
 
 (define (expand u)
@@ -1685,7 +1687,8 @@
    (α-rename
     (annotate-bodies
      (annotate-module
-      (parse u))))))
+      (desugar
+       (parse u)))))))
 
 ;;;
 ;;; EMIT
