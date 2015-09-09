@@ -1,9 +1,4 @@
 #lang racket
-;TODO : In the process of introducing Formal (φ) in Definition and Lambda.
-;       Done: introducing φ to definition. Handle the x case.
-;       TODO  Handle [x e] case.
-;       TODO  handle Lambda too.
-
 (provide urlang)
 ;; Parameters
 (provide current-urlang-output-file                      ; overrides module-name as output file
@@ -914,10 +909,20 @@
       [(define (f:Id φ:Formal ...) . b)
        (let ((x (attribute φ.x)))                                           ; all parameters
          (with-syntax ([((x0 e0) ...) (filter identity (attribute φ.xe))])  ; parameters with defaults
-           (with-syntax ([(σ0 ...) #'((sif (= x0 undefined) (:= x0 e0) (block)) ...)])
+           (with-syntax ([(σ0 ...)
+                          #'()
+                          ; #'((sif (= x0 undefined) (:= x0 e0) (block)) ...)
+                          ])
              (with-syntax ([(σ ... en) #'b])
-               (let ((b (parse-body #'(σ0 ... σ ... en))))
-                 `(define (,#'f ,x ...) ,b))))))])))
+               (let ([b (parse-body #'(σ0 ... σ ... en))]
+                     [φ (stx-map parse-formal #'(φ ...))])
+                 `(define (,#'f ,φ ...) ,b))))))])))
+
+(define (parse-formal φ)
+  (with-output-language (L Formal)
+    (syntax-parse φ
+      [x:Id      `,#'x]
+      [[x:Id e]  `[,#'x ,(parse-expr #'e)]])))
 
 (define (parse-lambda d)
   (debug (list 'parse-lambda (syntax->datum d)))
@@ -1127,7 +1132,7 @@
                 [,x      (list x #f)]
                 [[,x ,e] (list x (with-output-language (L- Statement)
                                    (let ([e (Expr e)])
-                                     `(sif (app = ,x (quote undefined))
+                                     `(sif (app ,#'= ,x ,#'undefined)
                                            (:= ,x ,e)
                                            (empty)))))]))
        [(list (list x s) ...)
@@ -1800,3 +1805,6 @@
            (when (current-urlang-run?)
              (node/break path)))
          ...))]))
+
+
+(urlang (urmodule t22 (define (add x [y 1]) (+ x y)) (add 3)))
