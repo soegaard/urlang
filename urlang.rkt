@@ -1118,24 +1118,27 @@
 
 (define-pass desugar : L (U) -> L- ()
   (definitions)
-  (Expr : Expr (e) ->  Expr ())
+  (Expr       : Expr       (e) ->  Expr ())
+  (Statement  : Statement  (σ) ->  Statement ())
   (Definition : Definition (δ) ->  Definition ()
     [(define (,f ,φ* ...) ,b)
      (match (for/list ([phi (in-list φ*)])
               (nanopass-case (L Formal) phi
                 [,x      (list x #f)]
                 [[,x ,e] (list x (with-output-language (L- Statement)
-                                   `(sif (app = ,x (quote undefined))
-                                         (:= ,x ,(Expr e))
-                                         (empty))))]))
+                                   (let ([e (Expr e)])
+                                     `(sif (app = ,x (quote undefined))
+                                           (:= ,x ,e)
+                                           (empty)))))]))
        [(list (list x s) ...)
         (let ([s (filter identity s)])
           (nanopass-case (L Body) b
             [(body ,σ ... ,e)
-             `(define (,f ,x ...)
-                (body ,s ...
-                      ,σ ...
-                      ,(Expr e)))]))])]))
+             (let ([σ (map Statement σ)] [e (Expr e)])
+               `(define (,f ,x ...)
+                  (body ,s ...
+                        ,σ ...
+                        ,e)))]))])]))
 
 ;;;
 ;;; URLANG ANNOTATED MODULE 
