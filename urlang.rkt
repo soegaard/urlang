@@ -35,8 +35,8 @@
          ;; Statements         
          Block If While DoWhile)
 ;; Languages
-(provide L L- L0 L1
-         unparse-L unparse-L- unparse-L0 unparse-L1)
+(provide Lur L- L0 L1
+         unparse-Lur unparse-L- unparse-L0 unparse-L1)
 
 ;;;
 ;;; IDEAS
@@ -415,7 +415,7 @@
 ;;; URLANG AS NANOPASS LANGUAGE
 ;;;
 
-(define-language L 
+(define-language Lur
   (entry Module)
   (terminals
    ((id          (f x l)) . => . unparse-id)
@@ -689,7 +689,7 @@
   (parse-urmodule stx))
 
 (define (parse-urmodule u)
-  (with-output-language (L Module)
+  (with-output-language (Lur Module)
     (syntax-parse u
       #:literal-sets (keywords)
       [(urmodule mn:ModuleName m ...)
@@ -698,7 +698,7 @@
          `(urmodule ,mn ,m ...))])))
 
 (define (parse-export ex)
-  (with-output-language (L ModuleLevelForm)
+  (with-output-language (Lur ModuleLevelForm)
     (syntax-parse ex
       #:literal-sets (keywords)
       [(export x:Id ...)
@@ -706,7 +706,7 @@
          `(export ,x ...))])))
 
 (define (parse-import im)
-  (with-output-language (L ModuleLevelForm)
+  (with-output-language (Lur ModuleLevelForm)
     (syntax-parse im
       #:literal-sets (keywords)
       [(import x:Id ...)
@@ -716,7 +716,7 @@
 (define (parse-module-level-form m)
   (debug (list 'parse-module-level-form (syntax->datum m)))
   (parameterize ([macro-expansion-context 'module-level])
-    (with-output-language (L ModuleLevelForm)
+    (with-output-language (Lur ModuleLevelForm)
       (syntax-parse m
         #:literal-sets (keywords)
         [ma:MacroApplication    (parse-module-level-form (parse-macro-application #'ma))]
@@ -728,7 +728,7 @@
 (define (parse-statement σ [context-parse parse-statement] [parent-context 'statement])
   (debug (list 'parse-statement (syntax->datum σ)))
   (parameterize ([macro-expansion-context 'statement])
-    (with-output-language (L Statement)
+    (with-output-language (Lur Statement)
       (syntax-parse σ
         #:literal-sets (keywords)
         [ma:MacroApplication      (define expansion (parse-macro-application #'ma))
@@ -753,19 +753,19 @@
   ;                      |  (try <block> <finally>)
   ;                      |  (try <block> <catch> <finally>)
   (debug (list 'parse-try (syntax->datum tr)))
-  (with-output-language (L Statement)
+  (with-output-language (Lur Statement)
     (syntax-parse tr
       #:literal-sets (keywords)
       [(try (σ ...)
             (catch x:Id cσ ...))   (let* ([σ  (map parse-statement (syntax->list #'( σ ...)))]
                                           [cσ (map parse-statement (syntax->list #'(cσ ...)))]
-                                          [c  (with-output-language (L CatchFinally)
+                                          [c  (with-output-language (Lur CatchFinally)
                                                 `(catch ,#'x ,cσ ...))])
                                      `(try (,σ ...) ,c))]
       [(try (σ ...)
             (finally fσ ...))    (let* ([σ  (map parse-statement (syntax->list #'( σ ...)))]
                                         [fσ (map parse-statement (syntax->list #'(fσ ...)))]
-                                        [f  (with-output-language (L CatchFinally)
+                                        [f  (with-output-language (Lur CatchFinally)
                                               `(finally ,fσ ...))])
                                    `(try (,σ ...) ,f))]
       [(try (σ ...)
@@ -773,13 +773,13 @@
             (finally fσ ...))    (let* ([σ  (map parse-statement (syntax->list #'( σ ...)))]
                                         [cσ (map parse-statement (syntax->list #'(cσ ...)))]
                                         [fσ (map parse-statement (syntax->list #'(fσ ...)))]
-                                        [cf (with-output-language (L CatchFinally)
+                                        [cf (with-output-language (Lur CatchFinally)
                                               `(catch-finally ,#'x (,cσ ...) (,fσ ...)))])
                                    `(try (,σ ...) ,cf))])))
 
 (define (parse-throw th)
   (debug (list 'parse-throw (syntax->datum th)))
-  (with-output-language (L Statement)
+  (with-output-language (Lur Statement)
     (syntax-parse th
       #:literal-sets (keywords)
       [(throw e) (let ([e (parse-expr #'e)])
@@ -788,7 +788,7 @@
 (define (parse-empty se)
   ; the empty statement
   (debug (list 'parse-empty (syntax->datum se)))
-  (with-output-language (L Statement)
+  (with-output-language (Lur Statement)
     (syntax-parse se
       #:literal-sets (keywords)
       [(sempty) `(empty)])))
@@ -797,7 +797,7 @@
 
 (define (parse-continue c)
   (debug (list 'parse-continue (syntax->datum c)))
-  (with-output-language (L Statement)
+  (with-output-language (Lur Statement)
     (syntax-parse c
       #:literal-sets (keywords)
       [(continue)       `(continue)]
@@ -805,7 +805,7 @@
 
 (define (parse-label la)
   (debug (list 'parse-label (syntax->datum la)))
-  (with-output-language (L Statement)
+  (with-output-language (Lur Statement)
     (syntax-parse la
       #:literal-sets (keywords)
       [(label x:Id σ) (let ([σ (parse-statement #'σ)])
@@ -813,7 +813,7 @@
 
 (define (parse-break b)
   (debug (list 'parse-break (syntax->datum b)))
-  (with-output-language (L Statement)
+  (with-output-language (Lur Statement)
     (syntax-parse b
       #:literal-sets (keywords)
       [(break)       `(break)]
@@ -830,7 +830,7 @@
 
 (define (parse-if i)
   (debug (list 'parse-if (syntax->datum i)))
-  (with-output-language (L Statement)
+  (with-output-language (Lur Statement)
     (syntax-parse i
       #:literal-sets (keywords)
       [(sif e σ1 σ2)
@@ -841,7 +841,7 @@
 
 (define (parse-let l)
   (debug (list 'parse-let (syntax->datum l)))
-  (with-output-language (L Expr)
+  (with-output-language (Lur Expr)
     (syntax-parse l
       #:literal-sets (keywords)
       [(let ((x:Id e) ...) . body)
@@ -852,7 +852,7 @@
 
 (define (parse-block β)
   (debug (list 'parse-block (syntax->datum β)))
-  (with-output-language (L Statement)
+  (with-output-language (Lur Statement)
     (syntax-parse β
       #:literal-sets (keywords)
       [(block σ ...)
@@ -861,7 +861,7 @@
 
 (define (parse-var-decl v)
   (debug (list 'parse-var-decl (syntax->datum v)))
-  (with-output-language (L Statement)
+  (with-output-language (Lur Statement)
     (syntax-parse v
       #:literal-sets (keywords)
       [(var vb:VarBinding ...)
@@ -869,7 +869,7 @@
          `(var ,vb ...))])))
 
 (define (parse-var-binding vb)
-  (with-output-language (L VarBinding)
+  (with-output-language (Lur VarBinding)
     (syntax-parse vb
       #:literal-sets (keywords)
       [x:Id     #'x]
@@ -877,7 +877,7 @@
 
 (define (parse-while w)
   (debug (list 'parse-while (syntax->datum w)))
-  (with-output-language (L Statement)
+  (with-output-language (Lur Statement)
     (syntax-parse w
       #:literal-sets (keywords)
       [(while e σ ...)
@@ -887,7 +887,7 @@
 
 (define (parse-do-while dw)
   (debug (list 'parse-do-while (syntax->datum dw)))
-  (with-output-language (L Statement)
+  (with-output-language (Lur Statement)
     (syntax-parse dw
       #:literal-sets (keywords)
       [(do-while e σ ...)
@@ -897,7 +897,7 @@
 
 (define (parse-definition d)
   (debug (list 'parse-definition (syntax->datum d)))
-  (with-output-language (L Definition)
+  (with-output-language (Lur Definition)
     (syntax-parse d
       #:literal-sets (keywords)
       [(define x:Id e)
@@ -913,7 +913,7 @@
 
 (define (parse-lambda d)
   (debug (list 'parse-lambda (syntax->datum d)))
-  (with-output-language (L Expr)
+  (with-output-language (Lur Expr)
     (syntax-parse d
       #:literal-sets (keywords)
       [(_lambda (φ:Formal ...) . b)
@@ -925,7 +925,7 @@
                `(lambda (,φ ...) ,b)))))])))
 
 (define (parse-formal φ)
-  (with-output-language (L Formal)
+  (with-output-language (Lur Formal)
     (syntax-parse φ
       [x:Id      `,#'x]
       [[x:Id e]  `[,#'x ,(parse-expr #'e)]])))
@@ -934,7 +934,7 @@
       
 (define (parse-body b)
   (debug (list 'parse-body (syntax->datum b)))
-  (with-output-language (L Body)
+  (with-output-language (Lur Body)
     (syntax-parse b
       #:literal-sets (keywords)
       [(σ ... e)
@@ -965,7 +965,7 @@
 
 (define (parse-object o)
   (debug (list 'parse-object (syntax->datum o)))
-  (with-output-language (L Expr)
+  (with-output-language (Lur Expr)
     (syntax-parse o
       #:literal-sets (keywords)
       [(object [pn:PropertyName e] ...)
@@ -977,7 +977,7 @@
 
 (define (parse-application a)
   (debug (list 'parse-application (syntax->datum a)))
-  (with-output-language (L Expr)
+  (with-output-language (Lur Expr)
     (syntax-parse a
       #:literal-sets (keywords)
       [(~and (e0 e ...) (~not ma:MacroApplication))
@@ -987,7 +987,7 @@
 
 (define (parse-reference r)
   (debug (list 'parse-reference (syntax->datum r)))
-  (with-output-language (L Expr)
+  (with-output-language (Lur Expr)
     (syntax-parse r
       #:literal-sets (keywords)
       [x:Id
@@ -996,14 +996,14 @@
          [(list y.p y p)
           ; object.property becomes object["property"]
           (let ([y (format-id #'x y #:source #'x)])
-            (with-output-language (L Expr)
+            (with-output-language (Lur Expr)
               (let ([e (parse-reference y)]
                     [p (parse-datum p)])
                 `(app ,#'ref ,e ,p))))])])))
 
 (define (parse-sequence a)
   (debug (list 'parse-sequence (syntax->datum a)))
-  (with-output-language (L Expr)
+  (with-output-language (Lur Expr)
     (syntax-parse a
       #:literal-sets (keywords)
       [(begin e0)       (parse-expr #'e0)]
@@ -1013,7 +1013,7 @@
 
 (define (parse-assignment a)
   (debug (list 'parse-assignment (syntax->datum a)))
-  (with-output-language (L Expr)
+  (with-output-language (Lur Expr)
     (syntax-parse a
       #:literal-sets (keywords)
       [(:= x:Id e)
@@ -1026,7 +1026,7 @@
 
 (define (parse-ternary t)
   (debug (list 'parse-ternary (syntax->datum t)))
-  (with-output-language (L Expr)
+  (with-output-language (Lur Expr)
     (syntax-parse t
       #:literal-sets (keywords)
       [(if e0 e1 e2)
@@ -1036,7 +1036,7 @@
          `(if ,e0 ,e1 ,e2))])))
 
 (define (parse-datum d)
-  (with-output-language (L Expr)
+  (with-output-language (Lur Expr)
     (syntax-parse d
       #:literal-sets (keywords)
       [f:Fixnum  `(quote ,(parse-fixnum  #'f))]
@@ -1105,7 +1105,7 @@
 ;; Desugaring rewrites functions with optional arguments to
 ;; functions without.
 
-(define-language L- (extends L)
+(define-language L- (extends Lur)
   (Formal (φ)
     (- x)
     (- [x e]))
@@ -1120,10 +1120,10 @@
     (+ (lambda (x ...) b))))
 
 
-(define-pass desugar : L (U) -> L- ()
+(define-pass desugar : Lur (U) -> L- ()
   (definitions
     (define (L-formal->id+expr φ Expr)
-      (nanopass-case (L Formal) φ
+      (nanopass-case (Lur Formal) φ
         [,x      (list x #f)]
         [[,x ,e] (list x (with-output-language (L- Statement)
                            (let ([e (Expr e)])
@@ -1137,7 +1137,7 @@
               (L-formal->id+expr φ Expr))
        [(list (list x s) ...)
         (let ([s (filter identity s)])
-          (nanopass-case (L Body) b
+          (nanopass-case (Lur Body) b
             [(body ,σ ... ,e)
              (let ([σ (map Statement σ)] [e (Expr e)])
                `(lambda (,x ...)
@@ -1150,7 +1150,7 @@
               (L-formal->id+expr φ Expr))
        [(list (list x s) ...)
         (let ([s (filter identity s)])
-          (nanopass-case (L Body) b
+          (nanopass-case (Lur Body) b
             [(body ,σ ... ,e)
              (let ([σ (map Statement σ)] [e (Expr e)])
                `(define (,f ,x ...)
@@ -1701,7 +1701,7 @@
   (if emit? (emit t) t))
 
 (define (expand u)
-  (unparse-L (parse u)))
+  (unparse-Lur (parse u)))
 
 (define (expand+ u)
   (unparse-L1
