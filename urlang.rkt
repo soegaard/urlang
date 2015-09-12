@@ -431,9 +431,6 @@
     (export x ...)
     (import x ...)
     δ σ)
-  #;(Definition (δ)
-    (define (f x ...) b)          ; function definition
-    (define x e))                 ; variable definition
   (Definition (δ)
     (define (f φ ...) b)          ; function definition
     (define x e))
@@ -472,7 +469,7 @@
     (begin e ...)                 ; sequence
     (if e0 e1 e2)                 ; ternary
     (let ((x e) ...) b)           ; local binding
-    (lambda (x ...) b)            ; anonymous function
+    (lambda (φ ...) b)            ; anonymous function
     (quote d)                     ; quotation (the parser quotes all datums)
     (object (pn e) ...)))         ; object literal
 
@@ -909,20 +906,10 @@
       [(define (f:Id φ:Formal ...) . b)
        (let ((x (attribute φ.x)))                                           ; all parameters
          (with-syntax ([((x0 e0) ...) (filter identity (attribute φ.xe))])  ; parameters with defaults
-           (with-syntax ([(σ0 ...)
-                          #'()
-                          ; #'((sif (= x0 undefined) (:= x0 e0) (block)) ...)
-                          ])
-             (with-syntax ([(σ ... en) #'b])
-               (let ([b (parse-body #'(σ0 ... σ ... en))]
-                     [φ (stx-map parse-formal #'(φ ...))])
-                 `(define (,#'f ,φ ...) ,b))))))])))
-
-(define (parse-formal φ)
-  (with-output-language (L Formal)
-    (syntax-parse φ
-      [x:Id      `,#'x]
-      [[x:Id e]  `[,#'x ,(parse-expr #'e)]])))
+           (with-syntax ([(σ ... en) #'b])
+             (let ([b (parse-body #'(σ ... en))]
+                   [φ (stx-map parse-formal #'(φ ...))])
+               `(define (,#'f ,φ ...) ,b)))))])))
 
 (define (parse-lambda d)
   (debug (list 'parse-lambda (syntax->datum d)))
@@ -932,10 +919,18 @@
       [(_lambda (φ:Formal ...) . b)
        (let ((x (attribute φ.x)))                                           ; all parameters
          (with-syntax ([((x0 e0) ...) (filter identity (attribute φ.xe))])  ; parameters with defaults
-           (with-syntax ([(σ0 ...) #'((sif (= x0 undefined) (:= x0 e0) (block)) ...)])
-             (with-syntax ([(σ ... en) #'b])
-               (let ((b (parse-body #'(σ0 ... σ ... en))))
-                 `(lambda (,x ...) ,b))))))])))
+           (with-syntax ([(σ ... en) #'b])
+             (let ([b (parse-body #'(σ ... en))]
+                   [φ (stx-map parse-formal #'(φ ...))])
+               `(lambda (,φ ...) ,b)))))])))
+
+(define (parse-formal φ)
+  (with-output-language (L Formal)
+    (syntax-parse φ
+      [x:Id      `,#'x]
+      [[x:Id e]  `[,#'x ,(parse-expr #'e)]])))
+
+
       
 (define (parse-body b)
   (debug (list 'parse-body (syntax->datum b)))
@@ -1111,30 +1106,48 @@
 ;; functions without.
 
 (define-language L- (extends L)
+  (Formal (φ)
+    (- x)
+    (- [x e]))
   (Definition (δ)
     (- (define (f φ ...) b))
     (+ (define (f x ...) b))
     ; (- (define x e))
     ; (+ (define x e))
     )
-  (Formal (φ)
-    (- x)
-    (- [x e])))
+  (Expr (e)
+    (- (lambda (φ ...) b))
+    (+ (lambda (x ...) b))))
+
 
 (define-pass desugar : L (U) -> L- ()
-  (definitions)
-  (Expr       : Expr       (e) ->  Expr ())
-  (Statement  : Statement  (σ) ->  Statement ())
+  (definitions
+    (define (L-formal->id+expr φ Expr)
+      (nanopass-case (L Formal) φ
+        [,x      (list x #f)]
+        [[,x ,e] (list x (with-output-language (L- Statement)
+                           (let ([e (Expr e)])
+                             `(sif (app ,#'= ,x ,#'undefined)
+                                   (:= ,x ,e)
+                                   (empty)))))])))
+  (Statement  : Statement  (σ) ->  Statement ())  
+  (Expr       : Expr       (e) ->  Expr ()
+    [(lambda (,φ* ...) ,b)
+     (match (for/list ([φ (in-list φ*)])
+              (L-formal->id+expr φ Expr))
+       [(list (list x s) ...)
+        (let ([s (filter identity s)])
+          (nanopass-case (L Body) b
+            [(body ,σ ... ,e)
+             (let ([σ (map Statement σ)] [e (Expr e)])
+               `(lambda (,x ...)
+                  (body ,s ...
+                        ,σ ...
+                        ,e)))]))])])
   (Definition : Definition (δ) ->  Definition ()
     [(define (,f ,φ* ...) ,b)
-     (match (for/list ([phi (in-list φ*)])
-              (nanopass-case (L Formal) phi
-                [,x      (list x #f)]
-                [[,x ,e] (list x (with-output-language (L- Statement)
-                                   (let ([e (Expr e)])
-                                     `(sif (app ,#'= ,x ,#'undefined)
-                                           (:= ,x ,e)
-                                           (empty)))))]))
+     (match (for/list ([φ (in-list φ*)])
+              (L-formal->id+expr φ Expr))
        [(list (list x s) ...)
         (let ([s (filter identity s)])
           (nanopass-case (L Body) b
@@ -1805,6 +1818,3 @@
            (when (current-urlang-run?)
              (node/break path)))
          ...))]))
-
-
-(urlang (urmodule t22 (define (add x [y 1]) (+ x y)) (add 3)))
