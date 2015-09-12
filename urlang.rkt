@@ -11,8 +11,9 @@
          object label lambda λ let sempty sif throw try urmodule var while :=)
 (provide bit-and bit-not bit-or bit-xor ===)
 ;; Compiler 
-(provide compile  ; syntax -> *         prints JavaScript
-         eval)    ; syntax -> string    compiles, saves, runs - output returned as string
+(provide compile          ; syntax -> *         prints JavaScript
+         eval)            ; syntax -> string    compiles, saves, runs
+;                                                                - output returned as string
 ;; Compiler Phases
 (provide parse            ; syntax -> L      parse and expand syntax object into L
          desugar          ; L      -> L-     remove optional arguments
@@ -35,7 +36,7 @@
          ;; Statements         
          Block If While DoWhile)
 ;; Languages
-(provide Lur L- L0 L1
+(provide         Lur         L-         L0         L1
          unparse-Lur unparse-L- unparse-L0 unparse-L1)
 
 ;;;
@@ -1690,14 +1691,16 @@
 ;;;
 ;;; 
 
-(define (compile u [emit? #t])
+(define (compile u [emit? #t])  
   (define t
     (generate-code
      (α-rename
       (annotate-bodies
        (annotate-module
         (desugar
-         (parse u)))))))
+         (if (syntax? u)
+             (parse u)
+             u)))))))
   (if emit? (emit t) t))
 
 (define (expand u)
