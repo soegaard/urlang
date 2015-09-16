@@ -4,11 +4,12 @@
 (provide current-urlang-output-file                      ; overrides module-name as output file
          current-urlang-run?                             ; run after compilation
          current-urlang-echo?                            ; echo JavaScript after compilation
-         current-urlang-console.log-module-level-expr?)  ; call console.log on each module-level expr?
+         current-urlang-console.log-module-level-expr?   ; call console.log on each module-level expr?
+         current-urlang-delete-tmp-file?)
 
 ;; Keywords
-(provide begin block break catch continue define do-while export finally if import
-         object label lambda λ let sempty sif throw try urmodule var while :=)
+(provide array begin block break catch continue define do-while export finally if import
+         object label lambda λ let ref sempty sif throw topblock try urmodule var while :=)
 (provide bit-and bit-not bit-or bit-xor ===)
 ;; Compiler 
 (provide compile          ; syntax -> *         prints JavaScript
@@ -16,6 +17,7 @@
 ;                                                                - output returned as string
 ;; Compiler Phases
 (provide parse            ; syntax -> L      parse and expand syntax object into L
+
          desugar          ; L      -> L-     remove optional arguments
          annotate-module  ; L-     -> L0     annotate module with exports, imports, funs and vars 
          annotate-bodies  ; L0     -> L1     annotate bodies with local variables
@@ -203,9 +205,10 @@
 
 ; <module>            ::= (urmodule <module-name> <module-path> <module-level-form> ...)
 
-; <module-level-form> ::= <export> | <import> | <definition> | <statement> 
+; <module-level-form> ::= <export> | <import> | <definition> | <statement> | <topblock>
 ; <export>            ::= (export x ...)
 ; <import>            ::= (import x ...)
+; <topblock>          ::= (topblock <module-level-form> ...)
 ; <definition>        ::= (define (f <formal> ...) <body>)
 ;                      |  (define x <expr>)
 ; <formal>            ::= x | [x <expr>]
@@ -233,6 +236,7 @@
 
 ; <expr>              ::= <datum>   | <reference> | <application> | <sequence>
 ;                      |  <ternary> | <assignment> | <let> | <lambda> | <dot> | <object>
+;                      |  <array-reference> | <array>
 ; <ternary>           ::= (if <expr> <expr> <expr>)
 ; <reference>         ::= x
 ; <application>       ::= (<expr> <expr> ...)
@@ -240,6 +244,8 @@
 ; <assignment>        ::= (:= x <expr>) | (:= x <expr> <expr>)
 ; <let>               ::= (let ((x <expr>) ...) <statement> ... <expr>)
 ; <lambda>            ::= (lambda (<formal> ...) <body>)
+; <array-reference>   ::= (ref <expr> <expr> <expr> ...)
+; <array>             ::= (array <expr> ...)
 ; <object>            ::= (object (<property-name> <expr>) ...)
 ; <property-name>     ::= x | <string> | <number>
 
@@ -260,7 +266,6 @@
 ;;; NOTES
 ;;;
 
-; Some application are special cases:
 ;    (ref e0 e1)     becomes  e0[e1]
 ;    (ref e0 "str")  becomes  e0.str    
 ;    (array e ...)   becomes  [e,...]
@@ -360,6 +365,7 @@
 ;;; KEYWORDS
 ;;;
 
+(define-syntax array       (λ (stx) (raise-syntax-error 'array       "used out of context" stx)))
 (define-syntax block       (λ (stx) (raise-syntax-error 'block       "used out of context" stx)))
 (define-syntax break       (λ (stx) (raise-syntax-error 'break       "used out of context" stx)))
 (define-syntax catch       (λ (stx) (raise-syntax-error 'catch       "used out of context" stx)))
@@ -370,9 +376,11 @@
 (define-syntax import      (λ (stx) (raise-syntax-error 'import      "used out of context" stx)))
 (define-syntax label       (λ (stx) (raise-syntax-error 'label       "used out of context" stx)))
 (define-syntax object      (λ (stx) (raise-syntax-error 'object      "used out of context" stx)))
+(define-syntax ref         (λ (stx) (raise-syntax-error 'ref         "used out of context" stx)))
 (define-syntax sempty      (λ (stx) (raise-syntax-error 'sempty      "used out of context" stx)))
 (define-syntax sif         (λ (stx) (raise-syntax-error 'sif         "used out of context" stx)))
 (define-syntax throw       (λ (stx) (raise-syntax-error 'throw       "used out of context" stx)))
+(define-syntax topblock    (λ (stx) (raise-syntax-error 'topblock    "used out of context" stx)))
 (define-syntax try         (λ (stx) (raise-syntax-error 'try         "used out of context" stx)))
 (define-syntax urmodule    (λ (stx) (raise-syntax-error 'urmodule    "used out of context" stx)))
 (define-syntax var         (λ (stx) (raise-syntax-error 'var         "used out of context" stx)))
@@ -380,9 +388,9 @@
 (define-syntax :=          (λ (stx) (raise-syntax-error ':=          "used out of context" stx)))
 
 ; Note: Rememember to provide all keywords
-(define-literal-set keywords (begin block break catch continue define do-while export finally
+(define-literal-set keywords (array begin block break catch continue define do-while export finally
                                     if import object label lambda λ let
-                                    sempty sif throw try urmodule var while :=))
+                                    ref sempty sif throw topblock try urmodule var while :=))
 (define keyword? (literal-set->predicate keywords))
 
 
@@ -431,6 +439,7 @@
   (ModuleLevelForm (m)
     (export x ...)
     (import x ...)
+    (topblock m ...)
     δ σ)
   (Definition (δ)
     (define (f φ ...) b)          ; function definition
@@ -472,6 +481,8 @@
     (let ((x e) ...) b)           ; local binding
     (lambda (φ ...) b)            ; anonymous function
     (quote d)                     ; quotation (the parser quotes all datums)
+    (ref e0 e1 e* ...)            ; reference to array index
+    (array e ...)                 ; array constructor
     (object (pn e) ...)))         ; object literal
 
 
@@ -523,6 +534,14 @@
 
 (define-syntax-class Application
   (pattern (e0:Expr e:Expr ...)))
+
+(define-syntax-class ArrayReference
+  #:literal-sets (keywords)
+  (pattern (ref e0:Expr e1:Expr e:Expr ...)))
+
+(define-syntax-class Array
+  #:literal-sets (keywords)
+  (pattern (array e:Expr ...)))
 
 (define-syntax-class MacroApplication
   #:literal-sets (keywords)
@@ -624,6 +643,8 @@
                 e:Assignment
                 e:Let
                 el:Lambda
+                e:ArrayReference
+                e:Array
                 e:Object)))
 
 (define-syntax-class Object
@@ -638,11 +659,16 @@
   #:literal-sets (keywords)
   (pattern (import x:Id ...)))
 
+(define-syntax-class TopBlock
+  #:literal-sets (keywords)
+  (pattern (topblock mlf:ModuleLevelForm ...)))
+
 (define-syntax-class ModuleLevelForm
   (pattern (~or ex:Export
                 im:Import
                 m:Definition
-                m:Statement)))
+                m:Statement
+                m:TopBlock)))
 
 (define-syntax-class Module
   #:literal-sets (keywords)
@@ -714,17 +740,26 @@
        (let ([x (syntax->list #'(x ...))])
          `(import ,x ...))])))
 
+(define (parse-topblock tb)
+  (with-output-language (Lur ModuleLevelForm)
+    (syntax-parse tb
+      #:literal-sets (keywords)
+      [(topblock m ...)
+       (let ([m (map parse-module-level-form (syntax->list #'(m ...)))])
+         `(topblock ,m ...))])))
+
 (define (parse-module-level-form m)
   (debug (list 'parse-module-level-form (syntax->datum m)))
   (parameterize ([macro-expansion-context 'module-level])
     (with-output-language (Lur ModuleLevelForm)
       (syntax-parse m
         #:literal-sets (keywords)
-        [ma:MacroApplication    (parse-module-level-form (parse-macro-application #'ma))]
-        [(~and ex (export . _)) (parse-export #'ex)]
-        [(~and im (import . _)) (parse-import #'im)]
-        [(~and d (define . _))  (parse-definition #'d)]
-        [σ                      (parse-statement #'σ parse-module-level-form 'module-level-form)]))))
+        [ma:MacroApplication      (parse-module-level-form (parse-macro-application #'ma))]
+        [(~and ex (export . _))   (parse-export #'ex)]
+        [(~and im (import . _))   (parse-import #'im)]
+        [(~and d  (define . _))   (parse-definition #'d)]
+        [(~and tb (topblock . _)) (parse-topblock #'tb)]
+        [σ                       (parse-statement #'σ parse-module-level-form 'module-level-form)]))))
 
 (define (parse-statement σ [context-parse parse-statement] [parent-context 'statement])
   (debug (list 'parse-statement (syntax->datum σ)))
@@ -960,6 +995,8 @@
       [(~and l  (let   . _))                  (parse-let         #'l)]
       [(~and la (~or (lambda . _) (λ . _)))   (parse-lambda      #'la)]
       [(~and o  (object . _))                 (parse-object      #'o)]
+      [(~and ar (ref . _))                    (parse-array-reference #'ar)]
+      [(~and ac (array . _))                  (parse-array       #'ac)]
       [(~and a  (e ...)
              (~not (k:keyword . _)))          (parse-application #'a)]
       [_ (raise-syntax-error 'parse-expr (~a "expected an expression, got " e) e)])))
@@ -986,6 +1023,26 @@
              [e  (stx-map parse-expr #'(e ...))])
          `(app ,e0 ,e ...))])))
 
+(define (parse-array-reference ar)
+  (debug (list 'parse-array-reference (syntax->datum ar)))
+  (with-output-language (Lur Expr)
+    (syntax-parse ar
+      #:literal-sets (keywords)
+      [(ref e0 e1 e ...)
+       (let ([e0 (parse-expr #'e0)]
+             [e1 (parse-expr #'e1)]
+             [e  (stx-map parse-expr #'(e ...))])
+         `(ref ,e0 ,e1 ,e ...))])))
+
+(define (parse-array ac)
+  (debug (list 'parse-array (syntax->datum ac)))
+  (with-output-language (Lur Expr)
+    (syntax-parse ac
+      #:literal-sets (keywords)
+      [(array e ...)
+       (let ([e  (stx-map parse-expr #'(e ...))])
+         `(array ,e ...))])))
+
 (define (parse-reference r)
   (debug (list 'parse-reference (syntax->datum r)))
   (with-output-language (Lur Expr)
@@ -1000,7 +1057,7 @@
             (with-output-language (Lur Expr)
               (let ([e (parse-reference y)]
                     [p (parse-datum p)])
-                `(app ,#'ref ,e ,p))))])])))
+                `(ref ,e ,p))))])])))
 
 (define (parse-sequence a)
   (debug (list 'parse-sequence (syntax->datum a)))
@@ -1098,6 +1155,30 @@
 (define reserved-words-ids (symbols->ids ecma6-reservered-keywords))
 (define predefined-ids     (symbols->ids predefined-names))
 
+;;;
+;;; FLATTEN TOPLEVEL BLOCKS
+;;;
+
+(define-pass flatten-toplevel-block : Lur (U) -> Lur ()
+  ; this pass eliminates topblock
+  (definitions
+    (define lifted-forms (make-parameter '()))
+    (define (add-form m) (lifted-forms (cons m (lifted-forms)))) ; in reverse
+    (define (flatten m)
+      (nanopass-case (Lur ModuleLevelForm) m
+        [(export   ,x ...) (add-form m) '()]
+        [(import   ,x ...) (add-form m) '()]
+        [(topblock ,m ...) (append-map flatten m)]
+        [,δ                (list δ)]
+        [,σ                (list σ)])))
+  (Statement  : Statement  (σ) ->  Statement ())
+  (ModuleLevelForm : ModuleLevelForm  (m) ->  ModuleLevelForm ()
+    [(topblock ,m ...) (append-map flatten m)])
+  (Module : Module (u) -> Module ()
+    [(urmodule ,mn ,m ...)
+     (let ([m     (append-map flatten m)]
+           [ex/im (reverse (lifted-forms))])
+       `(urmodule ,mn ,ex/im ... ,m ...))]))
 
 ;;;
 ;;; DESUGARED URLANG
@@ -1158,6 +1239,9 @@
                   (body ,s ...
                         ,σ ...
                         ,e)))]))])]))
+
+
+
 
 ;;;
 ;;; URLANG ANNOTATED MODULE 
@@ -1372,7 +1456,7 @@
     (define (rename* xs ρ) (map2* rename xs ρ))
     (define (lookup x ρ [on-not-found (λ (_) #f)])
       (match (ρ x bid=) [#f (match (ρ x fid=) [#f (on-not-found x)] [y y])] [y y]))
-    (define (unbound-error x) (raise-syntax-error 'α-rename "unbound variable" x))
+    (define (unbound-error x) (raise-syntax-error 'α-rename "(urlang) unbound variable" x))
     (define pre-body-ρ (make-parameter #f)))
   (Annotation : Annotation (an) -> Annotation ()
     [(export ,x  ...)                      an]
@@ -1454,7 +1538,7 @@
   (Expr : Expr (e ρ) -> Expr ()
     ; all expressions that contain an id (x or f) needs consideration
     [,x                         (lookup x ρ unbound-error)]
-    [(:= ,x ,[e])               (let ((y (lookup x ρ unbound-error))) `(:= ,y ,e))]
+    [(:= ,x ,[e])               (let ((y (lookup x ρ unbound-error))) `(:= ,y ,e))]    
     [(let ((,x ,[e]) ...) ,ab)  (letv ((x ρ) (rename* x ρ))  ; map x to x
                                   (let ([ab (AnnotatedBody ab ρ)])
                                     `(let ((,x ,e) ...) ,ab)))]
@@ -1466,6 +1550,10 @@
 ;;;
 ;;; CODE GENERATION
 ;;;
+
+; This pass produces a tree of datums (mostly strings) and identifiers.
+; Emit will will traverse the tree and display all elements.
+; The output will be a JavaScript program.
 
 (define-pass generate-code : L1 (U) -> * ()
   (definitions
@@ -1495,9 +1583,10 @@
     [(export ,x* ...)  (for/list ([x x*])
                          (~newline (~Statement (exports.id x) "=" x)))])
   (ModuleLevelForm : ModuleLevelForm (m) -> * ()
-    [,δ (~newline (Definition δ))]
-    [,e (~newline (~Statement (~top-expr (Expr e))))]
-    [,σ (~newline (Statement σ))])    
+    [(topblock ,m* ...) (map ModuleLevelForm m*)]
+    [,δ                 (~newline (Definition δ))]
+    [,e                 (~newline (~Statement (~top-expr (Expr e))))]
+    [,σ                 (~newline (Statement σ))])
   (Definition : Definition (δ) -> * ()
     [(define ,x ,e)            (let ([e (Expr e)])
                                  (~Statement `(var ,x "=" ,e)))]
@@ -1578,32 +1667,31 @@
                                               (~parens (~commas e)))))]
     [(lambda (,x ...) ,ab)   (let ((ab (AnnotatedBody ab)))
                                (~parens "function" (~parens (~commas x)) ab))]
+    [(array ,e ...)          (~brackets (~commas (map Expr e)))]
     [(object (,pn* ,e*) ...) (~braces (~commas (for/list ([pn pn*] [e e*])
                                                  (list (~property-name pn) ":" (Expr e)))))]
+    [(ref ,e0 ,e1 ,e ...)  (define (pn? _)
+                             (nanopass-case (L1 Expr) e1
+                               [(quote ,d) (and (property-name? d) (not (number? d)) d)]
+                               [else       #f]))
+                           (match (map Expr (list* e0 e1 e))
+                             [(list e0 (and (? pn?) (app pn? pn)))
+                              (if (identifier? e0)
+                                  (~a (mangle e0) "." pn)
+                                  (list e0 "." (~a pn)))]
+                             [(list e0 (and (? pn?) (app pn? pn)))  (list e0 "." (~a pn))]
+                             [(list e0 e1)                          (list e0 (~brackets e1))]
+                             [_ (raise-syntax-error 'ref "internal error" e0)])]
     [(app ,e0 ,e ...)      (cond
                              [(identifier? e0)
                               (define f e0)
                               (define (infix? _)      (infix-operator? f))
                               (define (assignment? _) (assignment-operator? f))
-                              (define (pn? _)
-                                (nanopass-case (L1 Expr) (second e)
-                                  [(quote ,d) (and (property-name? d) (not (number? d)) d)]
-                                  [else       #f]))
                               (match (cons (syntax-e f) (map Expr e))
-                                [(list 'ref e1 (and (? pn?)
-                                                    (app pn? pn)))    (if (identifier? e1)
-                                                                          (~a (mangle e1) "." pn)
-                                                                              (list e1 "." (~a pn)))]
-                                [(list 'ref e1 (and (? pn?) (app pn? pn)))    (list e1 "." (~a pn))]
-                                [(list 'ref e1 e2)                          (list e1 (~brackets e2))]
-                                [(list 'array e ...)                        (~brackets (~commas e))]
-                                [(list 'array e ...)                        (~brackets (~commas e))]
                                 [(list 'new    e0 e ...)    (list "new " e0 (~parens   (~commas e)))]
-                                [(list 'array! e0 i e)             (list e0 (~brackets i) "=" e)]
-                                [(list* 'ref _)
-                                 (raise-syntax-error 'ref "(ref expr expr) expected, at " e0)]
-                                [(list (? infix?) e1)    (~parens f e1)]                      ; unary
-                                [(list (? infix?) e ...) (~parens (add-between e f))]         ; nary
+                                [(list 'array! e0 i e)         (list e0 (~brackets i) "=" e)]
+                                [(list (? infix?) e1)          (~parens f e1)]                ; unary
+                                [(list (? infix?) e ...)       (~parens (add-between e f))]   ; nary
                                 [(list (? assignment?) e0 e1)  (~parens e0 f e1)]             ; assign
                                 [(list _ e ...)          (~parens f (~parens (~commas e)))])] ; prefix
                              [else ; expression in front
@@ -1698,9 +1786,10 @@
       (annotate-bodies
        (annotate-module
         (desugar
-         (if (syntax? u)
-             (parse u)
-             u)))))))
+         (flatten-toplevel-block
+          (if (syntax? u)
+              (parse u)
+              u))))))))
   (if emit? (emit t) t))
 
 (define (expand u)
@@ -1712,7 +1801,8 @@
     (annotate-bodies
      (annotate-module
       (desugar
-       (parse u)))))))
+       (flatten-toplevel-block
+        (parse u))))))))
 
 ;;;
 ;;; EMIT
@@ -1740,7 +1830,7 @@
 ; can evaluate the program. Here the JavaScript implementation
 ; Node is used.
 
-(define (run js-tree [delete-tmp? #t])
+(define (run js-tree [delete-tmp? (current-urlang-delete-tmp-file?)])
   (define tmp (make-temporary-file "tmp~a.js"))
   ; (displayln (path->string tmp))
   (with-output-to-file tmp
@@ -1786,6 +1876,7 @@
 (define current-urlang-run?                           (make-parameter #f))
 (define current-urlang-echo?                          (make-parameter #f))
 (define current-urlang-console.log-module-level-expr? (make-parameter #f))
+(define current-urlang-delete-tmp-file?               (make-parameter #t))
 
 (define (urmodule-name->file-name name)
   (match name

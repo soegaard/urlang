@@ -64,9 +64,37 @@
              (let ([id (ref t1 i)] ... ...)
                statement ... body-expr)))))]))
 
-(define-urlang-macro let-values expand-let-values)
+(require racket/syntax)
 
+(define (expand-define-values stx)
+  (syntax-parse stx
+    [(_define-values (id ...) expr)
+     (with-syntax ([t (generate-temporary)])
+       (with-syntax ([(i ...) (range 1 (+ 1 (length (syntax->list #'(id ...)))))])
+         (syntax/loc stx
+           (sbegin
+            (var id ...)
+            (let ([t expr])
+              (:= id (ref t i)) ...)))))]))
 
+(define-urlang-macro let-values    expand-let-values)
+(define-urlang-macro define-values expand-define-values)
+
+(define (expand-define/export stx)
+  (syntax-parse stx
+    [(_define/export (name . formals) . body)
+     (syntax/loc stx
+       (topblock
+        (export name)
+        (define (name . formals) . body)))]
+    [(_define/export name expr)
+     (syntax/loc stx
+       (topblock
+        (export name)
+        (define name expr)))]
+    [_ (error 'define/export "bad syntax" stx)]))
+     
+(define-urlang-macro define/export expand-define/export)
 
 (display
  (urlang
@@ -75,6 +103,7 @@
     ; (export null? pair? list? cons car cdr)
     (import Array Int8Array Math Number String
             new typeof)
+    (export cons list str)
     ;;; Array
     (define (array? v) ; todo : inline array?
       (Array.isArray v))
@@ -96,7 +125,7 @@
     (define STRUCT                 (array "struct"))
     
     (define VOID (array))    ; singleton
-    (define NULL (array))    ; singleton
+    (define/export NULL (array)) ; singleton
 
     ;;;
     ;;; 4.1 Booleans and equality
@@ -1253,7 +1282,7 @@
     (define (str-keyword v) (+ "#:" (ref v 1)))
     (define (str-void v)    "#<void>")
     (define (str-box v)     (+ "#&" (str (unbox v))))
-    (define (str v)
+    (define/export (str v)
       (cond
         [(null? v)                   (str-null)]
         [(string? v)                 (str-string v)]
@@ -1294,6 +1323,8 @@
        (bytes-length (make-bytes2 10 65))                        ; 10
        (str (bytes=? (make-bytes2 10 65) (make-bytes2 10 65)))   ; #t
        (str (bytes=? (make-bytes2 10 65) (make-bytes2 10 66))))  ; #f
+
+    #;("even more tests"
     
     (string->symbol "foo")
     (string (make-char "a") (make-char "b") (make-char "c"))
@@ -1421,5 +1452,5 @@
                    (foo-b g)
                    (bar-ref g 4)
                    (bar-ref g 5)))
-        (str f)))
+        (str f))))
   )))
