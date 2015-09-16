@@ -17,7 +17,7 @@
 ;                                                                - output returned as string
 ;; Compiler Phases
 (provide parse            ; syntax -> L      parse and expand syntax object into L
-
+         flatten-topblock ; L      -> L      remove topblock
          desugar          ; L      -> L-     remove optional arguments
          annotate-module  ; L-     -> L0     annotate module with exports, imports, funs and vars 
          annotate-bodies  ; L0     -> L1     annotate bodies with local variables
@@ -439,10 +439,11 @@
   (ModuleLevelForm (m)
     (export x ...)
     (import x ...)
-    (topblock m ...)
+    (topblock m ...)       ; toplevel block
+    ;                      ; (allows macros to expand to more than one module level form)
     δ σ)
   (Definition (δ)
-    (define (f φ ...) b)          ; function definition
+    (define (f φ ...) b)   ; function definition
     (define x e))
   (Formal (φ)
     x                      ; parameter name
@@ -1159,7 +1160,7 @@
 ;;; FLATTEN TOPLEVEL BLOCKS
 ;;;
 
-(define-pass flatten-toplevel-block : Lur (U) -> Lur ()
+(define-pass flatten-topblock : Lur (U) -> Lur ()
   ; this pass eliminates topblock
   (definitions
     (define lifted-forms (make-parameter '()))
@@ -1786,7 +1787,7 @@
       (annotate-bodies
        (annotate-module
         (desugar
-         (flatten-toplevel-block
+         (flatten-topblock
           (if (syntax? u)
               (parse u)
               u))))))))
@@ -1801,7 +1802,7 @@
     (annotate-bodies
      (annotate-module
       (desugar
-       (flatten-toplevel-block
+       (flatten-topblock
         (parse u))))))))
 
 ;;;
