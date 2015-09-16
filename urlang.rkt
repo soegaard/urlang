@@ -2,6 +2,7 @@
 (provide urlang)
 ;; Parameters
 (provide current-urlang-output-file                      ; overrides module-name as output file
+         current-urlang-exports-file                     ; overrides name of file to store exports
          current-urlang-run?                             ; run after compilation
          current-urlang-echo?                            ; echo JavaScript after compilation
          current-urlang-console.log-module-level-expr?   ; call console.log on each module-level expr?
@@ -1492,7 +1493,7 @@
                                    (let ([ab (AnnotatedBody ab ρ)])
                                      `(define (,f ,x ...) ,ab)))])
   ; TODO: Change var to use same scope rules as let*.
-  ;       In (var [s s]) the second s refers to an outer scope.
+  ;       In (var [binding s s]) the second s refers to an outer scope.
   (VarBinding : VarBinding (vb ρ) -> VarBinding ()
     [,x                             (ρ x bid=)]
     [(binding ,x ,[e])   `(binding ,(ρ x bid=) ,e)])
@@ -1556,6 +1557,7 @@
 ; Emit will will traverse the tree and display all elements.
 ; The output will be a JavaScript program.
 
+(define current-exports (make-parameter '()))
 (define-pass generate-code : L1 (U) -> * ()
   (definitions
     (define (~parens . t)      (list "(" t ")"))
@@ -1581,8 +1583,12 @@
     [(import ,x ...)   ""]
     [(funs   ,x ...)   ""]
     [(vars   ,x ...)   ""]
-    [(export ,x* ...)  (for/list ([x x*])
-                         (~newline (~Statement (exports.id x) "=" x)))])
+    [(export ,x* ...)
+     ; add the exports to current-exports  (emit will then make a modulename.exports)
+     (current-exports (append x* (current-exports)))
+     ; export the identifiers using the Node convention (storing exported values in exports)
+     (for/list ([x x*])
+       (~newline (~Statement (exports.id x) "=" x)))])
   (ModuleLevelForm : ModuleLevelForm (m) -> * ()
     [(topblock ,m* ...) (map ModuleLevelForm m*)]
     [,δ                 (~newline (Definition δ))]
@@ -1874,17 +1880,28 @@
 ;;;
 
 (define current-urlang-output-file                    (make-parameter #f))
+(define current-urlang-exports-file                   (make-parameter #f))
 (define current-urlang-run?                           (make-parameter #f))
 (define current-urlang-echo?                          (make-parameter #f))
 (define current-urlang-console.log-module-level-expr? (make-parameter #f))
 (define current-urlang-delete-tmp-file?               (make-parameter #t))
 
-(define (urmodule-name->file-name name)
+(define (urmodule-name->js-file-name name)
   (match name
     [(? symbol? s) (~a s ".js")]
     [(? string? s) s]
-    [_ (error 'urmodule-name->file-name
+    [_ (error 'urmodule-name->js-file-name
               "Internal error: expected symbol or string")]))
+
+(define (urmodule-name->exports-file-name name)
+  (match name
+    [(? symbol? s) (~a s ".exports")]
+    [(? string? s) s]
+    [_ (error 'urmodule-name->exports-file-name
+              "Internal error: expected symbol or string")]))
+
+(define (write-exports exports)
+  (displayln (map syntax->datum exports)))
 
 (define-syntax (urlang stx)
   (define-syntax-class String
@@ -1899,17 +1916,25 @@
      (syntax/loc stx
        (begin
          (let ()
-           (define name (syntax-e #'mn))
-           (define path (or (current-urlang-output-file)      ; parameter can override module name
-                            (urmodule-name->file-name name)))
-           (define tree (compile #'urmod #f)) ; #f = don't emit
-           (parameterize ([current-urlang-output-file path])
-             (with-output-to-file path
+           (define name         (syntax-e #'mn))
+           (define js-path      (or (current-urlang-output-file)  ; parameter can override module name
+                                    (urmodule-name->js-file-name name)))
+           (define exports-path (or (current-urlang-exports-file) ; parameter can override
+                                    (urmodule-name->exports-file-name name)))
+           (define-values (tree exports)
+             (parameterize ([current-exports '()])
+               (values (compile #'urmod #f) (current-exports)))) ; #f = don't emit
+           (parameterize ([current-urlang-output-file js-path])
+             (with-output-to-file js-path
                (λ () (emit tree))
                #:exists 'replace))
+           (parameterize ([current-urlang-exports-file exports-path])
+             (with-output-to-file exports-path
+               (λ () (write-exports exports))
+               #:exists 'replace))
            (when (current-urlang-echo?)
-             (with-input-from-file path
+             (with-input-from-file js-path
                (λ() (copy-port (current-input-port) (current-output-port)))))
            (when (current-urlang-run?)
-             (node/break path)))
+             (node/break js-path)))
          ...))]))
