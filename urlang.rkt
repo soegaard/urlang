@@ -10,7 +10,7 @@
 
 ;; Keywords
 (provide array begin block break catch continue define do-while export finally if import
-         object label lambda λ let ref sempty sif throw topblock try urmodule var while :=)
+         object label lambda λ let ref require sempty sif throw topblock try urmodule var while :=)
 (provide bit-and bit-not bit-or bit-xor ===)
 ;; Compiler 
 (provide compile          ; syntax -> *         prints JavaScript
@@ -206,13 +206,15 @@
 
 ; <module>            ::= (urmodule <module-name> <module-path> <module-level-form> ...)
 
-; <module-level-form> ::= <export> | <import> | <definition> | <statement> | <topblock>
+; <module-level-form> ::= <export> | <import> | <require> | <definition> | <statement> | <topblock>
 ; <export>            ::= (export x ...)
 ; <import>            ::= (import x ...)
+; <require>           ::= (require <require-spec> ...)
 ; <topblock>          ::= (topblock <module-level-form> ...)
 ; <definition>        ::= (define (f <formal> ...) <body>)
 ;                      |  (define x <expr>)
 ; <formal>            ::= x | [x <expr>]
+; <require-spec>      ::= <module-name>
 
 ; <statement>         ::= <var-decl> | <block> | <while> | <do-while> | <if>
 ;                      |  <break> | <continue> | <label> | <sempty> | <expr>
@@ -391,14 +393,14 @@
 ; Note: Rememember to provide all keywords
 (define-literal-set keywords (array begin block break catch continue define do-while export finally
                                     if import object label lambda λ let
-                                    ref sempty sif throw topblock try urmodule var while :=))
+                                    ref require sempty sif throw topblock try urmodule var while :=))
 (define keyword? (literal-set->predicate keywords))
 
 
 ;;; EcmaScript 6 Reserved keywords
 ; https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference
 ; /Lexical_grammar#Reserved_keywords_as_of_ECMAScript_6
-(define ecma6-reservered-keywords
+(define ecma6-reserved-keywords
   '(break case class catch const continue debugger default
           delete do else export extends finally for function if import in instanceof let
           new return super switch this throw try typeof var void while with yield
@@ -438,11 +440,16 @@
   (Module (u)
     (urmodule mn m ...))
   (ModuleLevelForm (m)
-    (export x ...)
-    (import x ...)
+    (export  x ...)        
+    (import  x ...)        ; declare that x ... are declared (builtin or required from Node)
+    (require rs ...)       ; import from modules compiled by urlang
     (topblock m ...)       ; toplevel block
     ;                      ; (allows macros to expand to more than one module level form)
     δ σ)
+  (RequireSpec (rs)
+    mn                       ; import all exported identifers from the module with module name mn
+    #;(only-in   mn x ...)   ; import x ... from the module named mn
+    #;(except-in mn x ...))  ; import all exported identifiers from the module named mn except x ...
   (Definition (δ)
     (define (f φ ...) b)   ; function definition
     (define x e))
@@ -515,13 +522,27 @@
   #:description "<module-name>"
   (pattern (~or mn:Symbol mn:String)))  
 
-(define-syntax-class Keyword
+(define-syntax-class Keyword 
   #:literal-sets (keywords)
   (pattern x:identifier
            #:fail-unless (keyword? #'x) "keyword"))
 
+(define-syntax-class ECMA6ReservedKeyword
+  (pattern x:identifier
+           #:fail-unless (member (syntax-e #'x) ecma6-reserved-keywords)
+           "ECMA6 reserved keyword"))
+
 (define-syntax-class Id
-  (pattern (~and x:id (~not y:Keyword))))
+  ; TODO: Rethink this change (was y:Keyword)
+  ;       but that meant it was not possible to use require as a function name
+  ;       (as Node want us to)
+  (pattern (~and x:id (~not y:ECMA6ReservedKeyword))))
+
+#;(define-syntax-class Id
+    (pattern (~and x:id (~not y:Keyword))))
+
+(define-syntax-class NonECMA6ReservedKeyword
+  (pattern (~and x:id (~not y:ECMA6ReservedKeyword))))
 
 (define-syntax-class PropertyName
   (pattern (~or (~and x:id (~not y:Keyword))
@@ -659,7 +680,12 @@
 
 (define-syntax-class Import
   #:literal-sets (keywords)
-  (pattern (import x:Id ...)))
+  ; note this was x:Id, but then the identifier  require  can not be imported.
+  (pattern (import x:NonECMA6ReservedKeyword ...)))
+
+(define-syntax-class Require
+  #:literal-sets (keywords)
+  (pattern (require x:Id ...)))
 
 (define-syntax-class TopBlock
   #:literal-sets (keywords)
@@ -668,6 +694,7 @@
 (define-syntax-class ModuleLevelForm
   (pattern (~or ex:Export
                 im:Import
+                rm:Require
                 m:Definition
                 m:Statement
                 m:TopBlock)))
@@ -738,9 +765,23 @@
   (with-output-language (Lur ModuleLevelForm)
     (syntax-parse im
       #:literal-sets (keywords)
-      [(import x:Id ...)
+      [(import x:NonECMA6ReservedKeyword ...)
        (let ([x (syntax->list #'(x ...))])
          `(import ,x ...))])))
+
+(define (parse-require rm)
+  (with-output-language (Lur ModuleLevelForm)
+    (syntax-parse rm
+      #:literal-sets (keywords)
+      [(require rs ...)
+       (let ([rs (map parse-require-spec (syntax->list #'(rs ...)))])
+         `(require ,rs ...))])))
+
+(define (parse-require-spec rs)
+  (with-output-language (Lur RequireSpec)
+    (syntax-parse rs
+      #:literal-sets (keywords)
+      [mn:Id `,(syntax-e #'mn)])))  ; todo : allow syntax-object instead of symbol
 
 (define (parse-topblock tb)
   (with-output-language (Lur ModuleLevelForm)
@@ -759,6 +800,7 @@
         [ma:MacroApplication      (parse-module-level-form (parse-macro-application #'ma))]
         [(~and ex (export . _))   (parse-export #'ex)]
         [(~and im (import . _))   (parse-import #'im)]
+        [(~and rm (require . _))  (parse-require #'rm)]
         [(~and d  (define . _))   (parse-definition #'d)]
         [(~and tb (topblock . _)) (parse-topblock #'tb)]
         [σ                       (parse-statement #'σ parse-module-level-form 'module-level-form)]))))
@@ -1154,7 +1196,7 @@
 (define predefined-names '(Array array array! arguments console ref undefined new typeof))
 ; (besides operators)
 
-(define reserved-words-ids (symbols->ids ecma6-reservered-keywords))
+(define reserved-words-ids (symbols->ids ecma6-reserved-keywords))
 (define predefined-ids     (symbols->ids predefined-names))
 
 ;;;
@@ -1168,11 +1210,12 @@
     (define (add-form m) (lifted-forms (cons m (lifted-forms)))) ; in reverse
     (define (flatten m)
       (nanopass-case (Lur ModuleLevelForm) m
-        [(export   ,x ...) (add-form m) '()]
-        [(import   ,x ...) (add-form m) '()]
-        [(topblock ,m ...) (append-map flatten m)]
-        [,δ                (list δ)]
-        [,σ                (list σ)])))
+        [(export   ,x ...)  (add-form m) '()]
+        [(import   ,x ...)  (add-form m) '()]
+        [(require  ,rs ...) (add-form m) '()]
+        [(topblock ,m ...)  (append-map flatten m)]
+        [,δ                 (list δ)]
+        [,σ                 (list σ)])))
   (Statement  : Statement  (σ) ->  Statement ())
   (ModuleLevelForm : ModuleLevelForm  (m) ->  ModuleLevelForm ()
     [(topblock ,m ...) (append-map flatten m)])
@@ -1254,10 +1297,11 @@
    (- ((id (f x l)) . => . unparse-id))
    (+ ((id (f x l)) . => . unparse-id)))
   (ModuleLevelForm (m)
-    (- (export x ...)
-       (import x ...)))
+    (- (export  x  ...)
+       (import  x  ...)
+       (require rs ...)))
   (Annotation (an)
-    (+ (export x0 ...) (import x1 ...) (funs x2 ...) (vars x3 ...)))
+    (+ (export x0 ...) (import x1 ...) (require rs ...) (funs x2 ...) (vars x3 ...)))
   (Module (u)
     (- (urmodule mn m ...))
     (+ (urmodule mn (an ...) m ...))))
@@ -1297,12 +1341,13 @@
 
 ;; This pass:
 ;;   * collects all exported and imported identifiers
+;;   * collects all require forms
 ;;   * imports predefined operators (+, -, *, ...)
 ;;   * collects all module-level defined function names
 ;;   * collects all module-level defined variable names
 ;;   * Adds an annotation to the urmodule form
 ;;       (annotation
-;;         (export x ...) (import x ...) (funs ...) (vars ...))
+;;         (export x ...) (import x ...) (require rs ...) (funs ...) (vars ...))
 ;;   * Remove import and export forms from ModuleLevelForm
 
 ;;   * checks that a function f is not declared as global
@@ -1318,6 +1363,8 @@
     (define-free-table  operator)   ; operators 
     (define-free-table  reserved)   ; reserved words
     (define-free-table  predefined) ; predefined names
+    (define require-specs '())
+    (define (add-require-spec! rs) (set! require-specs (cons rs require-specs)))
 
     (define context      (make-parameter 'module-level))
     (define remove-form  (list 'remove-form))       ; used to remove im- and export forms
@@ -1351,14 +1398,16 @@
      ;; annotate module
      (let ((m (filter keep? m)))
        (let ((an (with-output-language (L0 Annotation)
-                   (list `(export ,(exports) ...)
-                         `(import ,(append (predefineds) (operators) (imports)) ...)
-                         `(funs   ,(funs)    ...)
-                         `(vars   ,(vars)    ...)))))
+                   (list `(export  ,(exports) ...)
+                         `(import  ,(append (predefineds) (operators) (imports)) ...)
+                         `(require ,require-specs ...)
+                         `(funs    ,(funs)    ...)
+                         `(vars    ,(vars)    ...)))))
          `(urmodule ,mn (,an ...) ,m ...)))])
   (ModuleLevelForm : ModuleLevelForm (m) -> ModuleLevelForm ()
-    [(import ,x ...) (for-each import! x) remove-form]
-    [(export ,x ...) (for-each export! x) remove-form])
+    [(import  ,x ...)  (for-each import! x)            remove-form]
+    [(export  ,x ...)  (for-each export! x)            remove-form]
+    [(require ,rs ...) (for-each add-require-spec! rs) remove-form])
   ;; Register variables declared with var only, when var is a module-level form.
   ;; All contexts where var-forms can appear need to change the context.
   ;; I.e. function bodies, let and lambda needs to set the context.
@@ -1588,7 +1637,8 @@
      (current-exports (append x* (current-exports)))
      ; export the identifiers using the Node convention (storing exported values in exports)
      (for/list ([x x*])
-       (~newline (~Statement (exports.id x) "=" x)))])
+       (~newline (~Statement (exports.id x) "=" x)))]
+    [(require ,rs ...) ""])
   (ModuleLevelForm : ModuleLevelForm (m) -> * ()
     [(topblock ,m* ...) (map ModuleLevelForm m*)]
     [,δ                 (~newline (Definition δ))]
@@ -1874,6 +1924,37 @@
 (define (eval stx)
   (run
    (compile stx #f)))
+
+;;;
+;;; URLANG MODULES
+;;;
+
+;; Compiling an Urlang module m produces two files:
+;;   m.js      -- the JavaScript program containing a Node module
+;;   m.exports -- a list of symbols exported by m
+;; The convention followed by Node is that exported identifiers are
+;; exported throught the variable  exports.
+;; That is, if x is exported from the module m, then m.js contains
+;;    exports.x = x
+;; To import a Node module m .js in a JavaScript file:
+;;    1)   M = require("m.js")    get object holding exported values
+;;    2)   M.x  or  M["x"]        reference to the value exported under the name x
+;; Urlang modules that import an identifier x from a module M will
+;; prefix the program with
+;;   M = require("m.js")
+;;   x = M.x
+;; and the body of the module can now reference the identifier simply as x.
+
+(define (urmodule-name->exports name)
+  (define exports-file (urmodule-name->exports-file-name name))
+  (unless (file-exists? exports-file)
+    (error 'urmodule-name->exports "exports file not found: \"~a\"" exports-file))
+  (define exports (with-input-from-file exports-file read))
+  (unless (and exports (list? exports) (andmap symbol? exports))
+    (error 'urmodule-name->exports (~a "corrupt contents of exports file \"" exports-file
+                                       "\" expected a list of symbols, but read: ~a")
+           exports))
+  exports)
 
 ;;;
 ;;; COMPILATION
