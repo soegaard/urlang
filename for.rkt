@@ -42,9 +42,11 @@
 ; CLAUSES
 
 ;  [x in-range from to]
+;  [x in-range from to step]
 ;                       evaluates the expressions from and to
 ;                       binds x to from, from+1, ..., to-1
 ;                       Note: from and to are only evaluated once.
+;                       If step is present the sequence is from, from+step, ...
 ;  [x in-naturals from]
 ;                       binds x to from, from+1, ...
 ;  [x in-value expr]
@@ -165,7 +167,7 @@
          [n s.length]
          [i 0])
         (< i n)                ; termination condition
-        ([x (ref s i)])        ; let bindings (needs to bind x)
+        ([x (string-ref s i)])  ; let bindings (needs to bind x) +1 to skip tag
         ((+= i 1)))]))
 
 (define clause-handlers-ht (make-hasheq)) ; symbol -> handler

@@ -533,10 +533,7 @@
            "ECMA6 reserved keyword"))
 
 (define-syntax-class Id
-  ; TODO: Rethink this change (was y:Keyword)
-  ;       but that meant it was not possible to use require as a function name
-  ;       (as Node want us to)
-  (pattern (~and x:id (~not y:ECMA6ReservedKeyword))))
+  (pattern (~and x:id (~not y:Keyword))))
 
 #;(define-syntax-class Id
     (pattern (~and x:id (~not y:Keyword))))
@@ -1510,14 +1507,20 @@
     (define (unbound-error x) (raise-syntax-error 'α-rename "(urlang) unbound variable" x))
     (define pre-body-ρ (make-parameter #f)))
   (Annotation : Annotation (an) -> Annotation ()
-    [(export ,x  ...)                      an]
-    [(import ,x  ...) (for-each global! x) an]
-    [(funs   ,x  ...) (for-each global! x) an]
-    [(vars   ,x* ...) (for ((x x*))
-                        (let ([y (fresh-var x)])
-                          (global! y)
-                          (var! x y)))
-                      an])
+    [(export  ,x   ...)                      an]
+    [(import  ,x   ...) (for-each global! x) an]
+    [(require ,rs* ...) (for ([rs rs*])
+                          (unless (symbol? rs) (error "internal error"))
+                          (for ([sym (urmodule-name->exports rs)])
+                            (define x (datum->syntax #'here sym))
+                            (global! x)))
+                          an]
+    [(funs    ,x   ...) (for-each global! x) an]
+    [(vars    ,x*  ...) (for ((x x*))
+                         (let ([y (fresh-var x)])
+                           (global! y)
+                           (var! x y)))
+                        an])
   (Module : Module (u) -> Module ()
     [(urmodule ,mn (,[an] ...) ,m ...)
      (let ((ρ initial-ρ))
@@ -1626,19 +1629,33 @@
     (define (exports.id x)   (format-id x "exports.~a" x)))
   (Module : Module (u) -> * ()
     [(urmodule ,mn (,an ...) ,m ...) (list (~newline (~Statement "\"use strict\""))
+                                           (map (λ (an) (Annotation an 'require)) an)
                                            (map ModuleLevelForm m)
-                                           (map Annotation an))])
-  (Annotation : Annotation (an) -> * ()
+                                           (map (λ (an) (Annotation an 'export)) an))])
+  (Annotation : Annotation (an type) -> * ()
     [(import ,x ...)   ""]
     [(funs   ,x ...)   ""]
     [(vars   ,x ...)   ""]
-    [(export ,x* ...)
-     ; add the exports to current-exports  (emit will then make a modulename.exports)
-     (current-exports (append x* (current-exports)))
-     ; export the identifiers using the Node convention (storing exported values in exports)
-     (for/list ([x x*])
-       (~newline (~Statement (exports.id x) "=" x)))]
-    [(require ,rs ...) ""])
+    [(export ,x* ...) (match type
+                        ['export
+                         ; add the exports to current-exports
+                         ; (emit will then make a modulename.exports)
+                         (current-exports (append x* (current-exports)))
+                         ; export the identifiers using the Node convention
+                         ; (storing exported values in exports)
+                         (for/list ([x x*])
+                           (~newline (~Statement (exports.id x) "=" x)))]
+                        [_ ""])]
+    [(require ,rs ...) (match type
+                         ['require (map RequireSpec rs)]
+                         [_        '()])])
+  (RequireSpec : RequireSpec (rs) -> * ()
+    [,mn (define imports (urmodule-name->exports mn))
+         (let ([mn.js (urmodule-name->js-file-name mn)])
+           (list (~newline (~Statement `(var "MODULE = require(\"./" ,mn.js "\")")))
+                 (for/list ([x imports])
+                   (let ([x (mangle (datum->syntax #'ignored x))]) ; mangle expects ids (not symbols)
+                     (~newline (~Statement `(var ,x ,(~a " = MODULE[\"" x "\"]"))))))))])
   (ModuleLevelForm : ModuleLevelForm (m) -> * ()
     [(topblock ,m* ...) (map ModuleLevelForm m*)]
     [,δ                 (~newline (Definition δ))]

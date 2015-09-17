@@ -100,32 +100,30 @@
  (urlang
   (urmodule runtime
     (import document window prompt alert parseInt parseFloat)  ; Browser functions
-    ; (export null? pair? list? cons car cdr)
     (import Array Int8Array Math Number String
-            new typeof)
-    (export cons list str)
+            #;new #;typeof)
     ;;; Array
-    (define (array? v) ; todo : inline array?
+    (define/export (array? v) ; todo : inline array?
       (Array.isArray v))
     ;;; Tags
-    (define (tag a) (ref a 0))
-    (define PAIR                   (array "pair"))
-    (define VECTOR                 (array "vector"))
-    (define IMMUTABLE-VECTOR       (array "immutable-vector"))
-    (define BOX                    (array "box"))
-    (define IMMUTABLE-BOX          (array "immutable-box"))
-    (define CHAR                   (array "char"))
-    (define MUTABLE-STRING         (array "mutable-string"))
-    (define BYTES                  (array "bytes"))
-    (define MUTABLE-BYTES          (array "mutable-bytes"))
-    (define SYMBOL                 (array "symbol"))
-    (define KEYWORD                (array "keyword"))
-    (define VALUES                 (array "values"))
-    (define STRUCT-TYPE-DESCRIPTOR (array "struct-type-descriptor"))
-    (define STRUCT                 (array "struct"))
+    (define/export (tag a) (ref a 0))
+    (define/export PAIR                   (array "pair"))
+    (define/export VECTOR                 (array "vector"))
+    (define/export IMMUTABLE-VECTOR       (array "immutable-vector"))
+    (define/export BOX                    (array "box"))
+    (define/export IMMUTABLE-BOX          (array "immutable-box"))
+    (define/export CHAR                   (array "char"))
+    (define/export MUTABLE-STRING         (array "mutable-string"))
+    (define/export BYTES                  (array "bytes"))
+    (define/export MUTABLE-BYTES          (array "mutable-bytes"))
+    (define/export SYMBOL                 (array "symbol"))
+    (define/export KEYWORD                (array "keyword"))
+    (define/export VALUES                 (array "values"))
+    (define/export STRUCT-TYPE-DESCRIPTOR (array "struct-type-descriptor"))
+    (define/export STRUCT                 (array "struct"))
     
-    (define VOID (array))    ; singleton
-    (define/export NULL (array)) ; singleton
+    (define/export VOID (array))    ; singleton
+    (define/export NULL (array))    ; singleton
 
     ;;;
     ;;; 4.1 Booleans and equality
@@ -133,10 +131,10 @@
 
     ;; Representation: #t and #f are represented as true and false respectively,
     ;; where true and false are JavaScript booleans.
-    (define (boolean? v)
+    (define/export (boolean? v)
       (= (typeof v) "boolean"))
     ; (define (not x) (if x #f #t)) ; not is a predefined function
-    (define (equal? v w) ; TODO: handle cyclic data structures
+    (define/export (equal? v w) ; TODO: handle cyclic data structures
       (cond
         [(and (boolean? v)          (boolean?        w))   (= v w)]
         [(and (number?  v)          (number?         w))   (= v w)]
@@ -155,15 +153,15 @@
         [(and (bytes?  v)           (bytes?          w))   (bytes=? v w)]
         [(and (keyword?  v)         (keyword?        w))   (keyword=? v w)]
         [#t #f]))
-    (define (eqv? v w)
+    (define/export (eqv? v w)
       (cond
         [(and (number? v) (number? w)) (= v w)]
         [(and (char?   v) (char?   w)) (= (char->integer v) (char->integer w))]
         [#t                            (= v w)]))
-    (define (eq? v1 v2)
+    (define/export (eq? v1 v2)
       (= v1 v2))
     ; (define (equal/retur v1 v2) ...) TODO
-    (define (immutable? v)
+    (define/export (immutable? v)
       ; Note: This follows the spec. It is not a general
       ;       immutability predicate, so immutable pairs are not checked here.
       (or (immutable-string? v)
@@ -174,34 +172,34 @@
     ;;;
     ;;; 4.2 Numbers
     ;;;
-    (define (number? v)   (= (typeof v) "number"))
-    (define (complex? v)  (number? v))
-    (define (real? v)     (number? v)) ; +inf.0, -inf.0, +nan.0 are real numbers
-    (define (rational? v) (and (number? v) (Number.isFinite v)))  
-    (define (integer? v)  (Number.isInteger v))
-    (define (exact-integer? v)
+    (define/export (number? v)   (= (typeof v) "number"))
+    (define/export (complex? v)  (number? v))
+    (define/export (real? v)     (number? v)) ; +inf.0, -inf.0, +nan.0 are real numbers
+    (define/export (rational? v) (and (number? v) (Number.isFinite v)))  
+    (define/export (integer? v)  (Number.isInteger v))
+    (define/export (exact-integer? v)
       ; http://stackoverflow.com/questions/3885817/how-to-check-that-a-number-is-float-or-integer
       (and (= (typeof v) "number")
            (= v (+ v))
            (= v (bit-or v 0))))
-    (define (exact-nonnegative-integer? v) (and (exact-integer? v) (>= v 0)))
-    (define (exact-positive-integer? v)    (and (exact-integer? v) (> v 0)))
-    (define (inexact-real? v)              (and (real? v) (inexact? v)))
-    (define (fixnum? v)                    (exact-integer? v))
-    (define (flonum? v)                    (and (number? v) (not (exact-integer? v))))
-    (define (double-flonum? v)             (flonum? v))
-    (define (single-flonum? v)             (flonum? v))
-    (define (zero? z)                      (= z 0))
-    (define (positive? x)                  (> x 0))
-    (define (negative? x)                  (< x 0))
-    (define (even? n)                      (= 0 (% n 2)))
-    (define (odd? n)                       (= 1 (% n 2)))
-    (define (exact? z)                     (exact-integer? z))
-    (define (inexact? z)                   (and (number? z) (not (exact? z))))
-    (define (inexact->exact z)      z) ; todo
-    (define (exact->inexact z)      z) ; todo
-    (define (real->single-flonum x) x) ; todo 
-    (define (real->double-flonum x) x) ; todo
+    (define/export (exact-nonnegative-integer? v) (and (exact-integer? v) (>= v 0)))
+    (define/export (exact-positive-integer? v)    (and (exact-integer? v) (> v 0)))
+    (define/export (inexact-real? v)              (and (real? v) (inexact? v)))
+    (define/export (fixnum? v)                    (exact-integer? v))
+    (define/export (flonum? v)                    (and (number? v) (not (exact-integer? v))))
+    (define/export (double-flonum? v)             (flonum? v))
+    (define/export (single-flonum? v)             (flonum? v))
+    (define/export (zero? z)                      (= z 0))
+    (define/export (positive? x)                  (> x 0))
+    (define/export (negative? x)                  (< x 0))
+    (define/export (even? n)                      (= 0 (% n 2)))
+    (define/export (odd? n)                       (= 1 (% n 2)))
+    (define/export (exact? z)                     (exact-integer? z))
+    (define/export (inexact? z)                   (and (number? z) (not (exact? z))))
+    (define/export (inexact->exact z)      z) ; todo
+    (define/export (exact->inexact z)      z) ; todo
+    (define/export (real->single-flonum x) x) ; todo 
+    (define/export (real->double-flonum x) x) ; todo
     ;;;
     ;;; 4.2.2 Generic Numbers
     ;;;
@@ -210,7 +208,7 @@
     ;;       Racket generic number operations are prefixed with $,
     ;;       so Racket addition is $+
 
-    (define ($+ z1 z2) ; (+ z ...) variadic
+    (define/export ($+ z1 z2) ; (+ z ...) variadic
       (var [n arguments.length] res)
       (sif (= n 2)
            (:= res (+ z1 z2)) ; fast path
@@ -227,7 +225,7 @@
                              (+= i 1))
                       (:= res sum)))))
       res)
-    (define ($- z1 z2) ; (- z1 z2 ...) variadic (at least one argument)
+    (define/export ($- z1 z2) ; (- z1 z2 ...) variadic (at least one argument)
       (var [n arguments.length] res)
       (sif (= n 2)
            (:= res (- z1 z2)) ; fast path
@@ -242,7 +240,7 @@
                         (+= i 1))
                  (:= res sum))))
       res)
-    (define ($* z1 z2) ; (* z ...) variadic
+    (define/export ($* z1 z2) ; (* z ...) variadic
       (var [n arguments.length] res)
       (sif (= n 2)
            (:= res (* z1 z2)) ; fast path
@@ -259,7 +257,7 @@
                              (+= i 1))
                       (:= res prod)))))
       res)
-    (define ($/ z1 z2) ; (+ z1 z2 ...) variadic (at least one argument)
+    (define/export ($/ z1 z2) ; (+ z1 z2 ...) variadic (at least one argument)
       (var [n arguments.length] res)
       (sif (= n 2)
            (:= res (/ z1 z2)) ; fast path
@@ -274,22 +272,22 @@
                         (+= i 1))
                  (:= res quot))))
       res)
-    (define (quotient n m) 
+    (define/export (quotient n m) 
       (Math.floor (/ n m)))
-    (define (remainder n m)
+    (define/export (remainder n m)
       (% n m))
-    (define (quotient/remainder n m)
+    (define/export (quotient/remainder n m)
       (values (quotient n m) (remainder n m)))
-    (define (modulo n m) ; TODO : throw exception unless n and m are finite
+    (define/export (modulo n m) ; TODO : throw exception unless n and m are finite
       (% (+ (% n m) m) m))
-    (define (add1 z) (+ z 1))
-    (define (sub1 z) (- z 1))
-    (define (abs x)  (Math.abs x))
-    (define (max) ; (max x ...+) variadic
+    (define/export (add1 z) (+ z 1))
+    (define/export (sub1 z) (- z 1))
+    (define/export (abs x)  (Math.abs x))
+    (define/export (max) ; (max x ...+) variadic
       (Math.max.apply #f arguments))
-    (define (min) ; (min x ...+) variadic
+    (define/export (min) ; (min x ...+) variadic
       (Math.min.apply #f arguments))
-    (define (gcd n m) ; (gcd n ...)
+    (define/export (gcd n m) ; (gcd n ...)
       (var [args arguments] i g l)
       (case arguments.length
         [(2)  (gcd2 n m)]
@@ -300,7 +298,7 @@
               (for ([i in-range 1 l])
                 (:= g (gcd g (ref args i))))
               g]))
-    (define (gcd2 n m)
+    (define/export (gcd2 n m)
       (var a b)
       (swhen (< n 0)  (:= n (- n)))
       (swhen (< m 0)  (:= m (- m)))
@@ -315,30 +313,30 @@
                               [#t      (%= b a)])]))
       res)
     ; lcm todo
-    (define (round x) ; break ties in favor of nearest even number
+    (define/export (round x) ; break ties in favor of nearest even number
       (var [r (Math.round x)])
       (if (= (% (if (> x 0) x (- x)) 1) 0.5)
           (if (even? r) r (- r 1))
           r))
-    (define (floor x)    (Math.floor x))
-    (define (ceiling x)  (Math.ceil x))
-    (define (truncate x) (Math.trunc x))
+    (define/export (floor x)    (Math.floor x))
+    (define/export (ceiling x)  (Math.ceil x))
+    (define/export (truncate x) (Math.trunc x))
     ; (define (numerator q) ; q rational TODO
-    (define (sqrt x)     (Math.sqrt x))
-    (define (integer-sqrt n) ; n integer
+    (define/export (sqrt x)     (Math.sqrt x))
+    (define/export (integer-sqrt n) ; n integer
       (Math.floor (Math.sqrt n)))   ; TODO: handle negative x
-    (define (integer-sqrt/remainder n)
+    (define/export (integer-sqrt/remainder n)
       (var [s (Math.floor (Math.sqrt n))])
       (values s (- n (* s s))))
-    (define (expt z w)   (Math.pow z w))
-    (define (exp z)      (Math.exp z))
-    (define (log z)      (Math.log z))
-    (define (sin z)      (Math.sin z))
-    (define (cos z)      (Math.sin z))
-    (define (tan z)      (Math.tan z))
-    (define (asin z)     (Math.asin z))
-    (define (acos z)     (Math.acos z))
-    (define (atan y x)
+    (define/export (expt z w)   (Math.pow z w))
+    (define/export (exp z)      (Math.exp z))
+    (define/export (log z)      (Math.log z))
+    (define/export (sin z)      (Math.sin z))
+    (define/export (cos z)      (Math.sin z))
+    (define/export (tan z)      (Math.tan z))
+    (define/export (asin z)     (Math.asin z))
+    (define/export (acos z)     (Math.acos z))
+    (define/export (atan y x)
       (case arguments.length
         [(1) (Math.atan y)]
         [(2) (Math.atan y x)]
@@ -346,29 +344,29 @@
     ;; Complex numbers  (not supported)
     ; make-rectangular - todo
     ; make-polar       - todo
-    (define (real-part z)  z)  ; todo
-    (define (image-part z) 0)  ; works only for real numbers :-)
-    (define (magnitude z)  (Math.abs z))
-    (define (angle z)
+    (define/export (real-part z)  z)  ; todo
+    (define/export (image-part z) 0)  ; works only for real numbers :-)
+    (define/export (magnitude z)  (Math.abs z))
+    (define/export (angle z)
       (cond
         [(> z 0) 0]
         [(< z 0) Math.PI]
         [#t      (error "angle" "undefined for 0")]))
     ; integer-length  -  todo
-    (define (random k rand-gen)  ; TODO: don't ignore rand-gen
+    (define/export (random k rand-gen)  ; TODO: don't ignore rand-gen
       (Math.floor (* (Math.random) k)))
-    (define (random-seed k) (Void))            ; can't set the seed in JavaScript ?!?
-    (define (make-pseudo-random-generator) #f)
-    (define (pseudo-random-generator? v) (eq? v #f))
-    (define (current-pseudo-random-generator rand-gen) #f)
-    (define (pseudo-random-generator->vector rand-gen) (vector))
-    (define (vector->pseudo-random-generator vec) #f)
-    (define (vector->pseudo-random-generator! rand-gen vec) (Void))
-    (define (pseudo-random-generator-vector? v) (vector? v))
-    (define (number->string z radix)
+    (define/export (random-seed k) (Void))            ; can't set the seed in JavaScript ?!?
+    (define/export (make-pseudo-random-generator) #f)
+    (define/export (pseudo-random-generator? v) (eq? v #f))
+    (define/export (current-pseudo-random-generator rand-gen) #f)
+    (define/export (pseudo-random-generator->vector rand-gen) (vector))
+    (define/export (vector->pseudo-random-generator vec) #f)
+    (define/export (vector->pseudo-random-generator! rand-gen vec) (Void))
+    (define/export (pseudo-random-generator-vector? v) (vector? v))
+    (define/export (number->string z radix)
       (var [num (Number z)])
       (num.toString radix))
-    (define (string->number s radix) ; radix optional
+    (define/export (string->number s radix) ; radix optional
       (case arguments.length
         [(1) (parseFloat s)]
         [(2) (parseFloat s radix)]
@@ -381,9 +379,9 @@
     ; system-big-endian? : todo
 
     ;;; from racket/math
-    (define pi Math.pi)
-    (define (nan? x)      (= x +nan.0))
-    (define (infinite? x) (or (= x +inf.0) (= x -inf.0)))
+    (define/export pi Math.pi)
+    (define/export (nan? x)      (= x +nan.0))
+    (define/export (infinite? x) (or (= x +inf.0) (= x -inf.0)))
     
     ;;;  
     ;;; 4.3 Strings
@@ -400,26 +398,26 @@
     ;;   - mutable Racket string are represented as a tagged array:
     ;;       {array MUTABLE-STRING "char0" "char1" ...}
     ;;     where char0 is a javascript string with length 1.
-    (define (string? v)
+    (define/export (string? v)
       (or (= (typeof v) "string")
           (and (array? v) (= (tag v) MUTABLE-STRING))))
-    (define (immutable-string? v) (= (typeof v) "string"))
-    (define (mutable-string? v) (and (array? v) (= (tag v) MUTABLE-STRING)))
-    (define (make-string k ch) ; ch optional
+    (define/export (immutable-string? v) (= (typeof v) "string"))
+    (define/export (mutable-string? v) (and (array? v) (= (tag v) MUTABLE-STRING)))
+    (define/export (make-string k ch) ; ch optional
       (case arguments.length
         [(1) (make-string1 k)]
         [(2) (make-string2 k ch)]
         [else (error "make-string" "expected at one or two argument")]))
-    (define (make-string1 k)
+    (define/export (make-string1 k)
       (make-string2 k "\u0000"))
-    (define (make-string2 k ch)
+    (define/export (make-string2 k ch)
       ; make-string produces a mutable string
       (var [a (Array (+ k 1))])
       (:= a 0 MUTABLE-STRING)
       (for ([i in-range 1 (+ k 1)])
         (:= a i (ref ch 1)))
       a)      
-    (define (make-primitive-string n c) ; make primitive js string of length n
+    (define/export (make-primitive-string n c) ; make primitive js string of length n
       ; http://stackoverflow.com/questions/202605/repeat-string-javascript?rq=1
       (var [s ""])
       (while #t
@@ -427,46 +425,46 @@
              (>>= n 1)
              (sif (= n 0) (break) (+= c c)))
       s)
-    (define (string->immutable-string s)
+    (define/export (string->immutable-string s)
       (cond
         [(= (typeof s) "string") s]
         [#t (var [n+1 s.length] [n (- n+1 1)] [a (Array n)])
             (for ([i in-range 0 n])
               (:= a i (ref s (+ i 1))))
             (String (a.join ""))]))
-    (define (immutable-string->string str)
+    (define/export (immutable-string->string str)
       (var [n str.length] [a (Array (+ n 1))])
       (:= a 0 MUTABLE-STRING)
       (for ([i in-range 0 n])
         (:= a (+ i 1) (ref str i)))
       a)      
-    (define (string) ; ch ... multiple arguments
+    (define/export (string) ; ch ... multiple arguments
       (var [args arguments] [n args.length])
       (var [a (Array (+ n 1))])
       (:= a 0 MUTABLE-STRING)
       (for ([i in-range 0 n])
         (:= a (+ i 1) (ref (ref args i) 1)))
       a)
-    (define (string-length s)
+    (define/export (string-length s)
       (if (= (typeof s) "string")
           s.length
           (- s.length 1)))
-    (define (string-ref s i)
+    (define/export (string-ref s i)
       (if (= (typeof s) "string")
           (array CHAR (ref s    i))
           (array CHAR (ref s (+ i 1)))))
-    (define (string-set! s i c)
+    (define/export (string-set! s i c)
       ; (unless (mutable-string? s) (raise ...))
       ; (unless (char? c)           (raise ...))
       (:= s (+ i 1) (ref c 1)))
-    (define (substring3 str start end) (str.substring start end))
-    (define (substring2 str start)     (str.substring start (string-length str)))
-    (define (substring) ; case-lambda
+    (define/export (substring3 str start end) (str.substring start end))
+    (define/export (substring2 str start)     (str.substring start (string-length str)))
+    (define/export (substring) ; case-lambda
       (case arguments.length
         [(2) (substring2 (ref arguments 0) (ref arguments 1))]
         [(3) (substring3 (ref arguments 0) (ref arguments 1) (ref arguments 2))]
         [else (error "substring" "expected two to three arguments")]))
-    (define (string=? str1 str2)
+    (define/export (string=? str1 str2)
       (if (immutable-string? str1)
           (if (immutable-string? str2)
               (= str1 str2)
@@ -474,7 +472,7 @@
           (if (immutable-string? str2)
               (= (string->immutable-string str1) str2)
               (= (string->immutable-string str1) (string->immutable-string str2)))))
-    (define (string<? str1 str2)
+    (define/export (string<? str1 str2)
       (if (immutable-string? str1)
           (if (immutable-string? str2)
               (< str1 str2)
@@ -482,7 +480,7 @@
           (if (immutable-string? str2)
               (< (string->immutable-string str1) str2)
               (< (string->immutable-string str1) (string->immutable-string str2)))))
-    (define (string>? str1 str2)
+    (define/export (string>? str1 str2)
       (if (immutable-string? str1)
           (if (immutable-string? str2)
               (> str1 str2)
@@ -490,7 +488,7 @@
           (if (immutable-string? str2)
               (> (string->immutable-string str1) str2)
               (> (string->immutable-string str1) (string->immutable-string str2)))))
-    (define (string<=? str1 str2)
+    (define/export (string<=? str1 str2)
       (if (immutable-string? str1)
           (if (immutable-string? str2)
               (<= str1 str2)
@@ -498,7 +496,7 @@
           (if (immutable-string? str2)
               (<= (string->immutable-string str1) str2)
               (<= (string->immutable-string str1) (string->immutable-string str2)))))
-    (define (string>=? str1 str2)
+    (define/export (string>=? str1 str2)
       (if (immutable-string? str1)
           (if (immutable-string? str2)
               (>= str1 str2)
@@ -506,7 +504,7 @@
           (if (immutable-string? str2)
               (>= (string->immutable-string str1) str2)
               (>= (string->immutable-string str1) (string->immutable-string str2)))))
-    (define (string-upcase str) ; creates mutable string
+    (define/export (string-upcase str) ; creates mutable string
       (if (immutable-string? str)
           (immutable-string->string (String (str.toUpperCase)))
           (string-upcase (string->immutable-string str))))
@@ -514,9 +512,9 @@
       (if (immutable-string? str)
           (immutable-string->string (String (str.toLowerCase)))
           (string-downcase (string->immutable-string str))))         
-    (define (string->list s)          (for/list ([c in-string s]) c))
-    (define (string-append2 str1 str2) (str1.concat str2))
-    (define (string-append) ; variadic
+    (define/export (string->list s) (for/list ([c in-string s]) c))
+    (define/export (string-append2 str1 str2) (str1.concat str2))
+    (define/export (string-append) ; variadic
       (var [args arguments])
       (var [as (for/array #:length args.length ([a in-array args]) a)])
       (as.join ""))
@@ -541,25 +539,25 @@
     ; shared-bytes      ; todo
 
     
-    (define (bytes? v)
+    (define/export (bytes? v)
       (and (array? v)
            (or (= (tag v) BYTES)
                (= (tag v) MUTABLE-BYTES))))
-    (define (immutable-bytes? v) (and (array? v) (= (tag v) BYTES)))
-    (define (mutable-bytes?   v) (and (array? v) (= (tag v) MUTABLE-BYTES)))
-    (define (bytes->Int8Array bs)
+    (define/export (immutable-bytes? v) (and (array? v) (= (tag v) BYTES)))
+    (define/export (mutable-bytes?   v) (and (array? v) (= (tag v) MUTABLE-BYTES)))
+    (define/export (bytes->Int8Array bs)
       (ref bs 1))
-    (define (make-bytes k b) ; b optional
+    (define/export (make-bytes k b) ; b optional
       (case arguments.length
         [(1) (make-bytes1 k)]
         [(2) (make-bytes2 k b)]
         [else (error "make-bytes" "expected one or two arguments")]))
-    (define (make-bytes1 k) ; b = 0 
+    (define/export (make-bytes1 k) ; b = 0 
       ; Returns a new mutable byte string of length k where each position
       ; in the byte string is initialized with the byte b.
       (var [is (new Int8Array k)])
       (array MUTABLE-BYTES is))
-    (define (make-bytes2 k b)
+    (define/export (make-bytes2 k b)
       ; Returns a new mutable byte string of length k where each position
       ; in the byte string is initialized with the byte b.
       (var [bs (new Int8Array k)])
@@ -568,33 +566,33 @@
         (:= bs i b))
       (array MUTABLE-BYTES bs))
     
-    (define (bytes) ; (bytes b ...)
+    (define/export (bytes) ; (bytes b ...)
       ; make new mutable byte string
       (var [args arguments]
            [n    args.length]
            [is   (Int8Array n)])
       (is.set args)
       (array MUTABLE-BYTES is))
-    (define (bytes->immutable-bytes bs)
+    (define/export (bytes->immutable-bytes bs)
       (array BYTES (Int8Array.from (ref bs 1))))
-    (define (immutable-bytes->bytes bs)
+    (define/export (immutable-bytes->bytes bs)
       (array MUTABLE-BYTES (Int8Array.from (ref bs 1))))
-    (define (byte? v)
+    (define/export (byte? v)
       (and (exact-integer? v)
            (<= 0 v 255)))
-    (define (bytes-length bs)
+    (define/export (bytes-length bs)
       (ref (ref bs 1) "length"))
-    (define (bytes-ref bs k)
+    (define/export (bytes-ref bs k)
       (ref (ref bs 1) k))
-    (define (bytes-set! bs k b)
+    (define/export (bytes-set! bs k b)
       (var [is (ref bs 1)])
       (:= is k b))
-    (define (subbytes bs start end) ; end is optional
+    (define/export (subbytes bs start end) ; end is optional
       (case arguments.length
         [(2) (subbytes2 bs start)]
         [(3) (subbytes3 bs start end)]
         [else (error "subbytes" "expected two or three arguments")]))
-    (define (subbytes2 bs start) ; end = bs.length
+    (define/export (subbytes2 bs start) ; end = bs.length
       (var [is  (ref bs 1)]
            [end (ref is "length")]
            [k   (- end start)]
@@ -602,7 +600,7 @@
       (for ([i in-range start end])
         (:= t i (ref is i)))
       (array MUTABLE-BYTES is))
-    (define (subbytes3 bs start end)
+    (define/export (subbytes3 bs start end)
       (var [is (ref bs 1)]
            [k  (- end start)]
            [t  (new Int8Array k)])
@@ -610,11 +608,11 @@
         (:= t i (ref is i)))
       (array MUTABLE-BYTES is))
     
-    (define (bytes-copy bs)
+    (define/export (bytes-copy bs)
       (subbytes2 bs 0))
 
     ;;; 4.4.2 Byte String Comparisons
-    (define (bytes=? bs1 bs2)
+    (define/export (bytes=? bs1 bs2)
       (var [n1 (bytes-length bs1)]
            [n2 (bytes-length bs2)]
            [is1 (ref bs1 1)]
@@ -635,11 +633,11 @@
 
     ;; Representation:
     ;;      {array CHAR primtive-javascript-string-of-length-1}
-    (define (char? v)               (and (array? v) (= (tag v) CHAR)))
-    (define (make-char prim-js-str) (array CHAR prim-js-str))             ; internal
-    (define (char->integer c)       (var [s (ref c 1)]) (s.charCodeAt 0))
-    (define (integer->char i)       (String (String.fromCharCode i)))
-    (define (char=? c1 c2)          (= (ref c1 1) (ref c2 1))) ; todo: variadic
+    (define/export (char? v)               (and (array? v) (= (tag v) CHAR)))
+    (define/export (make-char prim-js-str) (array CHAR prim-js-str))             ; internal
+    (define/export (char->integer c)       (var [s (ref c 1)]) (s.charCodeAt 0))
+    (define/export (integer->char i)       (String (String.fromCharCode i)))
+    (define/export (char=? c1 c2)          (= (ref c1 1) (ref c2 1))) ; todo: variadic
     ; (define (char-alphabetic? c)    TODO
     
     ;;;
@@ -663,18 +661,18 @@
 
     ; string->unreadable-symbol  ; TODO
     
-    (define (symbol? v)
+    (define/export (symbol? v)
       (and (array? v) (= (tag v) SYMBOL)))
-    (define (symbol-interned? sym) ; symbol? -> boolean?
+    (define/export (symbol-interned? sym) ; symbol? -> boolean?
       (= (typeof (ref sym 1)) "string"))   ; note : an uninterned strings has type "object"
-    (define (symbol=? sym1 sym2)
+    (define/export (symbol=? sym1 sym2)
       (or (and (symbol-interned? sym1)
                (symbol-interned? sym2)
                (= (ref sym1 1) (ref sym2 1)))
           ; uninterned symbols are only equal to themselves
           (= sym1 sym2)))
       
-    (define (symbol->string sym)
+    (define/export (symbol->string sym)
       ; returns freshly allocated mutable string
       (var [js-str (ref sym 1)]
            [n      js-str.length]
@@ -683,11 +681,11 @@
       (for ([i in-range 0 n])
         (:= a (+ i 1) (ref js-str i)))
       a)
-    (define (symbol->immutable-string sym)
+    (define/export (symbol->immutable-string sym)
       ; String returns a primitive (interned by js) string
       (String (ref sym 1))) 
     
-    (define (string->symbol str)
+    (define/export (string->symbol str)
       ; returns interned symbol
       (var [t (typeof str)] r)
       (scond        
@@ -698,11 +696,11 @@
                         (:= r (array SYMBOL (String (a.join ""))))]
        [#t (error "string->symbol" "expected a string")])
       r)
-    (define (string->uninterned-symbol str)
+    (define/export (string->uninterned-symbol str)
       ; (new String ...) returns a non-primitive string
       (array SYMBOL (new String str)))
-    (define gensym-counter 0)
-    (define (gensym base) ; base is optional
+    (define/export gensym-counter 0)
+    (define/export (gensym base) ; base is optional
       (case arguments.length
         [(0) (gensym0)]
         [(1) (gensym1 base)]
@@ -717,10 +715,10 @@
       (+= gensym-counter 1)
       (array SYMBOL (new String (+ base gensym-counter))))
     
-    (define (symbol<? a-sym b-sym)
+    (define/export (symbol<? a-sym b-sym)
       (string<? (symbol->string a-sym) (symbol->string b-sym)))
     
-    (define (error who msg)
+    (define/export (error who msg)
       (console.log (+ "error: " who ": " msg)))
 
     ;;;
@@ -735,16 +733,16 @@
     ;; Representation:
     ;;   {array KEYWORD primitive-js-str}
     ;; Note: The representation assumes primitive JavaScript strings are interned.
-    (define (keyword? v)
+    (define/export (keyword? v)
       (and (array? v) (= (tag v) KEYWORD)))
-    (define (keyword->string key) ; returns mutable string
+    (define/export (keyword->string key) ; returns mutable string
       (immutable-string->string (ref key 1)))
-    (define (string->keyword str)
+    (define/export (string->keyword str)
       (var [istr (string->immutable-string str)])
       (array KEYWORD istr))
-    (define (keyword<? key1 key2)
+    (define/export (keyword<? key1 key2)
       (< (ref key1 1) (ref key1 2)))
-    (define (keyword=? key1 key2)
+    (define/export (keyword=? key1 key2)
       (= (ref key1 1) (ref key2 1)))
     
     ;;;
@@ -759,22 +757,22 @@
     ;;   That is, a list is either:
     ;;      NULL or {array PAIR true a d}
     ;;   where d is a list.
-    (define (pair? v)      (and (array? v) (= (tag v) PAIR)))
-    (define (null? v) (= v NULL))
-    (define (cons a d)     (array PAIR (list? d) a d))
-    (define (unsafe-car p) (ref p 2))
-    (define car unsafe-car)
-    (define (unsafe-cdr p) (ref p 3))
-    (define cdr unsafe-cdr)
-    (define Null NULL)  ;; the name  null  is reserved in EcmaScript 6
-    (define (list? v)      (or (= v NULL) (and (array? v) (= (tag v) PAIR) (ref v 1))))
-    (define (list) ; (list v ...)
+    (define/export (pair? v)      (and (array? v) (= (tag v) PAIR)))
+    (define/export (null? v) (= v NULL))
+    (define/export (cons a d)     (array PAIR (list? d) a d))
+    (define/export (unsafe-car p) (ref p 2))
+    (define/export car unsafe-car)
+    (define/export (unsafe-cdr p) (ref p 3))
+    (define/export cdr unsafe-cdr)
+    (define/export Null NULL)  ;; the name  null  is reserved in EcmaScript 6
+    (define/export (list? v)      (or (= v NULL) (and (array? v) (= (tag v) PAIR) (ref v 1))))
+    (define/export (list) ; (list v ...)
       ; Note:  [args arguments]  is needed
       (var [args arguments] [n args.length] [n-1 (- n 1)] [xs NULL])
       (for ([i in-range 0 n])
         (:= xs (cons (ref args (- n-1 i)) xs)))
       xs)
-    (define (list*) ; (list* v ... tail)
+    (define/export (list*) ; (list* v ... tail)
       (var [args arguments] [n args.length])
       (cond
         [(= n 0) (error "list*" "expected one or more arguments")]
@@ -782,16 +780,16 @@
                  (for ([i in-range 0 (- n 1)])
                    (:= xs (cons (ref args (- n-2 i)) xs)))
                  xs]))
-    (define (build-list n proc)
+    (define/export (build-list n proc)
       (var [a (Array n)])
       (for ([i in-range 0 n])
         (:= a i (proc i)))
       (array->list a))
-    (define (length xs)
+    (define/export (length xs)
       (var (n 0))
       (while (pair? xs) (+= n 1) (:= xs (cdr xs)))
       n)
-    (define (list-ref xs i)
+    (define/export (list-ref xs i)
       ;; Return the i'th index of xs.
       ;; Use fast path for i=0 and i=1.
       (var ret)
@@ -801,13 +799,13 @@
                         (:= xs (cdr xs)))
                       (:= ret (car xs))])
       ret)
-    (define (list-tail xs pos)
+    (define/export (list-tail xs pos)
       (while (not (= pos 0))
              ; TODO ; (swhen (null? xs) (return (error "list-tail" " --- exn:fail:contract ---")))
              (:= xs (cdr xs))
              (-= pos 1))
       xs)
-    (define (append) ; variadic (append xs ...)
+    (define/export (append) ; variadic (append xs ...)
       (var [args arguments] [n args.length])
       (case n
         [(0)  NULL]
@@ -818,7 +816,7 @@
                      (:= ret (append2 (ref args i) ret))
                      (-= i 1))
               ret]))
-    (define (append2 xs ys)
+    (define/export (append2 xs ys)
       (var [ret ys])
       (sunless (null? xs) 
                (var [axs (list->array xs)]
@@ -827,14 +825,14 @@
                (for ([i in-range 0 n])
                  (:= ret (cons (ref axs (- n-1 i)) ret))))
       ret)
-    (define (reverse xs)
+    (define/export (reverse xs)
       ; Note: for/list uses reverse, so reverse can't use for/list
       (var [result NULL])
       (while (not (null? xs))
              (:= result (cons (car xs) result))
              (:= xs (cdr xs)))
       result)
-    (define (map proc xs ys zs) ; optional (map proc xs ...+)
+    (define/export (map proc xs ys zs) ; optional (map proc xs ...+)
       (case arguments.length
         [(2) (for/list ([x in-list xs])
                (proc.call #f x))]
@@ -844,7 +842,7 @@
                (proc.call #f x y z))]
         [(0) (error "map" "expected at least two arguments")]        
         [else (/ 1 0)  ])) ; TODO
-    (define (andmap proc xs ys zs) ; optional (map proc xs ...+)
+    (define/export (andmap proc xs ys zs) ; optional (map proc xs ...+)
       (case arguments.length
         [(2) (for/and ([x in-list xs])
                (proc.call #f x))]
@@ -854,7 +852,7 @@
                (proc.call #f x y z))]
         [(0) (error "andmap" "expected at least two arguments")]
         [else (/ 1 0)  ]))
-    (define (ormap proc xs ys zs) ; optional (map proc xs ...+)
+    (define/export (ormap proc xs ys zs) ; optional (map proc xs ...+)
       (case arguments.length
         [(2) (for/or ([x in-list xs])
                (proc.call #f x))]
@@ -864,7 +862,7 @@
                (proc.call #f x y z))]
         [(0) (error "ormap" "expected at least two arguments")]
         [else (/ 1 0)  ]))
-    (define (for-each proc xs ys zs) ; optional (map proc xs ...+)
+    (define/export (for-each proc xs ys zs) ; optional (map proc xs ...+)
       (case arguments.length
         [(2) (for ([x in-list xs])
                (proc.call #f x))]
@@ -876,7 +874,7 @@
         [else (/ 1 0)  ])) ; TODO
     ; foldl TODO
     ; foldr TODO
-    (define (filter pred xs)
+    (define/export (filter pred xs)
       (var [n (length xs)]
            [a (Array n)]
            [i 0])
@@ -893,7 +891,7 @@
              (:= xs (cons (ref a i) xs)))
       xs)
     
-    (define (list->array xs)
+    (define/export (list->array xs)
       ;; convert list to (non-tagged) JavaScript array
       ; allocate array
       (var a [n (length xs)])
@@ -902,7 +900,7 @@
       (for ([x i in-list xs])
         (:= a i x))
       a)
-    (define (array->list axs)
+    (define/export (array->list axs)
       ;; convert JavaScript array to Racket list
       (var [n axs.length] [n-1 (- n 1)] [xs NULL])
       (for ([i in-range 0 n])
@@ -911,23 +909,23 @@
     ;;;
     ;;; racket/list
     ;;;
-    (define empty NULL)
-    (define (cons? v)      (pair? v))
-    (define (empty? v)     (null? v))
-    (define (first xs)     (car xs))
-    (define (rest xs)      (cdr xs))
-    (define (second xs)    (car (cdr xs)))
-    (define (third xs)     (car (cdr (cdr xs))))
-    (define (fourth xs)    (car (cdr (cdr (cdr xs)))))
-    (define (fifth xs)     (car (cdr (cdr (cdr (cdr xs))))))
-    (define (sixth xs)     (car (cdr (cdr (cdr (cdr (cdr xs)))))))
-    (define (seventh xs)   (car (cdr (cdr (cdr (cdr (cdr (cdr xs))))))))
-    (define (eighth xs)    (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr xs)))))))))
-    (define (ningth xs)    (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr xs))))))))))
-    (define (tenth xs)     (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr xs)))))))))))
-    (define (last-pair xs) (while (not (null? (cdr xs))) (:= xs (cdr xs))) xs)
-    (define (last xs)      (car (last-pair xs)))
-    (define (make-list k v)
+    (define/export empty NULL)
+    (define/export (cons? v)      (pair? v))
+    (define/export (empty? v)     (null? v))
+    (define/export (first xs)     (car xs))
+    (define/export (rest xs)      (cdr xs))
+    (define/export (second xs)    (car (cdr xs)))
+    (define/export (third xs)     (car (cdr (cdr xs))))
+    (define/export (fourth xs)    (car (cdr (cdr (cdr xs)))))
+    (define/export (fifth xs)     (car (cdr (cdr (cdr (cdr xs))))))
+    (define/export (sixth xs)     (car (cdr (cdr (cdr (cdr (cdr xs)))))))
+    (define/export (seventh xs)   (car (cdr (cdr (cdr (cdr (cdr (cdr xs))))))))
+    (define/export (eighth xs)    (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr xs)))))))))
+    (define/export (ningth xs)    (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr xs))))))))))
+    (define/export (tenth xs)     (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr xs)))))))))))
+    (define/export (last-pair xs) (while (not (null? (cdr xs))) (:= xs (cdr xs))) xs)
+    (define/export (last xs)      (car (last-pair xs)))
+    (define/export (make-list k v)
       ; Returns a newly constructed list of length k, holding v in all positions.
       (for/list ([i in-range 0 k]) v))
     
@@ -942,43 +940,43 @@
     ;;   (array VECTOR           elm0 elm1 ...)  ; mutable vector
     ;;   (array IMMUTABLE-VECTOR elm0 elm1 ...)  ; immutable vector
     
-    (define (vector? v)
+    (define/export (vector? v)
       (and (array? v)
            (or (= (tag v) VECTOR)
                (= (tag v) IMMUTABLE-VECTOR))))
-    (define (immutable-vector? v) (and (array? v) (= (tag v) IMMUTABLE-VECTOR)))
-    (define (mutable-vector? v)   (and (array? v) (= (tag v) VECTOR)))
-    (define (make-vector size v) ; v optional
+    (define/export (immutable-vector? v) (and (array? v) (= (tag v) IMMUTABLE-VECTOR)))
+    (define/export (mutable-vector? v)   (and (array? v) (= (tag v) VECTOR)))
+    (define/export (make-vector size v) ; v optional
       (case arguments.length
         [(1) (make-vector2 size 0)]
         [(2) (make-vector2 size v)]
         [else (error "make-vector" "expected one or two arguments")]))
-    (define (make-vector2 size v)
+    (define/export (make-vector2 size v)
       (var [a (Array (+ size 1))])
       (:= a 0 VECTOR)
       (for ([i in-range 1 (+ size 1)])
         (:= a i v)))
-    (define (vector) ; multiple arguments
+    (define/export (vector) ; multiple arguments
       (var [args arguments] [n args.length] [a (Array (+ n 1))])
       (:= a 0 VECTOR)
       (for ([j in-range 0 n])
         (:= a (+ j 1) (ref args j)))
       a)
-    (define (vector-immutable) ; multiple arguments
+    (define/export (vector-immutable) ; multiple arguments
       (var [args arguments] [n args.length] [a (Array (+ n 1))])
       (:= a 0 IMMUTABLE-VECTOR)
       (for ([j in-range 0 n])
         (:= a (+ j 1) (ref args j)))
       a)
-    (define (vector-length v)     (- v.length 1)) ; disregard tag
-    (define (vector-ref v i)      (ref v (+ i 1)))
-    (define (vector-set! vec i v) (:= vec (+ i 1) v))
-    (define (vector->list vec)
+    (define/export (vector-length v)     (- v.length 1)) ; disregard tag
+    (define/export (vector-ref v i)      (ref v (+ i 1)))
+    (define/export (vector-set! vec i v) (:= vec (+ i 1) v))
+    (define/export (vector->list vec)
       (var [n vec.length] [xs NULL])
       (for ([i in-range 1 n])
         (:= xs (cons (ref vec (- n i)) xs)))
       xs)
-    (define (list->vector vs)
+    (define/export (list->vector vs)
       (var [n   (length vs)]
            [vec (Array (+ n 1))]
            [i 1])
@@ -988,29 +986,29 @@
              (+= i 1)
              (:= vs (cdr vs)))
       vec)
-    (define (vector->immutable-vector vec)
+    (define/export (vector->immutable-vector vec)
       (var [n vec.length] [a (Array n)])
       (:= a 0 IMMUTABLE-VECTOR)
       (for ([j in-range 1 n])
         (:= a j (ref vec j)))
       vec)
-    (define (vector-fill! vec v)
+    (define/export (vector-fill! vec v)
       (var [n vec.length])
       (for ([i in-range 1 n])
         (:= vec i v))
       VOID)
-    (define (vector-copy! dest dest-start src src-start src-end) ; src-start, src-end optional
+    (define/export (vector-copy! dest dest-start src src-start src-end) ; src-start, src-end optional
       (case arguments.length
         [(3) (vector-copy!5 dest dest-start src 0         (vector-length src))]
         [(4) (vector-copy!5 dest dest-start src src-start (vector-length src))]
         [(5) (vector-copy!5 dest dest-start src src-start src-end)]
         [else (error "vector-copy!" "expected 3, 4, or, 5 arguments")]))
-    (define (vector-copy!5 dest dest-start src src-start src-end)
+    (define/export (vector-copy!5 dest dest-start src src-start src-end)
       (for ([i in-naturals dest-start]
             [j in-range     src-start src-end])
         (:= dest i (ref src j)))
       VOID)
-    (define (build-vector n proc)
+    (define/export (build-vector n proc)
       (var [a (Array (+ n 1))])
       (:= a 0 VECTOR)
       (for ([i in-range 0 n])
@@ -1023,22 +1021,22 @@
     ;; Representation:
     ;;   (array BOX value )
 
-    (define (box? v)             (and (array? v) (= (tag v) BOX)))
-    (define (box v)              (array BOX v))
-    (define (box-immutable v)    (array IMMUTABLE-BOX v))
-    (define (unbox b)            (ref b 1))
-    (define (set-box! b v)       (:= b 1 v))
-    (define (box-cas! b old new) (if (eq? (ref b 1) old)
+    (define/export (box? v)             (and (array? v) (= (tag v) BOX)))
+    (define/export (box v)              (array BOX v))
+    (define/export (box-immutable v)    (array IMMUTABLE-BOX v))
+    (define/export (unbox b)            (ref b 1))
+    (define/export (set-box! b v)       (:= b 1 v))
+    (define/export (box-cas! b old new) (if (eq? (ref b 1) old)
                                      (begin (:= b 1 new) #t)
                                      #f))
-    (define (immutable-box? v)  (and (array? v) (= (tag v) IMMUTABLE-BOX)))
+    (define/export (immutable-box? v)  (and (array? v) (= (tag v) IMMUTABLE-BOX)))
     
     ;;;
     ;;; 4.17 Procedures
     ;;;
-    (define (procedure? v)
+    (define/export (procedure? v)
       (= (typeof v) "function"))
-    (define (apply proc xs)
+    (define/export (apply proc xs)
       ; (apply proc v ... lst #:<kw> kw-arg ...) → any
       ; we ignore #:<kw> kw-arg ...  for the moment
       (var [n arguments.length])
@@ -1050,7 +1048,7 @@
         [(5)   (apply3 proc (cons (ref arguments 1)
                                   (cons (ref arguments 2) (cons (ref arguments 3) NULL))) xs)]
         [(6)   (apply3 proc (for/list ([i in-range 1 (- n 2)]) (ref arguments i)) xs)]))
-    (define (apply3 proc vs xs)
+    (define/export (apply3 proc vs xs)
       (var [nvs (length vs)]
            [nxs (length xs)]
            [n   (+ nvs nxs)]
@@ -1072,8 +1070,8 @@
     ;; Note: The name  void  is reserved in EcmaScript 6,
     ;;       so we use the name Void.
 
-    (define (void? v) (= v VOID))
-    (define (Void) VOID) ; variadic
+    (define/export (void? v) (= v VOID))
+    (define/export (Void) VOID) ; variadic
 
     ;;;
     ;;; 5 Structures
@@ -1087,30 +1085,30 @@
     ;;              init-field-indices auto-field-indices auto-field-values
     ;;              properties inspector immutables guard constructor-name)
 
-    (define (struct-type-descriptor-name  std)              (ref std 1))
-    (define (struct-type-descriptor-super std)              (ref std 2))
-    (define (struct-type-descriptor-total-field-count  std) (ref std 3))
-    (define (struct-type-descriptor-init-field-indices std) (ref std 4))
-    (define (struct-type-descriptor-auto-field-indices std) (ref std 5))
-    (define (struct-type-descriptor-auto-field-values  std) (ref std 6))
-    (define (struct-type-descriptor-properties         std) (ref std 7))
-    (define (struct-type-descriptor-inspector          std) (ref std 8))
-    (define (struct-type-descriptor-immutables         std) (ref std 9))
-    (define (struct-type-descriptor-guard              std) (ref std 10))
-    (define (struct-type-descriptor-constructor-name   std) (ref std 11))
+    (define/export (struct-type-descriptor-name  std)              (ref std 1))
+    (define/export (struct-type-descriptor-super std)              (ref std 2))
+    (define/export (struct-type-descriptor-total-field-count  std) (ref std 3))
+    (define/export (struct-type-descriptor-init-field-indices std) (ref std 4))
+    (define/export (struct-type-descriptor-auto-field-indices std) (ref std 5))
+    (define/export (struct-type-descriptor-auto-field-values  std) (ref std 6))
+    (define/export (struct-type-descriptor-properties         std) (ref std 7))
+    (define/export (struct-type-descriptor-inspector          std) (ref std 8))
+    (define/export (struct-type-descriptor-immutables         std) (ref std 9))
+    (define/export (struct-type-descriptor-guard              std) (ref std 10))
+    (define/export (struct-type-descriptor-constructor-name   std) (ref std 11))
 
-    (define (struct-type-descriptor? v) (and (array? v) (= (ref v 0) STRUCT-TYPE-DESCRIPTOR)))
-    (define (struct? v)                 (and (array? v) (= (ref v 0) STRUCT)))
+    (define/export (struct-type-descriptor? v) (and (array? v) (= (ref v 0) STRUCT-TYPE-DESCRIPTOR)))
+    (define/export (struct? v)                 (and (array? v) (= (ref v 0) STRUCT)))
 
-    (define (str-struct-type-descriptor s)
+    (define/export (str-struct-type-descriptor s)
       (+ "(struct-type-descriptor "
          (str (ref s 1)) " " (str (ref s 2))  " " (str (ref s 3)) " " (str (ref s 4)) " "
          (str (ref s 5)) " " (str (ref s 6))  " " (str (ref s 7)) " " (str (ref s 8)) " "
          (str (ref s 9)) " " (str (ref s 10)) " " (str (ref s 11)) ")"))
-    (define (str-struct s)
+    (define/export (str-struct s)
       (+ "(struct " (str (ref s 1)) " ... )"))
     
-    (define (make-struct-type-descriptor
+    (define/export (make-struct-type-descriptor
              name super-type init-field-count auto-field-count
              ; optionals: (handled by make-struct-type)
              auto-field-value props inspector proc-spec immutables
@@ -1149,7 +1147,7 @@
                    #f   ; constructor name
                    ))))
 
-    (define (make-struct-type name super-type init-field-count auto-field-count
+    (define/export (make-struct-type name super-type init-field-count auto-field-count
                               ; optionals: see docs for default value
                               auto-value props inspector proc-spec immutables
                               guard constructor-name)
@@ -1164,7 +1162,7 @@
                            (if (= guard            undefined) #f   guard)
                            (if (= constructor-name undefined) #f   constructor-name)))
     
-    (define (do-make-struct-type name super-type init-field-count auto-field-count
+    (define/export (do-make-struct-type name super-type init-field-count auto-field-count
                                  auto-field-value ; one values is used in all auto-fields
                                  props inspector proc-spec immutables guard constructor-name)
       (var [super-field-count (if super-type (struct-type-descriptor-total-field-count super-type) 0)]
@@ -1236,15 +1234,15 @@
     ;; Note:
     ;;   At some point consider removing the tag.
 
-    (define (values? v) (and (array? v) (= (tag v) VALUES)))  ; internal
+    (define/export (values? v) (and (array? v) (= (tag v) VALUES)))  ; internal
     
-    (define (values) ; (values v ...)  variadic
+    (define/export (values) ; (values v ...)  variadic
       (var [args arguments] [n args.length] [a (Array (+ n 1))])
       (:= a 0 VALUES)
       (for ([j in-range 0 n])
         (:= a (+ j 1) (ref args j)))
       a)
-    (define (call-with-values generator receiver)
+    (define/export (call-with-values generator receiver)
       ; generator : (-> any)
       ; receiver  : procedure?
       (var [vals (generator.call #f)])
@@ -1282,6 +1280,7 @@
     (define (str-keyword v) (+ "#:" (ref v 1)))
     (define (str-void v)    "#<void>")
     (define (str-box v)     (+ "#&" (str (unbox v))))
+    (define (str-char v)    (+ "#\\\\" (ref v 1)))
     (define/export (str v)
       (cond
         [(null? v)                   (str-null)]
@@ -1295,6 +1294,7 @@
         [(keyword? v)                (str-keyword v)]
         [(void? v)                   (str-void v)]
         [(box? v)                    (str-box v)]
+        [(char? v)                   (str-char v)]
         [(struct-type-descriptor? v) (str-struct-type-descriptor v)]
         [(struct? v)                 (str-struct v)]
         [#t           (console.log v)
