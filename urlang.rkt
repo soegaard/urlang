@@ -436,7 +436,7 @@
    ; x identifier
    ((datum       (d))     . => . unparse-datum)
    (module-name  (mn))
-   (property-name (pn)))
+   ((property-name (pn)) . => . (λ (v) (if (syntax? v) (unparse-syntax v) v))))
   (Module (u)
     (urmodule mn m ...))
   (ModuleLevelForm (m)
@@ -1750,9 +1750,12 @@
                                [else       #f]))
                            (match (map Expr (list* e0 e1 e))
                              [(list e0 (and (? pn?) (app pn? pn)))
-                              (if (identifier? e0)
-                                  (~a (mangle e0) "." pn)
-                                  (list e0 "." (~a pn)))]
+                              (cond
+                                [(and (identifier? e0) (identifier? pn))
+                                 (~a (mangle e0) "." (mangle pn))]
+                                [(identifier? e0) (~a (mangle e0) "."             pn)]
+                                [(identifier? pn) (list       e0  "." (~a (mangle pn)))]
+                                [else             (list       e0  "." (~a         pn))])]
                              [(list e0 (and (? pn?) (app pn? pn)))  (list e0 "." (~a pn))]
                              [(list e0 e1)                          (list e0 (~brackets e1))]
                              [_ (raise-syntax-error 'ref "internal error" e0)])]
@@ -2036,3 +2039,4 @@
            (when (current-urlang-run?)
              (node/break js-path)))
          ...))]))
+
