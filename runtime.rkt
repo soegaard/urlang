@@ -158,7 +158,7 @@
         [(and (number? v) (number? w)) (= v w)]
         [(and (char?   v) (char?   w)) (= (char->integer v) (char->integer w))]
         [#t                            (= v w)]))
-    (define/export (eq? v1 v2)
+    (define/export (eq? v1 v2)      
       (= v1 v2))
     ; (define (equal/retur v1 v2) ...) TODO
     (define/export (immutable? v)
@@ -379,7 +379,7 @@
     ; system-big-endian? : todo
 
     ;;; from racket/math
-    (define/export pi Math.pi)
+    (define/export pi Math.PI)
     (define/export (nan? x)      (= x +nan.0))
     (define/export (infinite? x) (or (= x +inf.0) (= x -inf.0)))
     
@@ -683,18 +683,24 @@
       a)
     (define/export (symbol->immutable-string sym)
       ; String returns a primitive (interned by js) string
-      (String (ref sym 1))) 
+      (String (ref sym 1)))
+
+    (define symbol-table (array))
     
     (define/export (string->symbol str)
       ; returns interned symbol
-      (var [t (typeof str)] r)
-      (scond        
-       [(= t "string")  (:= r (array SYMBOL str))] ; primtive string
+      (var [t (typeof str)] r old)
+      (:= old (ref symbol-table str))
+      (scond
+       [(symbol? old)   (:= r old)]
+       [(= t "string")  (:= r (array SYMBOL str))  ; primitive string
+                        (:= symbol-table str r)]   ; intern it
        [(= t "object")  (var [n+1 t.length] [n (- n+1 1)] [a (Array n)])
                         (for ([i in-range 0 n])
                           (:= a i (ref str (+ i 1))))
-                        (:= r (array SYMBOL (String (a.join ""))))]
-       [#t (error "string->symbol" "expected a string")])
+                        (:= r (array SYMBOL (String (a.join ""))))
+                        (:= symbol-table str r)]   ; intern it
+       [#t (error "string->symbol" "expected a string")])      
       r)
     (define/export (string->uninterned-symbol str)
       ; (new String ...) returns a non-primitive string
@@ -951,11 +957,12 @@
         [(1) (make-vector2 size 0)]
         [(2) (make-vector2 size v)]
         [else (error "make-vector" "expected one or two arguments")]))
-    (define/export (make-vector2 size v)
+    (define (make-vector2 size v)
       (var [a (Array (+ size 1))])
       (:= a 0 VECTOR)
       (for ([i in-range 1 (+ size 1)])
-        (:= a i v)))
+        (:= a i v))
+      a)
     (define/export (vector) ; multiple arguments
       (var [args arguments] [n args.length] [a (Array (+ n 1))])
       (:= a 0 VECTOR)
@@ -1281,6 +1288,7 @@
     (define (str-void v)    "#<void>")
     (define (str-box v)     (+ "#&" (str (unbox v))))
     (define (str-char v)    (+ "#\\\\" (ref v 1)))
+    (define (str-undefined) "#<js-undefined>")
     (define/export (str v)
       (cond
         [(null? v)                   (str-null)]
@@ -1297,8 +1305,10 @@
         [(char? v)                   (str-char v)]
         [(struct-type-descriptor? v) (str-struct-type-descriptor v)]
         [(struct? v)                 (str-struct v)]
-        [#t           (console.log v)
-                      "str - internal error"]))
+        [(= v undefined)             (str-undefined)]
+        [#t                          (console.log v)
+                                     "str - internal error"]))
+
 
     #;("tests"
        ; (str (cons 10 (cons 11 (cons 12 NULL))))
