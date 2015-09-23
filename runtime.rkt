@@ -1029,7 +1029,9 @@
     ;; Representation:
     ;;   (array BOX value )
 
-    (define/export (box? v)             (and (array? v) (= (tag v) BOX)))
+    (define/export (box? v)             (and (array? v)
+                                             (or (= (tag v) BOX)
+                                                 (= (tag v) IMMUTABLE-BOX))))
     (define/export (box v)              (array BOX v))
     (define/export (box-immutable v)    (array IMMUTABLE-BOX v))
     (define/export (unbox b)            (ref b 1))
@@ -1308,30 +1310,32 @@
             [(= v #f) "#f"]
             [#t       "str -internal error"]))
     (define (str-symbol  v) (string-append "'"  (string->immutable-string (symbol->string v))))
-    (define (str-keyword v) (+ "#:" (ref v 1)))
-    (define (str-void v)    "#<void>")
-    (define (str-box v)     (+ "#&" (str (unbox v))))
-    (define (str-char v)    (+ "#\\\\" (ref v 1)))
-    (define (str-undefined) "#<js-undefined>")
+    (define (str-keyword v)       (+ "#:" (ref v 1)))
+    (define (str-void v)          "#<void>")
+    (define (str-box v)           (+ "#&" (str (unbox v))))
+    (define (str-box-immutable v) (+ "#&" (str (unbox v))))
+    (define (str-char v)          (+ "#\\\\" (ref v 1)))
+    (define (str-undefined)       "#<js-undefined>")
     (define/export (str v)
       (cond
-        [(null? v)                   (str-null)]
-        [(string? v)                 (str-string v)]
-        [(number? v)                 (str-number v)]
-        [(list? v)                   (str-list v)]
-        [(pair? v)                   (str-pair v)]
-        [(vector? v)                 (str-vector v)]
-        [(boolean? v)                (str-boolean v)]
-        [(symbol? v)                 (str-symbol v)]
-        [(keyword? v)                (str-keyword v)]
-        [(void? v)                   (str-void v)]
-        [(box? v)                    (str-box v)]
-        [(char? v)                   (str-char v)]
-        [(struct-type-descriptor? v) (str-struct-type-descriptor v)]
-        [(struct? v)                 (str-struct v)]
-        [(= v undefined)             (str-undefined)]
-        [#t                          (console.log v)
-                                     "str - internal error"]))
+        [(null? v)                     (str-null)]
+        [(string? v)                   (str-string v)]
+        [(number? v)                   (str-number v)]
+        [(list? v)                     (str-list v)]
+        [(pair? v)                     (str-pair v)]
+        [(vector? v)                   (str-vector v)]
+        [(boolean? v)                  (str-boolean v)]
+        [(symbol? v)                   (str-symbol v)]
+        [(keyword? v)                  (str-keyword v)]
+        [(void? v)                     (str-void v)]
+        [(immutable-box? v)            (str-box-immutable v)]
+        [(box? v)                      (str-box v)]        
+        [(char? v)                     (str-char v)]
+        [(struct-type-descriptor? v)   (str-struct-type-descriptor v)]
+        [(struct? v)                   (str-struct v)]
+        [(= v undefined)               (str-undefined)]
+        [#t                            (console.log v)
+                                       "str - internal error"]))
 
 
     #;("tests"
