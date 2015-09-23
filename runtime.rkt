@@ -100,6 +100,7 @@
  (urlang
   (urmodule runtime
     (import document window prompt alert parseInt parseFloat)  ; Browser functions
+    (import process) ; Only in Node - not in browser?
     (import Array Int8Array Math Number String
             #;new #;typeof)
     ;;; Array
@@ -927,7 +928,7 @@
     (define/export (sixth xs)     (car (cdr (cdr (cdr (cdr (cdr xs)))))))
     (define/export (seventh xs)   (car (cdr (cdr (cdr (cdr (cdr (cdr xs))))))))
     (define/export (eighth xs)    (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr xs)))))))))
-    (define/export (ningth xs)    (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr xs))))))))))
+    (define/export (ninth xs)     (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr xs))))))))))
     (define/export (tenth xs)     (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr xs)))))))))))
     (define/export (last-pair xs) (while (not (null? (cdr xs))) (:= xs (cdr xs))) xs)
     (define/export (last xs)      (car (last-pair xs)))
@@ -1010,7 +1011,7 @@
         [(4) (vector-copy!5 dest dest-start src src-start (vector-length src))]
         [(5) (vector-copy!5 dest dest-start src src-start src-end)]
         [else (error "vector-copy!" "expected 3, 4, or, 5 arguments")]))
-    (define/export (vector-copy!5 dest dest-start src src-start src-end)
+    (define (vector-copy!5 dest dest-start src src-start src-end)
       (for ([i in-naturals dest-start]
             [j in-range     src-start src-end])
         (:= dest i (ref src j)))
@@ -1259,7 +1260,30 @@
                         (receiver.apply #f vals)]
         ;; generator produced one value
         [#t             (receiver.apply #f vals)]))
-    
+
+    ;;;
+    ;;; 13 INPUT AND OUTPUT
+    ;;;
+
+    ;;;
+    ;;; 13.5 Writing
+    ;;;
+
+    (define/export (displayln v)
+      (console.log (str v)))
+
+    (define/export (newline)
+      (console.log ""))
+
+    (define/export (display v)
+      (process.stdout.write (str v)))
+
+    (define/export (write v)
+      (process.stdout.write (str v)))
+
+    (define/export (console-log str)
+      (console.log str))
+
     
     ;;;
     ;;; Higher Order
