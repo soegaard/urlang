@@ -771,6 +771,7 @@
     (define/export car unsafe-car)
     (define/export (unsafe-cdr p) (ref p 3))
     (define/export cdr unsafe-cdr)
+    (define/export (cddr v) (cdr (cdr v)))
     (define/export Null NULL)  ;; the name  null  is reserved in EcmaScript 6
     (define/export (list? v)      (or (= v NULL) (and (array? v) (= (tag v) PAIR) (ref v 1))))
     (define/export (list) ; (list v ...)
@@ -790,7 +791,8 @@
     (define/export (build-list n proc)
       (var [a (Array n)])
       (for ([i in-range 0 n])
-        (:= a i (proc i)))
+        ; (:= a i (proc i)
+        (:= a i ((ref proc 1) proc i))) ; apply closure - TODO: error check
       (array->list a))
     (define/export (length xs)
       (var (n 0))
@@ -911,6 +913,12 @@
       ;; convert JavaScript array to Racket list
       (var [n axs.length] [n-1 (- n 1)] [xs NULL])
       (for ([i in-range 0 n])
+        (:= xs (cons (ref axs (- n-1 i)) xs)))
+      xs)
+    (define/export (array-end->list axs from)
+      ;; convert JavaScript array to Racket list
+      (var [n axs.length] [n-1 (- n 1)] [xs NULL])
+      (for ([i in-range 0 (- n-1 from)])
         (:= xs (cons (ref axs (- n-1 i)) xs)))
       xs)
     ;;;
@@ -1095,6 +1103,10 @@
     ;;              init-field-indices auto-field-indices auto-field-values
     ;;              properties inspector immutables guard constructor-name)
 
+    ;;;
+    ;;; 5.2 Creating Structure Types
+    ;;;
+    
     (define/export (struct-type-descriptor-name  std)              (ref std 1))
     (define/export (struct-type-descriptor-super std)              (ref std 2))
     (define/export (struct-type-descriptor-total-field-count  std) (ref std 3))
@@ -1116,7 +1128,9 @@
          (str (ref s 5)) " " (str (ref s 6))  " " (str (ref s 7)) " " (str (ref s 8)) " "
          (str (ref s 9)) " " (str (ref s 10)) " " (str (ref s 11)) ")"))
     (define/export (str-struct s)
-      (+ "(struct " (str (ref s 1)) " ... )"))
+      (var [n s.length] [fields (for/array ([i in-range 2 n]) (ref s i))])
+      (+ "(struct " (str (ref s 1)) " " (fields.join " ") ")"))
+    
     
     (define/export (make-struct-type-descriptor
              name super-type init-field-count auto-field-count
@@ -1128,6 +1142,7 @@
            [afc   auto-field-count]
            [stfc  (if super-type (struct-type-descriptor-total-field-count super-type) 0)])
       (if super-type
+          ;; super-case present (the hard case)
           (let ([total-field-count      (+ ifc afc stfc)]
                 [new-init-field-indices (for/list ([i in-range 0 ifc]) (+ stfc i))]
                 [new-auto-field-indices (for/list ([i in-range 0 afc]) (+ stfc ifc i))]
@@ -1204,9 +1219,9 @@
            ;; struct-predicate-procedure
            (λ (v)             (= v std))
            ;; struct-accessor-procedure
-           (λ (s index)       (ref s (+ index 2)))
+           (λ (s index)       (ref s (+ super-field-count index 2)))
            ;; struct-mutator-procedure
-           (λ (s index value) (:= s (+ index 2) value) VOID))
+           (λ (s index value) (:= s (+ super-field-count index 2) value) VOID))
           ;; ----
           ;; No super-type (easy case)      
           (values
@@ -1232,7 +1247,15 @@
            (λ (s index)       (ref s (+ index 2)))
            ;; struct-mutator-procedure
            (λ (s index value) (:= s (+ index 2) value) VOID))))
-    
+
+    (define/export (make-struct-field-accessor accessor-proc field-pos
+                                               field-name) ; field-name optional
+      ; Returns a field accessor that is equivalent to (lambda (s) (accessor-proc s field-pos)).
+      ; The accessor-proc must be an accessor returned by make-struct-type.
+      ; The name of the resulting procedure for debugging purposes is derived from field-name
+      ; and the name of accessor-proc’s structure type if field-name is a symbol.
+      (λ (s) (accessor-proc s field-pos))) ; todo add debug info (i.e. infered names)
+      
     ;;;
     ;;; 10. Control Flow
     ;;;
@@ -1286,6 +1309,16 @@
     (define/export (console-log str)
       (console.log str))
 
+    ;;;
+    ;;; 14 REFLECTION AND SECURITY
+    ;;;
+
+    ;;;
+    ;;; 14.9 Structure Inspectors
+    ;;;
+
+    (define/export (current-inspector)
+      #f)
     
     ;;;
     ;;; Higher Order
