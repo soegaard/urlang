@@ -127,6 +127,108 @@
     (define/export NULL (array))    ; singleton
 
     ;;;
+    ;;; OPERATOR PRIMITIVES
+    ;;;
+
+    ;; The following primitives have names that are keywords in JavaScript.
+    ;; That means we need alternative names.
+    ;; Here + is named PRIM+  etc.
+
+    (define/export (PRIM+ a b) ; variadic
+      (var [n arguments.length] [args arguments] s)
+      (case arguments.length
+        [(2)  (+ a b)]
+        [(1)  a]
+        [(0)  0]
+        [else (:= s (+ a b))
+              (for ([i in-range 2 n])
+                (:= s (+ s (ref args i))))
+              s]))
+
+    (define/export (PRIM- a b) ; variadic
+      (var [n arguments.length] [args arguments] s)
+      (case arguments.length
+        [(2)  (- a b)]
+        [(1)  (- a)]
+        [(0)  0]
+        [else (:= s (- a b))
+              (for ([i in-range 2 n])
+                (:= s (- s (ref args i))))
+              s]))
+
+    (define/export (PRIM* a b) ; variadic
+      (var [n arguments.length] [args arguments] s)
+      (case arguments.length
+        [(2)  (* a b)]
+        [(1)  a]
+        [(0)  1]
+        [else (:= s (* a b))
+              (for ([i in-range 2 n])
+                (:= s (* s (ref args i))))
+              s]))
+
+    (define/export (PRIM/ a b) ; variadic
+      (var [n arguments.length] [args arguments] s)
+      (case arguments.length
+        [(2)  (/ a b)]
+        [(1)  (/ 1 a)]
+        [(0)  (error "PRIM/ expects at least one argument")]
+        [else (:= s (/ a b))
+              (for ([i in-range 2 n])
+                (:= s (/ s (ref args i))))
+              s]))
+    
+    (define/export (PRIM= a b) ; variadic
+      (var [n arguments.length] [args arguments] s r)
+      (case arguments.length
+        [(2)   (=== a b)]
+        [(0 1) (error "PRIM= expects at least two arguments")]
+        [else (:= s (=== a b))
+              (for ([i in-range 2 n])
+                (:= s (and s (=== a (ref args i)))))
+              s]))
+
+    (define/export (PRIM<= a b) ; variadic
+      (var [n arguments.length] [args arguments] s r)
+      (case arguments.length
+        [(2)   (<= a b)]
+        [(0 1) (error "PRIM<= expects at least two arguments")]
+        [else (:= s (<= a b))
+              (for ([i in-range 2 (- n 1)])
+                (:= s  (and s (<= (ref args i) (ref args (+ i 1))))))
+              s]))
+
+    (define/export (PRIM>= a b) ; variadic
+      (var [n arguments.length] [args arguments] s r)
+      (case arguments.length
+        [(2)   (>= a b)]
+        [(0 1) (error "PRIM>= expects at least two arguments")]
+        [else (:= s (>= a b))
+              (for ([i in-range 2 (- n 1)])
+                (:= s (and s (>= (ref args i) (ref args (+ i 1))))))
+              s]))
+
+    (define/export (PRIM> a b) ; variadic
+      (var [n arguments.length] [args arguments] s r)
+      (case arguments.length
+        [(2)   (> a b)]
+        [(0 1) (error "PRIM> expects at least two arguments")]
+        [else (:= s (> a b))
+              (for ([i in-range 2 (- n 1)])
+                (:= s  (and s (> (ref args i) (ref args (+ i 1))))))
+              s]))
+
+    (define/export (PRIM< a b) ; variadic
+      (var [n arguments.length] [args arguments] s r)
+      (case arguments.length
+        [(2)   (< a b)]
+        [(0 1) (error "PRIM< expects at least two arguments")]
+        [else (:= s (< a b))
+              (for ([i in-range 2 (- n 1)])
+                (:= s  (and s (< (ref args i) (ref args (+ i 1))))))
+              s]))
+    
+    ;;;
     ;;; 4.1 Booleans and equality
     ;;;
 
@@ -851,7 +953,7 @@
                (proc.call #f x y z))]
         [(0) (error "map" "expected at least two arguments")]        
         [else (/ 1 0)  ])) ; TODO
-    (define/export (andmap proc xs ys zs) ; optional (map proc xs ...+)
+    (define/export (andmap proc xs ys zs) ; optional (andmap proc xs ...+)
       (case arguments.length
         [(2) (for/and ([x in-list xs])
                (proc.call #f x))]
@@ -861,7 +963,7 @@
                (proc.call #f x y z))]
         [(0) (error "andmap" "expected at least two arguments")]
         [else (/ 1 0)  ]))
-    (define/export (ormap proc xs ys zs) ; optional (map proc xs ...+)
+    (define/export (ormap proc xs ys zs) ; optional (ormap proc xs ...+)
       (case arguments.length
         [(2) (for/or ([x in-list xs])
                (proc.call #f x))]
@@ -871,7 +973,7 @@
                (proc.call #f x y z))]
         [(0) (error "ormap" "expected at least two arguments")]
         [else (/ 1 0)  ]))
-    (define/export (for-each proc xs ys zs) ; optional (map proc xs ...+)
+    (define/export (for-each proc xs ys zs) ; optional (for-each proc xs ...+)
       (case arguments.length
         [(2) (for ([x in-list xs])
                (proc.call #f x))]
@@ -1052,8 +1154,13 @@
     ;;;
     ;;; 4.17 Procedures
     ;;;
+
+    (define/export (closure? v)
+      (and (Array.isArray v)
+           (= (ref v 0) "CLOS")))    
     (define/export (procedure? v)
-      (= (typeof v) "function"))
+      (or (= (typeof v) "function")
+          (closure? v)))
     (define/export (apply proc xs)
       ; (apply proc v ... lst #:<kw> kw-arg ...) → any
       ; we ignore #:<kw> kw-arg ...  for the moment
