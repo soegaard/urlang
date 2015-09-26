@@ -1376,11 +1376,15 @@
 
     (define/export (values? v) (and (array? v) (= (tag v) VALUES)))  ; internal
     
-    (define/export (values) ; (values v ...)  variadic
-      (var [args arguments] [n args.length] [a (Array (+ n 1))])
-      (:= a 0 VALUES)
-      (for ([j in-range 0 n])
-        (:= a (+ j 1) (ref args j)))
+    (define/export (values x) ; (values v ...)  variadic
+      (var [args arguments] [n args.length] a)
+      (sif (= n 1)
+           (:= a x)
+           (block
+            (:= a (Array (+ n 1)))
+            (:= a 0 VALUES)
+            (for ([j in-range 0 n])
+              (:= a (+ j 1) (ref args j)))))
       a)
     (define/export (call-with-values generator receiver)
       ; generator : (-> any)
