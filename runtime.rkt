@@ -1155,15 +1155,31 @@
     ;;; 4.17 Procedures
     ;;;
 
-    (define/export (closure? v)
-      (and (Array.isArray v)
-           (= (ref v 0) "CLOS")))    
-    (define/export (procedure? v)
-      (or (= (typeof v) "function")
-          (closure? v)))
-    (define/export (apply proc xs)
+    ;;; Closures:    
+    ;;;     Representation:
+    ;;;        {array CLOS label value0 ... }
+    ;;;     Tagged array.
+    ;;;     label       is the (JavaScript) function to call, when the closure is invoked.
+    ;;;                 The first argument of label is the closure.
+    ;;;     value0 ...  are the values of the free variables
+    
+    (define/export (closure? v)   (and (Array.isArray v) (= (ref v 0) "CLOS")))    
+    (define/export (procedure? v) (or (= (typeof v) "function") (closure? v)))
+    (define (js-function? v)      (= (typeof v) "function"))
+    (define (invoke f) ; variadic arguments
+      (var a lab [args arguments] [n args.length])
+      (if (closure? f)
+          (begin
+            (:= lab (ref f 1))
+            (:= a (Array (+ n 1)))
+            (array! a 0 f)
+            (for ([i in-range 0 n])
+              (:= a (+ i 1) (ref args i)))
+            (lab.apply #f a))
+          (f.apply #f args)))    
+    (define/export (apply proc xs) ; variadic
       ; (apply proc v ... lst #:<kw> kw-arg ...) → any
-      ; we ignore #:<kw> kw-arg ...  for the moment
+      ; todo: we ignore #:<kw> kw-arg ...  for the moment
       (var [n arguments.length])
       (case n
         [(0 1) (error "procedure?" "expected two or more arguments")]
@@ -1178,14 +1194,28 @@
            [nxs (length xs)]
            [n   (+ nvs nxs)]
            [a   (Array n)])
-      (for ([i in-range 0 nvs]
-            [v in-list vs])
-        (:= a i v))
-      (for ([i in-range nvs n]
-            [x in-list xs])
-        (:= a i x))
-      (proc.apply #f a))
-    
+      (if (js-function? proc)
+          (begin
+            (for ([i in-range 0 nvs]
+                  [v in-list vs])
+              (:= a i v))
+            (for ([i in-range nvs n]
+                  [x in-list xs])
+              (:= a i x))
+            (proc.apply #f a))
+          (if (closure? proc)
+              (begin
+                (array! a 0 proc)
+                (for ([i in-range 0 nvs]
+                      [v in-list vs])
+                  (:= a (+ i 1) v))
+                (for ([i in-range nvs n]
+                      [x in-list xs])
+                  (:= a (+ i 1) x))                
+                ((ref (ref proc 1) "apply") #f a))
+              "apply3 - error")))
+              
+    (define/export new-apply-proc apply) ; todo: support keywords    
     ;;;
     ;;; 4.18 Void
     ;;;
