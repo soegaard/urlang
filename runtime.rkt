@@ -127,6 +127,54 @@
     (define/export NULL (array))    ; singleton
 
     ;;;
+    ;;; CASE-LAMBDA
+    ;;;
+
+    ;; Representation:
+    ;;   {array '"CLOS" {array ar ...} {array ca ...}}
+    ;; where ar_i is the arity             of clause i
+    ;; and   ca_i is the closure allocated of clause i
+
+    ;; Encoding of arities:
+    ;;   +n means precisely n
+    ;;    0 means preciely  0
+    ;;   -1 means at least  0
+    ;;   -2 means at least  1
+    ;;   -n means at least  n-1
+    (define/export (dispatch-case-lambda) ; special
+      (var [args     arguments]
+           [n        (- args.length 1)] ; -1 due to _free
+           [caseclos (ref args 0)])
+      (var [arities  (ref caseclos 2)]  ; array of the clause arities
+           [closures (ref caseclos 3)]  ; array of the corresponding closures
+           [a        0]
+           [j        #f]
+           [clos     #f]
+           [lab      #f])
+      ;; find index of first matching arity
+      (:= j (for/or ([i in-range 0 (+ n 1)])
+              (:= a (ref arities i))
+              (if (or (=== n a)
+                      (and (< a 0)
+                           (>= n (- (- a) 1))))
+                  i
+                  #f)))
+      ;; get corresponding closure
+      (:= clos (ref closures j))
+      (:= lab (ref clos 1))
+      ;; Note: There is no need to turn rest arguments into lists -
+      ;;       that is handled when lab is invoked.
+      (case n
+        ; fast path for common argument counts
+        [(0) (lab clos)]
+        [(1) (lab clos (ref args 1))]
+        [(2) (lab clos (ref args 1) (ref args 2))]
+        [(3) (lab clos (ref args 1) (ref args 2) (ref args 3))]
+        [(4) (lab clos (ref args 1) (ref args 2) (ref args 3) (ref args 4))]
+        [else (array! args 0 clos)
+              (lab.apply #f args)]))
+    
+    ;;;
     ;;; OPERATOR PRIMITIVES
     ;;;
 
