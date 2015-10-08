@@ -135,6 +135,8 @@
 (define (handle-in-range clause)
   (syntax-parse clause
     #:literal-sets (for-keywords)
+    [[x in-range from]
+     (raise-syntax-error 'in-range "expected: in-range from to")]
     [[x in-range from to]
      #'(([i from]       ; list of var clauses to create initial state
          [t to])
