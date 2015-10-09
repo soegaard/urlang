@@ -41,6 +41,12 @@
 ;; Languages
 (provide         Lur         L-         L0         L1
          unparse-Lur unparse-L- unparse-L0 unparse-L1)
+;; Datums
+(provide fixnum?)
+;; Modules
+(provide urmodule-name->exports
+         mangle)
+
 
 ;;;
 ;;; IDEAS
@@ -1477,7 +1483,7 @@
 (define joiner "_")
 (define (new-var [prefix "t"])
   (set! counter (+ counter 1))
-  (define pre (if (syntax?   prefix) (syntax-e prefix) prefix))
+  (define pre (if (syntax? prefix) (syntax-e prefix) prefix))
   (datum->syntax #'here (string->symbol (~a pre joiner counter))))
 (define (reset-counter! [new-joiner "_"])
   (set! counter 0)
@@ -1492,8 +1498,8 @@
         [(var? x) => identity]  ; get (potentially renamed x)
         [(global? x) x]         ; exports, imports, funs are never renamed
         [else        #f]))      ; no other variables are bound
-    (define (fid= x y)      (free-identifier=? x y))
-    (define (bid= x y)      (bound-identifier=? x y))
+    (define (fid= x y) (free-identifier=?  x y))
+    (define (bid= x y) (bound-identifier=? x y))
     (define (extend ρ original renamed)
       (λ (x id=) (if (id= x original) renamed (ρ x id=))))
     (define (extend* ρ xs) (for/fold ((ρ ρ)) ((x xs)) (extend ρ x x)))
@@ -1504,7 +1510,11 @@
     (define (rename* xs ρ) (map2* rename xs ρ))
     (define (lookup x ρ [on-not-found (λ (_) #f)])
       (match (ρ x bid=) [#f (match (ρ x fid=) [#f (on-not-found x)] [y y])] [y y]))
-    (define (unbound-error x) (raise-syntax-error 'α-rename "(urlang) unbound variable" x))
+    (define (unbound-error x)
+      (displayln "global:")           (displayln (map syntax-e (globals)))
+      (displayln "var introduced:")   (displayln (map syntax-e (vars)))
+      (displayln "unbound variable:") (displayln x)
+      (raise-syntax-error 'α-rename "(urlang) unbound variable" x))
     (define pre-body-ρ (make-parameter #f)))
   (Annotation : Annotation (an) -> Annotation ()
     [(export  ,x   ...)                      an]
@@ -1599,7 +1609,15 @@
     [(lambda (,x ...) ,ab)      (letv ((x ρ) (rename* x ρ))  ; map x to x
                                   (let ([ab (AnnotatedBody ab ρ)])
                                     `(lambda (,x ...) ,ab)))])
-  (Module U))
+  (let ()
+    ; TODO Fix this hack:
+    ; HACK BEGINS
+    (define kernel:srcloc (expand-syntax #'srcloc)) ; expands to kernel:srcloc
+    (global! kernel:srcloc)
+    (global! (expand-syntax #'apply))               ; expands to new-apply-proc
+    (global! (second (syntax->list (expand-syntax #'(apply))))) ; expands to apply
+    ; HACK ENDS    
+    (Module U)))
 
 ;;;
 ;;; CODE GENERATION
@@ -1815,7 +1833,7 @@
   (define substitutions
     (make-hash '(#;("_"."__")
                  ("-"."_")  ("+"."_a") ("*"."_m") ("/"."_q")
-                 ("?"."_p") ("!"."_e")
+                 ("?"."_p") ("!"."_e") (":"."_c") 
                  ("=" . "_eq") (">" . "_g") ("<" . "_l"))))
   (string-join (for/list ([c (~a orig)])
                  (hash-ref substitutions (~a c) (~a c))) ""))
@@ -1827,7 +1845,7 @@
   ; (displayln (list "  " 'mangle 'id (syntax-e id) 'id* (syntax-e id*)))
   ; (set! id id*)  
   (syntax-parse id
-    #:literals (and or not = === bit-and bit-or bit-xor bit-not < > <= >= + - * /)
+    #:literals (and or not = === bit-and bit-or bit-xor bit-not < > <= >= + - * / void null)
     ;; Take care of JavaScript operators first
     ;;  - assignment operators
     [ao:AssignmentOperator (symbol->string (syntax-e #'ao))]
@@ -1849,6 +1867,8 @@
     [bit-or   "|"]
     [bit-xor  "^"]
     [bit-not  "~"]
+    [void     "Void"]
+    [null     "Null"]
     ; handle characters like ? - / etc in identifiers
     [_   (substitute (syntax-e id))]))
 
@@ -2039,4 +2059,3 @@
            (when (current-urlang-run?)
              (node/break js-path)))
          ...))]))
-
