@@ -122,6 +122,7 @@
     (define/export VALUES                 (array "values"))
     (define/export STRUCT-TYPE-DESCRIPTOR (array "struct-type-descriptor"))
     (define/export STRUCT                 (array "struct"))
+    (define/export NAMESPACE              (array "namespace"))
     
     (define/export VOID (array))    ; singleton
     (define/export NULL (array))    ; singleton
@@ -1237,7 +1238,7 @@
         [(5)   (apply3 proc (cons (ref arguments 1)
                                   (cons (ref arguments 2) (cons (ref arguments 3) NULL))) xs)]
         [(6)   (apply3 proc (for/list ([i in-range 1 (- n 2)]) (ref arguments i)) xs)]))
-    (define/export (apply3 proc vs xs)
+    (define (apply3 proc vs xs)
       (var [nvs (length vs)]
            [nxs (length xs)]
            [n   (+ nvs nxs)]
@@ -1287,6 +1288,18 @@
     ;;       (array STRUCT-TYPE-DESCRIPTOR name super-type total-field-count
     ;;              init-field-indices auto-field-indices auto-field-values
     ;;              properties inspector immutables guard constructor-name)
+
+    ;; name               = string with name of struct
+    ;; super-type         = #f or struct-type-descriptor
+    ;; total-field-count  = number of init fields plus number of auto fields
+    ;; init-field-indices = racket list: indices of slots filled with values given to the constructor
+    ;; auto-field-indices = racket list: indices of slots that are automatically filled
+    ;; auto-field-values  = racket list: values to fill into auto-field slots
+    ;; properties         = TODO
+    ;; inspector          = TODO
+    ;; mutables           = TODO
+    ;; guard              = TODO
+    ;; constructor-name     = string
 
     ;;;
     ;;; 5.2 Creating Structure Types
@@ -1475,6 +1488,47 @@
         ;; generator produced one value
         [#t             (receiver.apply #f vals)]))
 
+    ;;; 10.2 Exceptions
+
+    ;;; 10.2.5 Built-in Exception Types
+
+    ;; (struct srcloc (source line column position span)
+    ;;   #:transparent
+    ;;   #:extra-constructor-name make-srcloc)
+
+    ;; Representation:
+    ;;   A structure is represented as an array tagged with STRUCT
+    ;;       (array STRUCT <a-struct-type-descriptor> field0 field1 ...)
+    ;;   A struct-type-descriptor is:
+    ;;       (array STRUCT-TYPE-DESCRIPTOR name super-type total-field-count
+    ;;              init-field-indices auto-field-indices auto-field-values
+    ;;              properties inspector immutables guard constructor-name)
+
+    ;; Note: this is in #%kernel
+    
+    (define/export (kernel:srcloc source line column position span)
+      (array STRUCT
+             (array STRUCT-TYPE-DESCRIPTOR
+                    "srcloc" #f 5 (list 0 1 2 3 4) NULL NULL
+                    #f #f NULL #f "make-srcloc")
+             source line column position span))
+
+    (define/export (srcloc->string sl)
+      (var [source   (ref sl 2)]
+           [line     (ref sl 3)]
+           [column   (ref sl 4)]
+           [position (ref sl 5)]
+           [span     (ref sl 6)])
+      (and source
+           (cond
+             [(and line column) (string-append source ":" line ":" column)]
+             [line              (string-append source "::"         column)]
+             [position          (string-append source "::"         position)]
+             [#t                (string-append source "::-1")])))
+             
+
+    
+    
     ;;;
     ;;; 13 INPUT AND OUTPUT
     ;;;
@@ -1502,6 +1556,124 @@
     ;;; 14 REFLECTION AND SECURITY
     ;;;
 
+    ;;;
+    ;;; 14.1 NAMESPACES
+    ;;;
+
+    ;; A namespace is a mapping from symbols (and phase) to binding information.
+
+    ;; A binding can be one of:
+    ;;   1) a module binding binding
+    ;;   2) a top-level transformer binding named by the symbol
+    ;;   3) a top-level variable named by the symbol
+
+    ;; An “empty” namespace maps all symbols to top-level variables.
+    ;; A top-level variable is both a variable and a location.
+
+    ;; A namespace also has a module registry.
+    ;; A module registry maps module names to module declarations.
+    ;; The registry is shared between all phases.
+
+    ;; Representation
+    ;;   (array NAMESPACE <registry> <base-phase> <dict0>)
+    ;;     registry    =
+    ;;     base-phase  = integer : corresponds to phase used by eval and dynamic-require
+    ;;     dict0       =     
+    ;; For now just phase 0 is stored in the namespace.
+    (define/export (namespace? v)
+      (and (array? v) (= (tag v) NAMESPACE)))
+    (define/export (make-empty-namespace)
+      ; empty namespace, no mappings in registry
+      (array NAMESPACE (array) 0 (array)))
+    ; TODO make-base-empty-namespace
+    ; TODO make-base-namespace
+    ; TODO define-namespace-anchor
+    ; TODO namespace-anchor?
+    ; TODO namespace-anchor->empty-namespace
+    ; TODO namespace-anchor->namespace    
+    (define/export CURRENT-NAMESPACE (make-empty-namespace))
+    (define/export (current-namespace ns) ; ns optional
+      ; TODO current-namespace  (make it a parameter)
+      (case arguments.length
+        [(0) CURRENT-NAMESPACE]
+        [(1) (:= CURRENT-NAMESPACE ns)]
+        [else "ERROR current-namespace expected at most 1 argument"]))    
+    ; TODO namespace-symbol->identifier
+    (define/export (namespace-base-phase opt-ns) ; optional argument
+      (var [ns (or opt-ns CURRENT-NAMESPACE)])
+      (ref ns 2))
+    ; TODO (namespace-module-identifer [where])
+    (define/export (namespace-variable-value sym use-mapping? failure-thunk namespace)
+      ; use-mapping?, failure-thunk, and, namespace are optional
+      (case arguments.length
+        [(1) (var [dict (ref CURRENT-NAMESPACE 3)] [val (ref dict sym)])
+             (if (= val undefined)  ; todo: throw exception if undefined
+                 ("ERROR - namespace-variable-value - no value found: ")
+                 val)]
+        [(2) (var [dict (ref CURRENT-NAMESPACE 3)] [val (ref dict sym)])
+             (when use-mapping? ("ERROR - namespace-variable-value - TODO map?"))
+             (if (= val undefined) ; todo: throw exception if undefined
+                 ("ERROR - namespace-variable-value - no value found: ")
+                 val)]
+        [(3) (var [dict (ref CURRENT-NAMESPACE 3)] [val (ref dict sym)])
+             (when use-mapping? ("ERROR - namespace-variable-value - TODO map?"))
+             (if (= val undefined) ; todo: throw exception if undefined
+                 (invoke failure-thunk)
+                 val)]
+        [(4) (var [dict (ref namespace 3)] [val (ref dict sym)])
+             (when use-mapping? ("ERROR - namespace-variable-value - TODO map?"))
+             (if (= val undefined) (invoke failure-thunk) val)]
+        [else ("ERROR - namespace-variable-value - expected at most 4 arguments")]))
+    (define/export (namespace-set-variable-value! sym v map? ns) ; map?, namespace optional
+      (case arguments.length
+        [(2) (var [dict (ref CURRENT-NAMESPACE 3)])
+             (array! dict sym v)
+             VOID]
+        [(3) (var [dict (ref CURRENT-NAMESPACE 3)]) ; TODO handle map?
+             (array! dict sym v)
+             (when map? ("ERROR - namespace-set-variable-value! - TODO map?"))
+             VOID]
+        [(4) (var [dict (ref ns 3)])                ; TODO handle map?
+             (array! dict sym v)
+             (when map? ("ERROR - namespace-set-variable-value! - TODO map?"))
+             VOID]
+        [else ("ERROR - namespace-set-variable-value! - expected at most 4 arguments")]))    
+    (define/export (namespace-undefine-variable! sym ns) ; ns optional
+      (case arguments.length
+        [(1) (namespace-undefine-variable! sym CURRENT-NAMESPACE)]
+        [(2) (var [dict (ref ns 3)]
+                  [i    (dict.indexOf sym)])
+             (dict.slice i 1)
+             VOID]))             
+    (define/export (namespace-mapped-symbols ns) ; ns is optional
+      (case arguments.length
+        [(0) (namespace-mapped-symbols CURRENT-NAMESPACE)]
+        [(1) (var [dict (ref ns 3)])
+             (for/list ([x in-array dict])
+               x)]))        
+    ; TODO namespace-require
+    ; TODO namespace-require/copy
+    ; TODO namespace-require/constant
+    ; TODO namespace-require/expansion-time
+    ; TODO namespace-attach-module
+    ; TODO namespace-attach-module-declaration
+    ; TODO namespace-unprotect-module
+    (define/export (namespace-module-registry ns)
+      (ref ns 1))
+    ; TODO module->namespace
+    ; TODO namespace-syntax-introduce
+    ; TODO module-provide-protected?
+    ; TODO variable-reference?
+    ; TODO variable-reference-constant?
+    ; TODO variable-reference->empty-namespace
+    ; TODO variable-reference->namespace
+    ; TODO variable-reference->resolved-module-path
+    ; TODO variable-reference->module-path-index
+    ; TODO variable-refefence->module-source
+    ; TODO variable-reference->phase
+    ; TODO variable-reference->module-base-phase
+    ; TODO variable-reference->module-declaration-inspector
+    
     ;;;
     ;;; 14.9 Structure Inspectors
     ;;;
