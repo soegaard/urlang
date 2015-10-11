@@ -1,4 +1,10 @@
 #lang racket
+
+;;; TEMPORARY: These are only neeed until modules are supported.
+;;;            See "hack" in α-rename.
+(require (only-in racket/unsafe/ops unsafe-fx< unsafe-fx> unsafe-fx+ unsafe-fx- unsafe-fx*)
+         (only-in racket/base in-range))
+
 (provide urlang)
 ;; Parameters
 (provide current-urlang-output-file                      ; overrides module-name as output file
@@ -1612,10 +1618,17 @@
   (let ()
     ; TODO Fix this hack:
     ; HACK BEGINS
+    
     (define kernel:srcloc (expand-syntax #'srcloc)) ; expands to kernel:srcloc
     (global! kernel:srcloc)
     (global! (expand-syntax #'apply))               ; expands to new-apply-proc
     (global! (second (syntax->list (expand-syntax #'(apply))))) ; expands to apply
+    (global! #'unsafe-fx<)
+    (global! #'unsafe-fx>)
+    (global! #'unsafe-fx+)
+    (global! #'unsafe-fx-)
+    (global! #'unsafe-fx*)
+    (global! (second (syntax->list (expand-syntax (datum->syntax #'here '(in-range 10))))))
     ; HACK ENDS    
     (Module U)))
 

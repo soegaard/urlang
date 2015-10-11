@@ -1,6 +1,13 @@
 #lang racket
 (require "urlang.rkt" "urlang-extra.rkt" "for.rkt" syntax/parse syntax/stx)
 
+;;;
+;;; TODO
+;;;
+
+;;  - make andmap, ormap etc work with closures
+;;    (copy approach used in map)
+
 (current-urlang-run?                           #t)
 (current-urlang-echo?                          #t)
 (current-urlang-console.log-module-level-expr? #t)
@@ -992,15 +999,31 @@
              (:= result (cons (car xs) result))
              (:= xs (cdr xs)))
       result)
+    (define/export alt-reverse reverse) ; version in #%kernel which might be jit-optimized    
     (define/export (map proc xs ys zs) ; optional (map proc xs ...+)
       (case arguments.length
-        [(2) (for/list ([x in-list xs])
-               (proc.call #f x))]
-        [(3) (for/list ([x in-list xs] [y in-list ys])
-               (proc.call #f x y))]
-        [(4) (for/list ([x in-list xs] [y in-list ys] [z in-list zs])
-               (proc.call #f x y z))]
-        [(0) (error "map" "expected at least two arguments")]        
+        [(2) (cond
+               [(js-function? proc)  (for/list ([x in-list xs])
+                                       (proc x))]
+               [(closure? proc)      (var [lab (ref proc 1)])
+                                     (for/list ([x in-list xs])
+                                       (lab proc x))]
+               [#t                   ("ERROR - map")])]
+        [(3) (cond
+               [(js-function? proc)  (for/list ([x in-list xs] [y in-list ys])
+                                       (proc x y))]
+               [(closure? proc)      (var [lab (ref proc 1)])
+                                     (for/list ([x in-list xs] [y in-list ys])
+                                       (lab proc x y))]
+               [#t                   ("ERROR - map")])]
+        [(4) (cond
+               [(js-function? proc)  (for/list ([x in-list xs] [y in-list ys] [z in-list zs])
+                                       (proc x y z))]
+               [(closure? proc)      (var [lab (ref proc 1)])
+                                     (for/list ([x in-list xs] [y in-list ys] [z in-list zs])
+                                       (lab proc x y z))]
+               [#t                   ("ERROR - map")])]
+        [(0) (error "map" "expected at least two arguments")]
         [else (/ 1 0)  ])) ; TODO
     (define/export (andmap proc xs ys zs) ; optional (andmap proc xs ...+)
       (case arguments.length
@@ -1199,7 +1222,29 @@
                                      (begin (:= b 1 new) #t)
                                      #f))
     (define/export (immutable-box? v)  (and (array? v) (= (tag v) IMMUTABLE-BOX)))
-    
+
+    ;;;
+    ;;; 4.14.1 Sequences
+    ;;;
+
+    (define/export (in-range start end step)
+      ; (in-range end) or (in-range start end [step])
+      ; NOTE: This only checks types and signals any errors.
+      ;       The expansion of for uses this to produces error messages.
+      ;       TODO This will be removed when we can compile racket/stream
+      (case arguments.length
+        [(1) (if (number? start) VOID ("ERROR - in-range - expected number"))]
+        [(2) (if (and (number? start) (number? end))
+                 VOID ("ERROR - in-range - expected number"))]
+        [(3) (if (and (number? start) (number? end) (number? step))
+                 VOID ("ERROR - in-range - expected number"))]
+        [else ("ERROR - in-range - at most 3 arguments")]))
+
+    (define/export (in-list xs)
+      (case arguments.length
+        [(1) (if (list? xs) VOID ("ERROR - in-list - expected list"))]
+        [else ("ERROR - in-range - expected 1 argument")]))
+      
     ;;;
     ;;; 4.17 Procedures
     ;;;
@@ -1680,6 +1725,16 @@
 
     (define/export (current-inspector)
       #f)
+
+    ;;;
+    ;;; 17 UNSAFE OPERATIONS
+    ;;;
+
+    (define/export (unsafe-fx< x y) (< x y))
+    (define/export (unsafe-fx> x y) (> x y))
+    (define/export (unsafe-fx+ x y) (+ x y))
+    (define/export (unsafe-fx- x y) (- x y))
+    (define/export (unsafe-fx* x y) (* x y))
     
     ;;;
     ;;; Higher Order
