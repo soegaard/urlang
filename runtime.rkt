@@ -100,8 +100,9 @@
         (export name)
         (define name expr)))]
     [_ (error 'define/export "bad syntax" stx)]))
-     
+
 (define-urlang-macro define/export expand-define/export)
+
 
 (display
  (urlang
@@ -130,19 +131,21 @@
     (define/export STRUCT-TYPE-DESCRIPTOR (array "struct-type-descriptor"))
     (define/export STRUCT                 (array "struct"))
     (define/export NAMESPACE              (array "namespace"))
+    (define/export STRING-PORT            (array "string-port"))
+    (define/export EOF-OBJECT             (array "eof-object"))
     
     (define/export VOID (array))    ; singleton
     (define/export NULL (array))    ; singleton
-
+    
     ;;;
     ;;; CASE-LAMBDA
     ;;;
-
+    
     ;; Representation:
     ;;   {array '"CLOS" {array ar ...} {array ca ...}}
     ;; where ar_i is the arity             of clause i
     ;; and   ca_i is the closure allocated of clause i
-
+    
     ;; Encoding of arities:
     ;;   +n means precisely n
     ;;    0 means preciely  0
@@ -185,11 +188,11 @@
     ;;;
     ;;; OPERATOR PRIMITIVES
     ;;;
-
+    
     ;; The following primitives have names that are keywords in JavaScript.
     ;; That means we need alternative names.
     ;; Here + is named PRIM+  etc.
-
+    
     (define/export (PRIM+ a b) ; variadic
       (var [n arguments.length] [args arguments] s)
       (case arguments.length
@@ -200,7 +203,7 @@
               (for ([i in-range 2 n])
                 (:= s (+ s (ref args i))))
               s]))
-
+    
     (define/export (PRIM- a b) ; variadic
       (var [n arguments.length] [args arguments] s)
       (case arguments.length
@@ -211,7 +214,7 @@
               (for ([i in-range 2 n])
                 (:= s (- s (ref args i))))
               s]))
-
+    
     (define/export (PRIM* a b) ; variadic
       (var [n arguments.length] [args arguments] s)
       (case arguments.length
@@ -222,7 +225,7 @@
               (for ([i in-range 2 n])
                 (:= s (* s (ref args i))))
               s]))
-
+    
     (define/export (PRIM/ a b) ; variadic
       (var [n arguments.length] [args arguments] s)
       (case arguments.length
@@ -243,7 +246,7 @@
               (for ([i in-range 2 n])
                 (:= s (and s (=== a (ref args i)))))
               s]))
-
+    
     (define/export (PRIM<= a b) ; variadic
       (var [n arguments.length] [args arguments] s r)
       (case arguments.length
@@ -253,7 +256,7 @@
               (for ([i in-range 2 (- n 1)])
                 (:= s  (and s (<= (ref args i) (ref args (+ i 1))))))
               s]))
-
+    
     (define/export (PRIM>= a b) ; variadic
       (var [n arguments.length] [args arguments] s r)
       (case arguments.length
@@ -263,7 +266,7 @@
               (for ([i in-range 2 (- n 1)])
                 (:= s (and s (>= (ref args i) (ref args (+ i 1))))))
               s]))
-
+    
     (define/export (PRIM> a b) ; variadic
       (var [n arguments.length] [args arguments] s r)
       (case arguments.length
@@ -273,7 +276,7 @@
               (for ([i in-range 2 (- n 1)])
                 (:= s  (and s (> (ref args i) (ref args (+ i 1))))))
               s]))
-
+    
     (define/export (PRIM< a b) ; variadic
       (var [n arguments.length] [args arguments] s r)
       (case arguments.length
@@ -287,7 +290,7 @@
     ;;;
     ;;; 4.1 Booleans and equality
     ;;;
-
+    
     ;; Representation: #t and #f are represented as true and false respectively,
     ;; where true and false are JavaScript booleans.
     (define/export (boolean? v)
@@ -362,11 +365,11 @@
     ;;;
     ;;; 4.2.2 Generic Numbers
     ;;;
-
+    
     ;; Note: JavaScript addition has the name +.
     ;;       Racket generic number operations are prefixed with $,
     ;;       so Racket addition is $+
-
+    
     (define/export ($+ z1 z2) ; (+ z ...) variadic
       (var [n arguments.length] res)
       (sif (= n 2)
@@ -536,7 +539,7 @@
     ; floating-point-bytes-> real ; todo
     ; real->floating-point-bytes ; todo
     ; system-big-endian? : todo
-
+    
     ;;; from racket/math
     (define/export pi Math.PI)
     (define/export (nan? x)      (= x +nan.0))
@@ -545,13 +548,13 @@
     ;;;  
     ;;; 4.3 Strings
     ;;;
-
+    
     ; todo: string-copy
     ; todo: string-copy!
     ; todo: string-fill!
     ; todo: list->string
     ; todo: build-string
-      
+    
     ;; Representation
     ;;   - immutable Racket strings are represented as JavaScript strings
     ;;   - mutable Racket string are represented as a tagged array:
@@ -677,18 +680,18 @@
       (var [args arguments])
       (var [as (for/array #:length args.length ([a in-array args]) a)])
       (as.join ""))
-
+    
     ;;;
     ;;; 4.4 Byte Strings
     ;;;
-
+    
     ;; A byte string is a fixed-length array of bytes.
     ;; A byte is an exact integer between 0 and 255 inclusive.
     ;; A byte string can be mutable or immutable.
-
+    
     ;; Representation: Byte strings are represented as Int8Array
     ; http://caniuse.com/#feat=typedarrays
-
+    
     ; bytes-copy!       ; todo
     ; bytes-fill!       ; todo
     ; bytes-append      ; todo
@@ -696,7 +699,7 @@
     ; list->bytes       ; todo
     ; make-shared-bytes ; todo
     ; shared-bytes      ; todo
-
+    
     
     (define/export (bytes? v)
       (and (array? v)
@@ -769,7 +772,7 @@
     
     (define/export (bytes-copy bs)
       (subbytes2 bs 0))
-
+    
     ;;; 4.4.2 Byte String Comparisons
     (define/export (bytes=? bs1 bs2)
       (var [n1 (bytes-length bs1)]
@@ -779,17 +782,17 @@
       (and (= n1 n2)
            (for/and ([i in-range 0 n1])
              (= (ref is1 i) (ref is2 i)))))
-
+    
     ;;;
     ;;; 4.5 Characters
     ;;;
-
+    
     ; char-utf-8-length TODO
     
     ;; Characters range over Unicode scalar values, which includes characters whose values
     ;; range from #x0 to #x10FFFF, but not including #xD800 to #xDFFF.
     ;; The scalar values are a subset of the Unicode code points.
-
+    
     ;; Representation:
     ;;      {array CHAR primtive-javascript-string-of-length-1}
     (define/export (char? v)               (and (array? v) (= (tag v) CHAR)))
@@ -802,22 +805,22 @@
     ;;;
     ;;; 4.6 Symbols
     ;;;    
-
+    
     ; A symbol is like an immutable string, but symbols are normally interned,
     ; so that two symbols with the same character content are normally eq?.
     ; All symbols produced by the default reader (see Reading Symbols) are interned.
-
+    
     ;; Representation:
     ;;   A interned symbol
     ;;      {array SYMBOL primtive-javascript-string}
     ;;   Non-interned symbol:
     ;;      {array SYMBOL javascript-string-object}
-
+    
     ;;   For the time being we will assume that the JS implementation
     ;;   interns primitive strings. If this happens to be false, we need
     ;;   to change the representation to do its own interning.
     ;;   Note: String(s) without new in front turns s into a primitive string.
-
+    
     ; string->unreadable-symbol  ; TODO
     
     (define/export (symbol? v)
@@ -830,7 +833,7 @@
                (= (ref sym1 1) (ref sym2 1)))
           ; uninterned symbols are only equal to themselves
           (= sym1 sym2)))
-      
+    
     (define/export (symbol->string sym)
       ; returns freshly allocated mutable string
       (var [js-str (ref sym 1)]
@@ -843,7 +846,7 @@
     (define/export (symbol->immutable-string sym)
       ; String returns a primitive (interned by js) string
       (String (ref sym 1)))
-
+    
     (define symbol-table (array))
     
     (define/export (string->symbol str)
@@ -885,16 +888,16 @@
     
     (define/export (error who msg)
       (console.log (+ "error: " who ": " msg)))
-
+    
     ;;;
     ;;; 4.8 Keywords
     ;;;
-
+    
     ;; A keyword is like an interned symbol, but its printed form starts with #:,
     ;; and a keyword cannot be used as an identifier. Furthermore, a keyword by
     ;; itself is not a valid expression, though a keyword can be quoted to form
     ;; an expression that produces the symbol.
-
+    
     ;; Representation:
     ;;   {array KEYWORD primitive-js-str}
     ;; Note: The representation assumes primitive JavaScript strings are interned.
@@ -913,10 +916,10 @@
     ;;;
     ;;; 4.9-10 Lists
     ;;;
-
+    
     ; foldl TODO
     ; foldr TODO
-
+    
     ;; Representation:
     ;;   A list is either NULL or a pair with a true list? flag.
     ;;   That is, a list is either:
@@ -1121,7 +1124,7 @@
     ;;;
     ;;; 4.11 Vectors
     ;;;
-
+    
     ;; TODO:
     ;;   vector->values
     
@@ -1207,10 +1210,10 @@
     ;;;
     ;;; 4.12 Boxes
     ;;;
-
+    
     ;; Representation:
     ;;   (array BOX value )
-
+    
     (define/export (box? v)             (and (array? v)
                                              (or (= (tag v) BOX)
                                                  (= (tag v) IMMUTABLE-BOX))))
@@ -1219,14 +1222,14 @@
     (define/export (unbox b)            (ref b 1))
     (define/export (set-box! b v)       (:= b 1 v))
     (define/export (box-cas! b old new) (if (eq? (ref b 1) old)
-                                     (begin (:= b 1 new) #t)
-                                     #f))
+                                            (begin (:= b 1 new) #t)
+                                            #f))
     (define/export (immutable-box? v)  (and (array? v) (= (tag v) IMMUTABLE-BOX)))
-
+    
     ;;;
     ;;; 4.14.1 Sequences
     ;;;
-
+    
     (define/export (in-range start end step)
       ; (in-range end) or (in-range start end [step])
       ; NOTE: This only checks types and signals any errors.
@@ -1239,16 +1242,16 @@
         [(3) (if (and (number? start) (number? end) (number? step))
                  VOID ("ERROR - in-range - expected number"))]
         [else ("ERROR - in-range - at most 3 arguments")]))
-
+    
     (define/export (in-list xs)
       (case arguments.length
         [(1) (if (list? xs) VOID ("ERROR - in-list - expected list"))]
         [else ("ERROR - in-range - expected 1 argument")]))
-      
+    
     ;;;
     ;;; 4.17 Procedures
     ;;;
-
+    
     ;;; Closures:    
     ;;;     Representation:
     ;;;        {array CLOS label value0 ... }
@@ -1308,24 +1311,24 @@
                   (:= a (+ i 1) x))                
                 ((ref (ref proc 1) "apply") #f a))
               "apply3 - error")))
-              
+    
     (define/export new-apply-proc apply) ; todo: support keywords    
     ;;;
     ;;; 4.18 Void
     ;;;
-
+    
     ;; Representation:
     ;;   The void value is represented as the singleton VOID.
     ;; Note: The name  void  is reserved in EcmaScript 6,
     ;;       so we use the name Void.
-
+    
     (define/export (void? v) (= v VOID))
     (define/export (Void) VOID) ; variadic
-
+    
     ;;;
     ;;; 5 Structures
     ;;;
-
+    
     ;; Representation:
     ;;   A structure is represented as an array tagged with STRUCT
     ;;       (array STRUCT <a-struct-type-descriptor> field0 field1 ...)
@@ -1333,7 +1336,7 @@
     ;;       (array STRUCT-TYPE-DESCRIPTOR name super-type total-field-count
     ;;              init-field-indices auto-field-indices auto-field-values
     ;;              properties inspector immutables guard constructor-name)
-
+    
     ;; name               = string with name of struct
     ;; super-type         = #f or struct-type-descriptor
     ;; total-field-count  = number of init fields plus number of auto fields
@@ -1345,7 +1348,7 @@
     ;; mutables           = TODO
     ;; guard              = TODO
     ;; constructor-name     = string
-
+    
     ;;;
     ;;; 5.2 Creating Structure Types
     ;;;
@@ -1361,10 +1364,10 @@
     (define/export (struct-type-descriptor-immutables         std) (ref std 9))
     (define/export (struct-type-descriptor-guard              std) (ref std 10))
     (define/export (struct-type-descriptor-constructor-name   std) (ref std 11))
-
+    
     (define/export (struct-type-descriptor? v) (and (array? v) (= (ref v 0) STRUCT-TYPE-DESCRIPTOR)))
     (define/export (struct? v)                 (and (array? v) (= (ref v 0) STRUCT)))
-
+    
     (define/export (str-struct-type-descriptor s)
       (+ "(struct-type-descriptor "
          (str (ref s 1)) " " (str (ref s 2))  " " (str (ref s 3)) " " (str (ref s 4)) " "
@@ -1376,11 +1379,11 @@
     
     
     (define/export (make-struct-type-descriptor
-             name super-type init-field-count auto-field-count
-             ; optionals: (handled by make-struct-type)
-             auto-field-value props inspector proc-spec immutables
-             guard constructor-name
-             )
+                    name super-type init-field-count auto-field-count
+                    ; optionals: (handled by make-struct-type)
+                    auto-field-value props inspector proc-spec immutables
+                    guard constructor-name
+                    )
       (var [ifc   init-field-count]
            [afc   auto-field-count]
            [stfc  (if super-type (struct-type-descriptor-total-field-count super-type) 0)])
@@ -1414,11 +1417,11 @@
                    #f   ; guard
                    #f   ; constructor name
                    ))))
-
+    
     (define/export (make-struct-type name super-type init-field-count auto-field-count
-                              ; optionals: see docs for default value
-                              auto-value props inspector proc-spec immutables
-                              guard constructor-name)
+                                     ; optionals: see docs for default value
+                                     auto-value props inspector proc-spec immutables
+                                     guard constructor-name)
       ; handle optional arguments, then call do-make-struct-type
       (do-make-struct-type name super-type init-field-count auto-field-count
                            (if (= auto-value       undefined) #f   auto-value)
@@ -1431,8 +1434,8 @@
                            (if (= constructor-name undefined) #f   constructor-name)))
     
     (define/export (do-make-struct-type name super-type init-field-count auto-field-count
-                                 auto-field-value ; one values is used in all auto-fields
-                                 props inspector proc-spec immutables guard constructor-name)
+                                        auto-field-value ; one values is used in all auto-fields
+                                        props inspector proc-spec immutables guard constructor-name)
       (var [super-field-count (if super-type (struct-type-descriptor-total-field-count super-type) 0)]
            [field-count       (+ init-field-count auto-field-count super-field-count)]
            [std               (make-struct-type-descriptor
@@ -1490,7 +1493,7 @@
            (λ (s index)       (ref s (+ index 2)))
            ;; struct-mutator-procedure
            (λ (s index value) (:= s (+ index 2) value) VOID))))
-
+    
     (define/export (make-struct-field-accessor accessor-proc field-pos
                                                field-name) ; field-name optional
       ; Returns a field accessor that is equivalent to (lambda (s) (accessor-proc s field-pos)).
@@ -1498,18 +1501,18 @@
       ; The name of the resulting procedure for debugging purposes is derived from field-name
       ; and the name of accessor-proc’s structure type if field-name is a symbol.
       (λ (s) (accessor-proc s field-pos))) ; todo add debug info (i.e. infered names)
-      
+    
     ;;;
     ;;; 10. Control Flow
     ;;;
-
+    
     ;;; 10.1 Multiple Values
     
     ;; Representation:
     ;;   Multiple values are passed as a tagged array.
     ;; Note:
     ;;   At some point consider removing the tag.
-
+    
     (define/export (values? v) (and (array? v) (= (tag v) VALUES)))  ; internal
     
     (define/export (values x) ; (values v ...)  variadic
@@ -1532,15 +1535,15 @@
                         (receiver.apply #f vals)]
         ;; generator produced one value
         [#t             (receiver.apply #f vals)]))
-
+    
     ;;; 10.2 Exceptions
-
+    
     ;;; 10.2.5 Built-in Exception Types
-
+    
     ;; (struct srcloc (source line column position span)
     ;;   #:transparent
     ;;   #:extra-constructor-name make-srcloc)
-
+    
     ;; Representation:
     ;;   A structure is represented as an array tagged with STRUCT
     ;;       (array STRUCT <a-struct-type-descriptor> field0 field1 ...)
@@ -1548,7 +1551,7 @@
     ;;       (array STRUCT-TYPE-DESCRIPTOR name super-type total-field-count
     ;;              init-field-indices auto-field-indices auto-field-values
     ;;              properties inspector immutables guard constructor-name)
-
+    
     ;; Note: this is in #%kernel
     
     (define/export (kernel:srcloc source line column position span)
@@ -1557,7 +1560,7 @@
                     "srcloc" #f 5 (list 0 1 2 3 4) NULL NULL
                     #f #f NULL #f "make-srcloc")
              source line column position span))
-
+    
     (define/export (srcloc->string sl)
       (var [source   (ref sl 2)]
            [line     (ref sl 3)]
@@ -1570,55 +1573,146 @@
              [line              (string-append source "::"         column)]
              [position          (string-append source "::"         position)]
              [#t                (string-append source "::-1")])))
-             
-
-    
     
     ;;;
     ;;; 13 INPUT AND OUTPUT
     ;;;
 
     ;;;
-    ;;; 13.5 Writing
+    ;;; 13.1.2 Managing Ports
     ;;;
 
+    (define/export eof EOF-OBJECT)
+    
+    (define/export (eof-object? v)
+      (= v EOF-OBJECT))
+    
+    ;;;
+    ;;; 13.1.6 String Ports
+    ;;;
+    
+    ;;; LOCATION
+    
+    ;; When counting lines, Racket treats linefeed, return, and return-linefeed 
+    ;; combinations as a line terminator and as a single position (on all platforms). 
+    ;; Each tab advances the column count to one before the next multiple of 8. 
+    ;; When a sequence of bytes in the range 128 to 253 forms a UTF-8 encoding of a character, 
+    ;; the position/column is incremented once for each byte, and then decremented appropriately 
+    ;; when a complete encoding sequence is discovered. 
+    
+    ;; (array line column pos)
+    ;;   pos and line counts from 1
+    ;;   column       counts from 0
+    
+    ;;; STRING PORT
+    
+    ;; Representation:
+    ;;     (array STRING-PORT str name len idx loc)
+    ;; A string-port consists of:
+    ;;   str    the string                           (string)
+    ;;   name   the port name                        (string)
+    ;;   len    the length of the string             (natural)
+    ;;   idx    the current index into the string    (natural)
+    ;;   loc    the current location                 (natural)
+    ;; Note: the index idx and the location position may be different,
+    ;;       since the #\return#\newline combination counts as a single position.
+    
+    (define/export (string-port? p) ; p is a port
+      (and (array? p) (= (tag p) STRING-PORT)))
+    (define (make-initial-location)
+      ; (location 1 0 1)
+      (array 1 0 1))
+    ;; port-count-lines! : port -> void
+    (define/export (port-count-lines! port )
+      ; TODO : for now: location tracking is always on
+      VOID)
+    ;; port-next-location : port -> (values (U exact-positive-integer? #f)
+    ;;                                      (U exact-nonnegative-integer? #f)
+    ;;                                      (U exact-postive-integer? #f))
+    ; returns three values:
+    ;    line number, column number and position
+    (define/export (port-next-location p)
+      (var [loc (ref p 5)]
+           [line (ref loc 0)]
+           [col  (ref loc 1)]
+           [pos  (ref loc 2)])
+      (array VALUES line col pos))
+    
+    ;; open-input-string : string [name] -> string-port
+    (define (open-input-string str [name #f])
+      (array STRING-PORT str name (string-length str) 0 (make-initial-location)))
+    ;; file-position : port [integer] -> void
+    (define (file-position port new-pos)
+      (case arguments.length
+        [(1) (file-position port #f)]
+        [(2) (file-position port new-pos)]
+        [else ("ERROR - file-position expected 1 or 2 arguments")]))
+    (define (file-position2 port new-pos)
+      ; TODO: test setting the position in the case where #\return#\newline is present
+      (unless (string-port? port) ("error 'file-position expected string-input-port, got: " port))
+      ;; string-port
+      (cond
+        [(string-port? port)
+         (var [str  (ref port 1)] [name (ref port 2)] [len  (ref port 3)]
+              [idx  (ref port 4)] [loc  (ref port 5)])
+         (cond [(eq? new-pos #f)
+                idx]
+               [(eof-object? new-pos)
+                (array! port 4 len)   ; (set-string-port-idx! port len)
+                (array! loc  2 len)]   ; (set-location-pos! loc len)]
+               [(and (integer? new-pos) (> new-pos len))
+                ; todo: enlarge string?
+                (array! port 4 new-pos)   ; (set-string-port-idx! port new-pos)
+                (array! loc  2 new-pos)]   ; (set-location-pos! loc new-pos)]
+               [(and (integer? new-pos) (<= 0 new-pos))
+                (array! port 4 new-pos)   ; (set-string-port-idx! port new-pos)
+                (array! loc  2 new-pos)]   ; (set-location-pos! loc new-pos)]
+               [#t
+                ("error 'file-position expected eof-object or non-negative integer new-pos")])]
+        [#t ("ERROR")]))
+    
+    ;;;
+    ;;; 13.5 Writing
+    ;;;
+    
     (define/export (displayln v)
       (console.log (str v)))
-
+    
     (define/export (newline)
       (console.log ""))
-
+    
     (define/export (display v)
       (process.stdout.write (str v)))
-
+    
     (define/export (write v)
       (process.stdout.write (str v)))
-
+    
     (define/export (console-log str)
       (console.log str))
-
+    
+    
     ;;;
     ;;; 14 REFLECTION AND SECURITY
     ;;;
-
+    
     ;;;
     ;;; 14.1 NAMESPACES
     ;;;
-
+    
     ;; A namespace is a mapping from symbols (and phase) to binding information.
-
+    
     ;; A binding can be one of:
     ;;   1) a module binding binding
     ;;   2) a top-level transformer binding named by the symbol
     ;;   3) a top-level variable named by the symbol
-
+    
     ;; An “empty” namespace maps all symbols to top-level variables.
     ;; A top-level variable is both a variable and a location.
-
+    
     ;; A namespace also has a module registry.
     ;; A module registry maps module names to module declarations.
     ;; The registry is shared between all phases.
-
+    
     ;; Representation
     ;;   (array NAMESPACE <registry> <base-phase> <dict0>)
     ;;     registry    =
@@ -1722,14 +1816,14 @@
     ;;;
     ;;; 14.9 Structure Inspectors
     ;;;
-
+    
     (define/export (current-inspector)
       #f)
-
+    
     ;;;
     ;;; 17 UNSAFE OPERATIONS
     ;;;
-
+    
     (define/export (unsafe-fx< x y) (< x y))
     (define/export (unsafe-fx> x y) (> x y))
     (define/export (unsafe-fx+ x y) (+ x y))
@@ -1739,7 +1833,7 @@
     ;;;
     ;;; Higher Order
     ;;;
-
+    
     ;;; FORMAT
     ;; The str functions convert values into strings.
     (define (str-null)      "()")
@@ -1785,8 +1879,8 @@
         [(= v undefined)               (str-undefined)]
         [#t                            (console.log v)
                                        "str - internal error"]))
-
-
+    
+    
     #;("tests"
        ; (str (cons 10 (cons 11 (cons 12 NULL))))
        ; (str (vector 10 11 12))
@@ -1810,134 +1904,134 @@
        (bytes-length (make-bytes2 10 65))                        ; 10
        (str (bytes=? (make-bytes2 10 65) (make-bytes2 10 65)))   ; #t
        (str (bytes=? (make-bytes2 10 65) (make-bytes2 10 66))))  ; #f
-
-    #;("even more tests"
     
-    (string->symbol "foo")
-    (string (make-char "a") (make-char "b") (make-char "c"))
-    (string->symbol (string (make-char "a") (make-char "b") (make-char "c")))
-    (make-primitive-string 0 "a")
-    (make-primitive-string 1 "a")
-    (make-primitive-string 2 "a")
-    (make-primitive-string 3 "a")
-    (make-primitive-string 4 "a")
-    (make-primitive-string 5 "a")
-    (make-primitive-string 6 "a")
-    (make-primitive-string 7 "a")
-    (typeof (make-primitive-string 7 "a"))
-    (define as (array "a" "b"))
-    (as.join "")
-    (string->symbol "foo")
-    (symbol? (string->symbol "foo"))
-    (str (string->symbol "foo"))
-    (typeof (string->symbol "foo"))
-    (typeof (array 3 4 5))
-    (symbol->string (string->symbol "foo"))
-    (symbol->immutable-string (string->symbol "foo"))
-    (gensym)
-    (gensym)
-    (gensym "foo")
-    (symbol<? "foo" "bar")
-    (symbol<? "bar" "foo")
-    (string=? "foo" "bar")
-    (string=? "foo" "foo")
-    (string=? "foo" (immutable-string->string "foo"))
-    (string=? "1" "1.0")
-    (string-upcase "foo")
-    (string-upcase (immutable-string->string "foo"))
-    (str (vector->list (vector "a" "b" "c")))
-    (str (list->vector (vector->list (vector "a" "b" "c"))))
-    (str (vector->immutable-vector (vector "a" "b" "c")))
-    (str (let ([v (vector 1 2 3)]) (vector-fill! v 4) v))
-    (str (build-vector 5 (λ (x) (+ x 1))))
-    (str (string->keyword "foo"))
-    (str (apply vector (string->list "abc")))
-    (str (list 1 2 3))
-    (str (list-tail (list 1 2 3 4 5 6 7 8) 3))
-    (str (for/list ([i in-range 0 9]) i))
-    (str (list* 1 2 3 (list 4 5)))
-    (str (append))
-    (str (append (list 1 2 3)))
-    (str (append (list 1 2 3) (list 4 5 6)))
-    (str (append (list 1 2 3) (list 4 5 6) (list 7 8 9)))
-    (str (append (list 1 2 3) (list 4 5 6) (list 7 8 9) (list 10 11 12)))
-    (str (reverse (list)))
-    (str (reverse (list 1)))
-    (str (reverse (list 1 2)))
-    (str (reverse (list 1 2 3)))
-    (str (reverse (list 1 2 3 4)))
-    (str (map (λ (x)   (+ x 2)) (list 1 2 3 4)))
-    (str (map (λ (x y) (+ x y)) (list 1 2 3 4) (list 11 12 13 14)))
-    (str (andmap positive? (list 1  2 3)))
-    (str (andmap positive? (list 1 -2 3)))
-    (str (ormap positive? (list -1 -2 3)))
-    (str (ormap positive?  (list -1 -2 -3)))
-    (str (filter positive? (list -1 -2 -3 4 5 6 -7 8)))
-    (str (last (list 1 2 3 4)))
-    (str (box 42))
-    (str (box (list 1 2 3)))
-    (call-with-values (λ () (values 1 2))
-                      (λ (x y) (+ x y)))
-    ($+)
-    ($+ 1)
-    ($+ 1 2)
-    ($+ 1 2 3)
-    ($- 1)
-    ($- 1 2)
-    ($- 1 2 3)
-    ($*)
-    ($* 1)
-    ($* 1 2)
-    ($* 1 2 3)
-    (max 1 2 3 4 2 3 1)
-    (str (map round      (list 0.5 1.5 2.5 3.5 4.5 -0.5 -1.5 -2.5 -3.5 +inf.0 -inf.0 +nan.0)))
-    (str (map Math.round (list 0.5 1.5 2.5 3.5 4.5 -0.5 -1.5 -2.5 -3.5 +inf.0 -inf.0 +nan.0)))
-    (even? -2)
-    (floor -4.5)
-    (ceiling -4.5)
-    (truncate -4.5)
-    (str (number->string 123))
-    (str (number->string 123 2))
-    (str (number->string 123 8))
-    (str (number->string 123 16))
-    (string->number "123")
-    (string->number "123.25")
-    (string->number "101" 2)
-    (modulo  10    3)  ;  1
-    (modulo -10.0  3)  ;  2.0
-    (modulo  10.0 -3)  ; -2.0
-    (modulo +inf.0 3)  ; contract violoation
-    (integer-sqrt 17)
-    (integer-sqrt/remainder 17)
-    (integer-sqrt -17)
-    (integer-sqrt/remainder -17)
-    (gcd)       ; 0
-    (gcd 12)    ; 12
-    (gcd 12 18) ; 6
-    (gcd (* 2 3 5 7) (* 2 3 5) (* 2 3 7)) ; 6
-    (symbol=? (string->symbol "a") (string->symbol "a"))             ; #t
-    (symbol=? (string->symbol "a") (string->uninterned-symbol "a"))  ; #f
-    (equal? (list 1 "foo" (string->symbol "a")) (list 1 "foo" (string->symbol "a")))
-    (equal? (list 1 "foo" (string->symbol "a")) (list 1 "foo" (string->symbol "b")))
-    (let-values ([(a b)   (values 10 11)]
-                 [(c d e) (values 20 21 22)])
-      (str (list a b c d e)))
-    (define foo-sym (string->symbol "foo"))
-    (define bar-sym (string->symbol "bar"))
-    (let-values ([(struct_colon_foo foo foo? foo-ref foo-set!)
-                  (make-struct-type foo-sym #f
-                                    2 2 "auto-foo" (list) #f #f (list 0 1) #f foo-sym)])
-      (var [foo-a (λ (s) (foo-ref s 0))]
-           [foo-b (λ (s) (foo-ref s 1))])
-      (var [f (foo 11 12)])
-      (str (list (foo-a f) (foo-b f)))
-      (let-values ([(struct_colon_bar bar bar? bar-ref bar-set!)
-                    (make-struct-type bar-sym struct_colon_foo
-                                      2 3 "auto-bar"(list) #f #f (list 112 113) #f bar-sym)])
-        (var [g (bar 11 12 13 14)])
-        (str (list (foo-a g)
-                   (foo-b g)
-                   (bar-ref g 4)
-                   (bar-ref g 5)))
-        (str f))))
-  )))
+    #;("even more tests"
+       
+       (string->symbol "foo")
+       (string (make-char "a") (make-char "b") (make-char "c"))
+       (string->symbol (string (make-char "a") (make-char "b") (make-char "c")))
+       (make-primitive-string 0 "a")
+       (make-primitive-string 1 "a")
+       (make-primitive-string 2 "a")
+       (make-primitive-string 3 "a")
+       (make-primitive-string 4 "a")
+       (make-primitive-string 5 "a")
+       (make-primitive-string 6 "a")
+       (make-primitive-string 7 "a")
+       (typeof (make-primitive-string 7 "a"))
+       (define as (array "a" "b"))
+       (as.join "")
+       (string->symbol "foo")
+       (symbol? (string->symbol "foo"))
+       (str (string->symbol "foo"))
+       (typeof (string->symbol "foo"))
+       (typeof (array 3 4 5))
+       (symbol->string (string->symbol "foo"))
+       (symbol->immutable-string (string->symbol "foo"))
+       (gensym)
+       (gensym)
+       (gensym "foo")
+       (symbol<? "foo" "bar")
+       (symbol<? "bar" "foo")
+       (string=? "foo" "bar")
+       (string=? "foo" "foo")
+       (string=? "foo" (immutable-string->string "foo"))
+       (string=? "1" "1.0")
+       (string-upcase "foo")
+       (string-upcase (immutable-string->string "foo"))
+       (str (vector->list (vector "a" "b" "c")))
+       (str (list->vector (vector->list (vector "a" "b" "c"))))
+       (str (vector->immutable-vector (vector "a" "b" "c")))
+       (str (let ([v (vector 1 2 3)]) (vector-fill! v 4) v))
+       (str (build-vector 5 (λ (x) (+ x 1))))
+       (str (string->keyword "foo"))
+       (str (apply vector (string->list "abc")))
+       (str (list 1 2 3))
+       (str (list-tail (list 1 2 3 4 5 6 7 8) 3))
+       (str (for/list ([i in-range 0 9]) i))
+       (str (list* 1 2 3 (list 4 5)))
+       (str (append))
+       (str (append (list 1 2 3)))
+       (str (append (list 1 2 3) (list 4 5 6)))
+       (str (append (list 1 2 3) (list 4 5 6) (list 7 8 9)))
+       (str (append (list 1 2 3) (list 4 5 6) (list 7 8 9) (list 10 11 12)))
+       (str (reverse (list)))
+       (str (reverse (list 1)))
+       (str (reverse (list 1 2)))
+       (str (reverse (list 1 2 3)))
+       (str (reverse (list 1 2 3 4)))
+       (str (map (λ (x)   (+ x 2)) (list 1 2 3 4)))
+       (str (map (λ (x y) (+ x y)) (list 1 2 3 4) (list 11 12 13 14)))
+       (str (andmap positive? (list 1  2 3)))
+       (str (andmap positive? (list 1 -2 3)))
+       (str (ormap positive? (list -1 -2 3)))
+       (str (ormap positive?  (list -1 -2 -3)))
+       (str (filter positive? (list -1 -2 -3 4 5 6 -7 8)))
+       (str (last (list 1 2 3 4)))
+       (str (box 42))
+       (str (box (list 1 2 3)))
+       (call-with-values (λ () (values 1 2))
+                         (λ (x y) (+ x y)))
+       ($+)
+       ($+ 1)
+       ($+ 1 2)
+       ($+ 1 2 3)
+       ($- 1)
+       ($- 1 2)
+       ($- 1 2 3)
+       ($*)
+       ($* 1)
+       ($* 1 2)
+       ($* 1 2 3)
+       (max 1 2 3 4 2 3 1)
+       (str (map round      (list 0.5 1.5 2.5 3.5 4.5 -0.5 -1.5 -2.5 -3.5 +inf.0 -inf.0 +nan.0)))
+       (str (map Math.round (list 0.5 1.5 2.5 3.5 4.5 -0.5 -1.5 -2.5 -3.5 +inf.0 -inf.0 +nan.0)))
+       (even? -2)
+       (floor -4.5)
+       (ceiling -4.5)
+       (truncate -4.5)
+       (str (number->string 123))
+       (str (number->string 123 2))
+       (str (number->string 123 8))
+       (str (number->string 123 16))
+       (string->number "123")
+       (string->number "123.25")
+       (string->number "101" 2)
+       (modulo  10    3)  ;  1
+       (modulo -10.0  3)  ;  2.0
+       (modulo  10.0 -3)  ; -2.0
+       (modulo +inf.0 3)  ; contract violoation
+       (integer-sqrt 17)
+       (integer-sqrt/remainder 17)
+       (integer-sqrt -17)
+       (integer-sqrt/remainder -17)
+       (gcd)       ; 0
+       (gcd 12)    ; 12
+       (gcd 12 18) ; 6
+       (gcd (* 2 3 5 7) (* 2 3 5) (* 2 3 7)) ; 6
+       (symbol=? (string->symbol "a") (string->symbol "a"))             ; #t
+       (symbol=? (string->symbol "a") (string->uninterned-symbol "a"))  ; #f
+       (equal? (list 1 "foo" (string->symbol "a")) (list 1 "foo" (string->symbol "a")))
+       (equal? (list 1 "foo" (string->symbol "a")) (list 1 "foo" (string->symbol "b")))
+       (let-values ([(a b)   (values 10 11)]
+                    [(c d e) (values 20 21 22)])
+         (str (list a b c d e)))
+       (define foo-sym (string->symbol "foo"))
+       (define bar-sym (string->symbol "bar"))
+       (let-values ([(struct_colon_foo foo foo? foo-ref foo-set!)
+                     (make-struct-type foo-sym #f
+                                       2 2 "auto-foo" (list) #f #f (list 0 1) #f foo-sym)])
+         (var [foo-a (λ (s) (foo-ref s 0))]
+              [foo-b (λ (s) (foo-ref s 1))])
+         (var [f (foo 11 12)])
+         (str (list (foo-a f) (foo-b f)))
+         (let-values ([(struct_colon_bar bar bar? bar-ref bar-set!)
+                       (make-struct-type bar-sym struct_colon_foo
+                                         2 3 "auto-bar"(list) #f #f (list 112 113) #f bar-sym)])
+           (var [g (bar 11 12 13 14)])
+           (str (list (foo-a g)
+                      (foo-b g)
+                      (bar-ref g 4)
+                      (bar-ref g 5)))
+           (str f))))
+    )))
