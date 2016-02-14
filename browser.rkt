@@ -3,13 +3,19 @@
 ;;; Browser
 ;;;
 
-;; This module contains various browser related experiments.
+;; This module contains an example of a small web page using RaphaelJS,
+;; a JavaScript graphics library.
+
+;; The html page consists of two parts:
+;;  <div id="holder"></div>  will hold a canvas on which a clock is drawn
+;;  <div id="intro"></div>   is used to write a small text on screen
 
 (require "urlang.rkt" "urlang-extra.rkt" "for.rkt" syntax/parse)
 
-(current-urlang-run?                           #t)
-(current-urlang-echo?                          #t)
-(current-urlang-console.log-module-level-expr? #t)
+(current-urlang-run?                           #f) ; don't use node to run this 
+(current-urlang-echo?                          #t) ; print output JavaScript
+(current-urlang-console.log-module-level-expr? #t) ; print result of top level expressions
+;                                                  ; to the JavaScript console
 
 (define-urlang-macro define-html-tags
   (λ (stx)
@@ -26,16 +32,21 @@
 
 (display
  (urlang
-  (urmodule browser
-    ; (import (all-from "runtime.rkt"))
-    ; Note: Use <script src="../runtime.js"></script> to load the runtime
+  (urmodule browser    
+    ; (import (all-from "runtime.rkt")) ; all-from not implemented yet
     (import string-append str) 
-    ;; Available on the browser:
-    (import document window prompt alert window.document.body.onload)
-    ;; These should move to urlang.rkt
-    (import Array Int8Array Number String new typeof this)
-    ;; Imported from Raphael.js
+    ; Note: Use <script src="runtime.js"></script> to load the runtime
+    
+    ;; Available in a browser (but not declared in the source)
+    (import document window window.module prompt alert window.document.body.onload )
+    ;; The following types should be supported by urlang.rkt eventually
+    (import Array Int8Array Number String this)
+    ;; Import Raphael.js
     (import Raphael)
+
+    ;; Keep the JavaScript "module system" happy in the browser
+    ;; window.module = window.module || [];
+    (:= window.module (or window.module (array)))
     
     ;; Define constructors for elements of various types.
     (define-html-tags [<h1> h1] [<p> p] [<p> p] [<div> div])

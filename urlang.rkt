@@ -1,6 +1,6 @@
 #lang racket
 
-;;; TEMPORARY: These are only neeed until modules are supported.
+;;; TEMPORARY: These requires and renamings are only neeed until modules are supported.
 ;;;            See "hack" in α-rename.
 (require (only-in racket/unsafe/ops unsafe-fx< unsafe-fx> unsafe-fx+ unsafe-fx- unsafe-fx*)
          (only-in racket/base in-range))
@@ -23,6 +23,8 @@
          eval)            ; syntax -> string    compiles, saves, runs
 ;                                                                - output returned as string
 ;; Compiler Phases
+;;   The types L, L-, L0 and L1 below refer to nanopass languages. I.e. they are structures
+;;   represeting programs. A tree is represented as nested lists.
 (provide parse            ; syntax -> L      parse and expand syntax object into L
          flatten-topblock ; L      -> L      remove topblock
          desugar          ; L      -> L-     remove optional arguments
@@ -75,7 +77,7 @@
 ;; Although the constructs of Urlang and JavaScript map almost one-to-one,
 ;; a little sugar was added:
 ;;   * function definitions allow default arguments
-;;   * let expression
+;;   * let expressions
 
 ;; Even though the syntax of Urlang is Racket-like, remember that the
 ;; semantics is standard JavaScript. This means in particular that tail calls
@@ -86,7 +88,7 @@
 ; The following examples are compiled using the urlang form.
 ;     (urlang <module> ...)
 ; The urlang form compiles the modules. The result of compiling
-; a module is saved a file whose path is the module-name with .js
+; a module is saved to a file whose path is the module-name with .js
 ; added.
 
 ; The urlang form is controlled by the following parameters:
@@ -158,7 +160,7 @@
 ;;;
 
 ;; The heart of the system is a compiler written using the Nanopass
-;; compiler Framework. The compiler is exported as a function
+;; compiler framework. The compiler is exported as a function
 ;;     compile : urlang-module -> JavaScript
 ;; that compiles an urlang module and produces JavaScript,
 ;; that can be evaluated by the Node.js platform (or be embedded in a web page).
@@ -171,7 +173,7 @@
 ;; Use 2) if you intend to use Urlang as a compiler backend.
 ;; [Note: Nanopass is a framework for implementing compilers.]
 
-;; The intended use of Urlang is to use 1) to write (generate) a Racket runtime in JavaScript.
+;; The intended use of Urlang is to use 1) write (generate) a Racket runtime in JavaScript.
 ;; The middle-end of the Racket-to-JavaScript compiler will produce output as Nanopass
 ;; structures, so 2) will be used as the backend for the Racket-to-JavaScript compiler.
 
@@ -182,7 +184,7 @@
 ;; Note that `expand` allows the user to extend the input language
 ;; using define-urlang-macro. An Urlang macro is a syntax to syntax
 ;; transformation implemented as a normal Racket function.
-;; This allow you to use all of the standard Racket macro machinery.
+;; This allows you to use all of the standard Racket macro machinery.
 
 ;; Main functions:
 
@@ -208,8 +210,7 @@
 ;;; GRAMMAR
 ;;;
 
-;; The expander/parser accepts the syntax objects following the
-;; the grammar below.
+;; The expander/parser accepts syntax objects following the the grammar below.
 
 ;; In the grammar below:
 ;;   x stands for a non-keyword identifier
@@ -231,8 +232,8 @@
 ; <statement>         ::= <var-decl> | <block> | <while> | <do-while> | <if>
 ;                      |  <break> | <continue> | <label> | <sempty> | <expr>
 ; <var-decl>          ::= (var <var-binding> ...)
-; <block>             ::= (block <statement> ...)
 ; <var-binding>       ::= x | (x e)
+; <block>             ::= (block <statement> ...)
 ; <while>             ::= (while <expr> <statement> ...)
 ; <do-while>          ::= (do-while <expr> <statement> ...)
 ; <if>                ::= (sif <expr> <statement> <statement>)
@@ -314,6 +315,8 @@
        (let-values ([(x ...) e]) b ...))]))
 
 (define-syntax (receive1 stx)
+  ; syntax: (receive1 e ...)
+  ;   evaluate e ... return the first value returned by the last expression.
   (syntax-parse stx
     [(_receive1 e:expr ...)
      (syntax/loc stx
@@ -402,7 +405,7 @@
 (define-syntax while       (λ (stx) (raise-syntax-error 'while       "used out of context" stx)))
 (define-syntax :=          (λ (stx) (raise-syntax-error ':=          "used out of context" stx)))
 
-; Note: Rememember to provide all keywords
+; Note: Remember to provide all keywords
 (define-literal-set keywords (array begin block break catch continue define do-while export finally
                                     if import object label lambda λ let
                                     ref require sempty sif throw topblock try urmodule var while :=))
@@ -415,7 +418,9 @@
 (define ecma6-reserved-keywords
   '(break case class catch const continue debugger default
           delete do else export extends finally for function if import in instanceof let
-          new return super switch this throw try typeof var void while with yield
+          new return super switch
+          ; this  ; HACK temporarily allow (import ... this ...)
+          throw try typeof var void while with yield
           ; Future Keywords
           enum await
           ; Future Keywords in strict mode
@@ -443,9 +448,10 @@
   (entry Module)
   (terminals
    ((id          (f x l)) . => . unparse-id)
-   ; f function name
-   ; l statement label
-   ; x identifier
+   ; Even though f, x, and, l are specified to be general identifiers, we will use this convention:
+   ;   f   function name
+   ;   l   statement label
+   ;   x   identifier
    ((datum       (d))     . => . unparse-datum)
    (module-name  (mn))
    ((property-name (pn)) . => . (λ (v) (if (syntax? v) (unparse-syntax v) v))))
@@ -457,7 +463,7 @@
     (require rs ...)       ; import from modules compiled by urlang
     (topblock m ...)       ; toplevel block
     ;                      ; (allows macros to expand to more than one module level form)
-    δ σ)
+    δ σ)                   ; definition or statement
   (RequireSpec (rs)
     mn                       ; import all exported identifers from the module with module name mn
     #;(only-in   mn x ...)   ; import x ... from the module named mn
@@ -476,7 +482,7 @@
   (CatchFinally (cf)
     (catch   x σ ...)
     (finally   σ ...)
-    (catch-finally x (σ ...) (σ0 ...))) ; See Nanopass Issue #40
+    (catch-finally x (σ ...) (σ0 ...)))
   (Statement (σ)
     e                             ; expression
     (var vb ...)                  ; variable definition
@@ -546,9 +552,6 @@
 
 (define-syntax-class Id
   (pattern (~and x:id (~not y:Keyword))))
-
-#;(define-syntax-class Id
-    (pattern (~and x:id (~not y:Keyword))))
 
 (define-syntax-class NonECMA6ReservedKeyword
   (pattern (~and x:id (~not y:ECMA6ReservedKeyword))))
@@ -719,7 +722,7 @@
 (define macro-expansion-context
   (make-parameter 'module-level
                   (λ (c) (or (and (member c '(module-level statement expression)) c)
-                             (error 'expansion-context
+                             (error 'macro-expansion-context
                                     "expected one of: 'module-level, 'statement, 'expression ; got ~a"
                                     c)))))
 
@@ -733,7 +736,7 @@
 ;    'statement    then the transformer output is parsed with parse-statement
 ;    'module-level then the transformer output is parsed with parse-module-level-form
 
-(define macros-ht (make-hash))
+(define macros-ht (make-hash)) ; stores all macro transformers
 
 (define-syntax (define-urlang-macro stx)
   (syntax-parse stx
