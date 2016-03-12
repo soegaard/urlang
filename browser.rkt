@@ -33,11 +33,9 @@
 (display
  (urlang
   (urmodule browser    
-    ; (import (all-from "runtime.rkt")) ; all-from not implemented yet
     (import string-append str) 
-    ; Note: Use <script src="runtime.js"></script> to load the runtime
     
-    ;; Available in a browser (but not declared in the source)
+    ;; These identifier are available in a browser (but not declared in the source)
     (import document window window.module prompt alert window.document.body.onload )
     ;; The following types should be supported by urlang.rkt eventually
     (import Array Int8Array Number String this)

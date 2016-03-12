@@ -35,7 +35,7 @@
          emit)            ; tree   -> *      print tree to standard output port
 ;; Macros 
 (provide define-urlang-macro          ; (define-urlang-macro name transformer)
-         macro-expansion-context      ; returns of of 'module-level, 'statement, 'expression
+         macro-expansion-context      ; returns one of 'module-level, 'statement, 'expression
          macros-ht) ; internal
 ;; Syntax Classes
 (provide Module ModuleName Export Import

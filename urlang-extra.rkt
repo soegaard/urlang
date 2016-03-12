@@ -142,7 +142,7 @@
          (let () statement ... expr))]
       [(_case-helper t [(datum ...) statement ... expr] clause ...)
        (syntax/loc stx
-         (if (or (= t datum) ...)
+         (if (or #f (= t datum) ...)
              (let () statement ... expr)
              (case-helper t clause ...)))]
       [(_case-helper t)

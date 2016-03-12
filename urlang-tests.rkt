@@ -140,21 +140,21 @@
               7)
 
 #;(urlang
- (urmodule label-break
-   (var i j)
-   (:= i 0)
-   (label loop1
-          (while (< i 3)
-                 (label loop2
-                        (block
-                         (:= j 0)
-                         (while (< j 3)
-                                (sif (and (= i 1) (= j 1))
-                                     (break loop1)
-                                     (block))
-                                (console.log (+ "i = " i ", j = " j))
-                                (+= j 1))))
-                 (+= i 1)))))
+   (urmodule label-break
+     (var i j)
+     (:= i 0)
+     (label loop1
+            (while (< i 3)
+                   (label loop2
+                          (block
+                           (:= j 0)
+                           (while (< j 3)
+                                  (sif (and (= i 1) (= j 1))
+                                       (break loop1)
+                                       (block))
+                                  (console.log (+ "i = " i ", j = " j))
+                                  (+= j 1))))
+                   (+= i 1)))))
 
 #;(urlang
  (urmodule label-continue
