@@ -13,6 +13,9 @@
 (define-syntax in-range    (λ (stx) (raise-syntax-error 'in-range    "used out of context" stx)))
 (define-syntax in-string   (λ (stx) (raise-syntax-error 'in-string   "used out of context" stx)))
 (define-syntax in-value    (λ (stx) (raise-syntax-error 'in-value    "used out of context" stx)))
+(define-syntax in-racket-string
+                           (λ (stx) (raise-syntax-error 'in-racket-string "used out of context" stx)))
+
 
 (define-literal-set for-keywords (in-array in-range in-naturals in-string in-value))
 (define for-keyword? (literal-set->predicate for-keywords))
@@ -171,15 +174,15 @@
 
 
 ;; This handles "Racket strings" not JavaScript strings (see compiler-rjs)
-#;(define (handle-in-string clause)
+(define (handle-in-racket-string clause)
   (syntax-parse clause
     #:literal-sets (for-keywords)
-    [[x in-string string-expr]
+    [[x in-racket-string string-expr]
      #'(([s string-expr]       ; list of var clauses to create initial state
          [n s.length]
          [i 0])
         (< i n)                ; termination condition
-        ([x (ref s i)])        ; let bindings (needs to bind x) +1 to skip tag
+        ([x (string-ref s i)]) ; let bindings (needs to bind x) +1 to skip tag
         ((+= i 1)))]))
 
 (define (handle-in-string clause)
@@ -213,11 +216,12 @@
     [#f   (raise-syntax-error 'for "unknown clause" clause-stx)]
     [name (get-clause-handler-from-ht name)]))
 
-(add-clause-handler! 'in-range    handle-in-range)
-(add-clause-handler! 'in-array    handle-in-array)
-(add-clause-handler! 'in-naturals handle-in-naturals)
-(add-clause-handler! 'in-value    handle-in-value)
-(add-clause-handler! 'in-string   handle-in-string)
+(add-clause-handler! 'in-range           handle-in-range)
+(add-clause-handler! 'in-array           handle-in-array)
+(add-clause-handler! 'in-naturals        handle-in-naturals)
+(add-clause-handler! 'in-value           handle-in-value)
+(add-clause-handler! 'in-string          handle-in-string)
+(add-clause-handler! 'in-racket-string   handle-in-racket-string)
 
 (define (expand-for stx)   ; parallel for
   (define (is-break? x) (or (eq? x '#:break) (and (syntax? x) (is-break? (syntax-e x)))))
