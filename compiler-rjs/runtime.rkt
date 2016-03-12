@@ -1,5 +1,14 @@
 #lang racket
-(require "urlang.rkt" "urlang-extra.rkt" "for.rkt" syntax/parse syntax/stx)
+(require urlang urlang/extra urlang/for
+         syntax/parse syntax/stx)
+
+;;; This file contains the runtime library for the
+;;; Racket to JavaScript compiler in urlang/compiler-rjs.
+;;; The compiler and the runtime is included as an *example*
+;;; of how to use Urlang to generate JavaScript files from Urlang.
+
+;;; Neither the compiler nor this runtime is needed in order to use Urlang.
+;;; Currently this file contains the largest example of Urlang.
 
 ;;;
 ;;; TODO
@@ -674,7 +683,7 @@
       (if (immutable-string? str)
           (immutable-string->string (String (str.toLowerCase)))
           (string-downcase (string->immutable-string str))))         
-    (define/export (string->list s) (for/list ([c in-string s]) c))
+    (define/export (string->list s) (for/list ([c in-racket-string s]) c))
     (define/export (string-append2 str1 str2) (str1.concat str2))
     (define/export (string-append) ; variadic
       (var [args arguments])

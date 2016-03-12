@@ -1,17 +1,31 @@
 #lang racket
-(require "urlang.rkt" syntax/parse)
+(require urlang syntax/parse)
 
 ;;;
 ;;; URLANG EXTRA
 ;;;
 
-;; This module provide a few construct which are simple to 
+;; This module provide a few constructs which are simple to 
 ;; translate to JavaScript.
 
-;; Available here:
-;     cond, case
-;     begin0, when, swhen, unless, sunless
-;    letrec, let*,
+;; These constructs can be used as expressions:
+
+;     (begin0 expr statement ...)
+;     (when   test statement ... expr)
+;     (unless test statement ... expr)
+
+;     (cond [test statement ... expr] ...)
+;     (case val-expr clause ...)
+;          where clause is  [(datum ...) statement ... expr]
+;                       or  [else        statement ... expr]
+;     (letrec ([id val-expr] ...) statement ... expr)
+;     (let*   ([id val-expr] ...) statement ... expr)
+
+;; These constructs can be used as statements:
+;;     (swhen   test statement ...)
+;;     (sunless test statement ...)
+;;     (scond  [test statement ...] ...)
+
 
 ;; SYNTAX  (cond [test statement ... expr] ...)
 ;;   Like cond in Racket. The right hand sides are in a new scope.
@@ -148,102 +162,3 @@
       [(_case-helper t)
        (syntax/loc stx
          undefined)])))
-
-
-
-;;;
-;;; TEST
-;;;
-
-(current-urlang-run?                           #t) ; run using Node?
-(current-urlang-echo?                          #f) ; print generated JavaScript?
-(current-urlang-console.log-module-level-expr? #t)
-
-(require rackunit)
-(define (rs s) (read (open-input-string s))) ; note: only reads FIRST value
-
-(check-equal? (rs (urlang (urmodule test-cond
-                            (define x 3)
-                            (cond
-                              [(= x 1) "one"]
-                              [(= x 2) "two"]
-                              [(= x 3) "three"]
-                              [#t      "huh"]))))
-              'three)
-
-(check-equal? (rs (urlang (urmodule test-sconf
-                            (var r [n 3])
-                            (scond
-                              [(= n 2) (:= r "fail")]
-                              [(= n 3) (:= r "success")])
-                            r)))
-              'success)
-
-(check-equal? (rs (urlang (urmodule test-begin0
-                            (begin0 1 2 3 4))))
-              1)
-
-(check-equal? (rs (urlang (urmodule test-when1
-                            (let ([x 3] [y 4])
-                              (when (= x 3) (:= y 5))
-                              y))))
-              5)
-(check-equal? (rs (urlang (urmodule test-when2
-                            (let ([x 3] [y 4])
-                              (when (= x 2) (:= y 5))
-                              y))))
-              4)
-
-(check-equal? (rs (urlang (urmodule test-unless1
-                            (let ([x 3] [y 4])
-                              (unless (= x 3) (:= y 5))
-                              y))))
-              4)
-(check-equal? (rs (urlang (urmodule test-unless2
-                            (let ([x 3] [y 4])
-                              (unless (= x 2) (:= y 5))
-                              y))))
-              5)
-
-
-(check-equal? (rs (urlang (urmodule test-unless3
-                            (define msg "")
-                            (sunless (> 5 0)
-                                     (:= msg "hi"))
-                            (sunless (< 5 0)
-                                     (:= msg "hi-there"))
-                            msg)))
-                  'hi-there)
-
-
-(check-equal? (rs (urlang (urmodule test-letrec
-                            (define (zero? x) (= x 0))
-                            (define (sub1 x) (- x 1))
-                            (letrec ([is-even? (lambda (n)
-                                                 (or (zero? n)
-                                                     (is-odd? (sub1 n))))]
-                                     [is-odd? (lambda (n)
-                                                (and (not (zero? n))
-                                                     (is-even? (sub1 n))))])
-                              (is-odd? 11)))))
-              'true)
-
-(check-equal? (rs (urlang (urmodule test-let*
-                            (let* ([x 1]
-                                   [y (+ x 1)])
-                              (+ (* 100 x) y)))))
-              102)
-
-(check-equal? (rs (urlang (urmodule test-case1
-                            (case (+ 7 5)
-                              [(1 2 3)    "small"]
-                              [(10 11 12) "big"]))))
-              'big)
-
-(check-equal? (rs (urlang (urmodule test-case1
-                            (case (- 7 5)
-                              [(1 2 3)    "small"]
-                              [(10 11 12) "big"]))))
-              'small)
-
-

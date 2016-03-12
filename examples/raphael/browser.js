@@ -1,0 +1,9 @@
+"use strict";
+console.log((window.module=(window.module||[])));
+{var _lh1_g=(function(t){var e=(document.createElement("h1"));(e.appendChild(t));return e;}),_lp_g=(function(t){var e=(document.createElement("p"));(e.appendChild(t));return e;}),_lp_g=(function(t){var e=(document.createElement("p"));(e.appendChild(t));return e;}),_ldiv_g=(function(t){var e=(document.createElement("div"));(e.appendChild(t));return e;});}
+var intro=false;
+function insert(t){return (intro.appendChild(t));};
+function text(t){return (document.createTextNode(t));};
+function draw(){var r=(Raphael("holder",720,520));{var i=0,t=360;while((true&&true&&(i<t))){((function(angle){((function(t_1,c){return ((function(v){return ((function(v_2){return ((function(v_3){return ((function(v_4){return ((function(v_5){return ((function(){return v_5;})());})((v_4.mouseout((function(){return (this.animate({"fill-opacity":0.4},500));})))));})((v_3.mouseover((function(){return (this.animate({"fill-opacity":0.75},500));})))));})((v_2.click((function(){return (s.animate({stroke :c,transform :t_1},2000,"bounce"));})))));})((v.attr({stroke :c,fill :c,transform :t_1,"fill-opacity":0.4}))));})((r.circle(320,450,20))));})(("r"+angle+" 320 240"),(Raphael.getColor())));return (i+=30);})(i));};undefined;}((Raphael.getColor.reset)());var no_fill=(function(w){return {fill :"none","stroke-width":w};});var s=(r.set());(((s.push((r.path("M320,240c-50,100,50,110,0,190")))).attr)((no_fill(2))));(((s.push((r.circle(320,450,20)))).attr)((no_fill(2))));(((s.push((r.circle(320,240,5)))).attr)((no_fill(10))));return (s.attr({stroke :(Raphael.getColor())}));};
+function run_on_load(){(intro=(document.getElementById("intro")));(insert((_lh1_g((text("Welcome to Urlang"))))));(insert((_lp_g((text("This example illustrates how to use Raphael."))))));(insert((_lp_g((text("Click one of the circles."))))));return (draw());};
+console.log((window.addEventListener("load",run_on_load)));

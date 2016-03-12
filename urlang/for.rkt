@@ -1,5 +1,10 @@
 #lang racket
-(require syntax/parse syntax/stx "urlang.rkt")
+;;; TODO:
+; Fix handle-in-string.
+; It is temporarily commented out, due to a use of string-ref.
+
+(require urlang)
+(require syntax/parse syntax/stx)
 (provide add-clause-handler!)
 (provide in-array in-naturals in-range in-string in-value)
 
@@ -12,6 +17,9 @@
 (define-literal-set for-keywords (in-array in-range in-naturals in-string in-value))
 (define for-keyword? (literal-set->predicate for-keywords))
 (define-syntax-class ForKeyword #:opaque (pattern x #:fail-unless (for-keyword? #'x) #f))
+
+;;; Tests
+; See tests/test-for.rkt for tests.
 
 ;;;
 ;;; Racket for-loops for Urlang.
@@ -161,7 +169,9 @@
         ([x (ref a i)]) ; let bindings (needs to bind x)
         ((+= i 1)))]))  ; statements to step state forward
 
-(define (handle-in-string clause)
+
+;; This handles "Racket strings" not JavaScript strings (see compiler-rjs)
+#;(define (handle-in-string clause)
   (syntax-parse clause
     #:literal-sets (for-keywords)
     [[x in-string string-expr]
@@ -169,8 +179,20 @@
          [n s.length]
          [i 0])
         (< i n)                ; termination condition
-        ([x (string-ref s i)])  ; let bindings (needs to bind x) +1 to skip tag
+        ([x (ref s i)])        ; let bindings (needs to bind x) +1 to skip tag
         ((+= i 1)))]))
+
+(define (handle-in-string clause)
+  (syntax-parse clause
+    #:literal-sets (for-keywords)
+    [[x in-string array-expr]
+     #'(([a array-expr]       ; list of var clauses to create initial state
+         [n a.length]
+         [i 0])
+        (< i n)              ; termination condition
+        ([x (ref a i)]) ; let bindings (needs to bind x)
+        ((+= i 1)))]))  ; statements to step state forward
+
 
 (define clause-handlers-ht (make-hasheq)) ; symbol -> handler
 (define (add-clause-handler! name handler)
@@ -332,7 +354,7 @@
      ; This is faster than pushing repeatedly.
      (syntax/loc stx
        (let ()
-         (var [n length-expr] [a (new Array n)] [i 0])
+         (var [n length-expr] [a (array n)] [i 0])
          (for (clause ...)
            statement-or-break ...
            (:= a i expr)

@@ -1,4 +1,5 @@
 #lang racket
+;;; This file contains the Urlang module to JavaScript file compiler.
 
 ;;; TEMPORARY: These requires and renamings are only neeed until modules are supported.
 ;;;            See "hack" in α-rename.
