@@ -1,0 +1,64 @@
+;;;
+;;; NUMBERS
+;;;
+
+;; Note: Until the number tower is supported, fixnums and flonums are the same.
+;;       In most tests we use flonums to force Racket to produce flonums.
+
+1
+1.5
+(number? 0)
+(number? #t)
+(fixnum? 5)
+(fixnum? 5.4)
+(integer? 6)
+(integer? 6.4)
+(flonum? 7.4)
+(zero? 0)
+(zero? 2)
+(positive?  2)
+(positive? -2)
+(negative?  2)
+(negative? -2)
+(even? 4)
+(even? 0)
+(even? -2)
+(even? -3)
+(even? -1)
+(odd? 3)
+(odd? 5)
+(odd? -4)
+(odd? -2)
+(odd? 0)
+(exact? 5)
+(+)
+(+ 1)
+(+ 1 2)
+(+ 1 2 3)
+(+ 1 2 3 4)
+; (-) should throw exception
+(- 1.)
+(- 1. 2)
+(- 1. 2 3)
+(- 1. 2 3 4)
+(*)
+(* 1.)
+(* 1. 2)
+(* 1. 2 3)
+(* 1. 2 3 4)
+(/ 2.)
+(/ 2. 3)
+(/ 2. 3 4)
+(/ 2. 3 4 5)
+
+
+
+
+
+
+
+;;;
+;;; TODO
+;;
+
+; 2/3

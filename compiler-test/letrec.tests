@@ -1,0 +1,53 @@
+(test 4 'const (letrec ([x 5]) 5))
+(test 5 'var-ref (letrec ([x 5]) x))
+
+(test #t 'lambda (procedure? (letrec ([x (lambda () 5)]) x)))
+(test #t 'lambda-rest-args (procedure? (letrec ([x (lambda l l)]) x)))
+(test 5 'lambda-called (letrec ([x (lambda () 5)]) (x)))
+(test (list 5) 'lambda-rest-args-called (letrec ([x (lambda l l)] [y (x 5)]) y))
+
+
+(test #t 'begin
+      (procedure?
+       (letrec ([x (begin (lambda () y)
+                          (lambda () z))]
+                [y 5]
+                [z 6])
+         x)))
+
+
+(test 5 'nested (letrec ([x (letrec ([y 6]) 5)]) x))
+(test 5 'nested-more (letrec ([x (letrec ([y 5]) y)]) x))
+(test 5 'nested-even-more (letrec ([x 5] [y (letrec ([z x]) z)]) y))
+
+(test 5 'reordered (letrec ([s 5] [q (lambda () s)] [r (q)]) r))
+
+(test 5 'set! (letrec ([x 0]
+                       [f (lambda (v) (set! x v))])
+                (begin (f 5) x)))
+
+
+
+(test #t 'checked-but-ok
+      (procedure?
+       (letrec ([y (lambda () (letrec ([x x]) x))])
+         y)))
+
+
+
+(test #t 'checked-but-ok
+      (procedure?
+       (let ([proc (letrec ([x (letrec ([v (lambda () x)]) v)]) x)])
+         (proc))))
+
+
+
+
+(test '(1)
+      'complex-forcing-path
+      (let-values (((_tri)
+                    (letrec-values (((all-types) 1))
+                      (lambda (x) all-types))))
+        (letrec-values (((quad-super-type) _tri)
+                        ((offsets) (map quad-super-type (list 1))))
+          offsets)))

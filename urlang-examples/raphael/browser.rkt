@@ -10,7 +10,7 @@
 ;;  <div id="holder"></div>  will hold a canvas on which a clock is drawn
 ;;  <div id="intro"></div>   is used to write a small text on screen
 
-(require "urlang.rkt" "urlang-extra.rkt" "for.rkt" syntax/parse)
+(require urlang urlang/extra urlang/for syntax/parse)
 
 (current-urlang-run?                           #f) ; don't use node to run this 
 (current-urlang-echo?                          #t) ; print output JavaScript

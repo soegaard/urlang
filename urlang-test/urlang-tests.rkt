@@ -6,7 +6,7 @@
 ;; Run this file to test urlang.rkt.
 ;; No output means no errors.
 
-(require rackunit "urlang.rkt")
+(require rackunit urlang)
 
 (current-urlang-run?                           #t) ; run using Node?
 (current-urlang-echo?                          #t) ; print generated JavaScript?

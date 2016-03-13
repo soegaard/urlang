@@ -1,5 +1,5 @@
 #lang racket
-(require urlang/urlang)
+(require urlang)
 
 (urlang
  (urmodule demo-fact                                           ; module name
