@@ -5,7 +5,7 @@
 ;;; 
 
 ;;; Ractive is a template-driven UI library.
-;;; The simple idea is to give Ractive a template and som data.
+;;; The simple idea is to give Ractive a template and some data.
 ;;; Ractive then generates HTML that can replace an existing DOM node.
 
 ;;; This example shows how to use the Ractive JS library from Urlang.
@@ -85,7 +85,7 @@
 
 ;; It is not time to call generate-html.
 ;; The html could be saved to a file and then manually opened in a browser.
-;; It is convenient under developmen to use send-url/contents to send
+;; Under development it is convenient to use send-url/contents to send
 ;; the web-page directly to the browser.
 
 (send-url/contents
