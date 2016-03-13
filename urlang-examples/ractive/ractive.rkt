@@ -92,5 +92,3 @@
  (generate-html
   @~a{<p>Hello, {{name}}!</p>}))
 
-(displayln (generate-html
-  @~a{<p>Hello, {{name}}!</p>}))
