@@ -1659,7 +1659,7 @@
     (define (~top-expr t)      (if (current-urlang-console.log-module-level-expr?)
                                    (~displayln t) t))
     (define (~string t)        (list "\"" t "\""))
-    (define (~property-name t) (define v (syntax-e t)) (if (string? v) (~string v) v))
+    (define (~property-name t) (define v (syntax-e t)) (if (string? v) (~string v) (mangle t))) ; XXX 
       
     (define (exports.id x)   (format-id x "exports.~a" x)))
   (Module : Module (u) -> * ()
