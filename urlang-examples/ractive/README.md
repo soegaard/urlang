@@ -8,7 +8,7 @@ Ractive then generates HTML that can replace an existing DOM node.
 These examples show how to use the Ractive JS library from Urlang.
 Ractive is a lightweight alternative to Angular, React, etc.
 The example is based on  http://www.ractivejs.org/60-second-setup
-Thanks to Daniel Praeger for the original Racket version.
+Thanks to Daniel Prager for the original Racket version.
 
 ractive.rkt
 ----------

@@ -2,7 +2,7 @@
 
 ;;; Original Ractive Example
 
-;; This example by Daniel Praeger shows how to use the Ractive
+;; This example by Daniel Prager shows how to use the Ractive
 ;; framework with Urlang. This version uses x-expressions
 ;; and the html-writing package to generate the html.
 ;; Compare with the version in "ractive.rkt"
