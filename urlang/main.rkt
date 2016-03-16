@@ -264,7 +264,7 @@
 ; <array-reference>   ::= (ref <expr> <expr> <expr> ...)
 ; <array>             ::= (array <expr> ...)
 ; <object>            ::= (object (<property-name> <expr>) ...)
-; <property-name>     ::= x | <string> | <number>
+; <property-name>     ::= x | <keyword> | <string> | <number>
 
 ; <keyword>           ::= define | begin | urmodule | if | := | ...see code...
 
@@ -289,6 +289,8 @@
 
 ; Property access with dot notation is rewritten to use bracket syntax in the parser.
 ; Example:  object.property becomes object["property"]
+; Note: keywords are allowed as property names pr ES5.
+
 
 ;;;
 ;;; SEMANTICS
@@ -1109,6 +1111,7 @@
        (match (regexp-match #rx"(.*)[.](.*)" (symbol->string (syntax-e #'x)))
          [#f `,#'x]
          [(list y.p y p)
+          ;; TODO: Bug: in foo.bar-baz this becomes (ref foo "bar-baz")
           ; object.property becomes object["property"]
           (let ([y (format-id #'x y #:source #'x)])
             (with-output-language (Lur Expr)
@@ -1659,7 +1662,7 @@
     (define (~top-expr t)      (if (current-urlang-console.log-module-level-expr?)
                                    (~displayln t) t))
     (define (~string t)        (list "\"" t "\""))
-    (define (~property-name t) (define v (syntax-e t)) (if (string? v) (~string v) (mangle t))) ; XXX 
+    (define (~property-name t) (define v (syntax-e t)) (if (string? v) (~string v) t))
       
     (define (exports.id x)   (format-id x "exports.~a" x)))
   (Module : Module (u) -> * ()
@@ -1783,7 +1786,12 @@
                              (nanopass-case (L1 Expr) e1
                                [(quote ,d) (and (property-name? d) (not (number? d)) d)]
                                [else       #f]))
+                           ; (displayln (map Expr (list* e0 e1 e)))
                            (match (map Expr (list* e0 e1 e))
+                             ;;; TODO XXX the following two cases are
+                             ;;; temporarily removed.
+                             ;;; Now all property accesses becomce object["name"]
+                             ;;; and not object.name. This matters when name is, say foo-bar.
                              [(list e0 (and (? pn?) (app pn? pn)))
                               (cond
                                 [(and (identifier? e0) (identifier? pn))

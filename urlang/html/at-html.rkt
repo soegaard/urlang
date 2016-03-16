@@ -22,8 +22,8 @@
 ; If you need them, then use
 ;     (require (prefix-in your-favorite-prefix var object label block))
 
-; One standard constructor is missing from scribble/html
-(define/provide-elements/not-empty nav)
+; Two standard constructor is missing from scribble/html
+(define/provide-elements/not-empty footer nav canvas)
 
 
 ;;; A way to turn the xml into strings
@@ -45,5 +45,6 @@
 
 (provide ~x ~xs
          #%top
+         nav footer canvas
          (all-from-out scribble/html
                        scribble/html/xml))
