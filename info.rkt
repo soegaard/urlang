@@ -17,6 +17,7 @@
                      "at-exp-lib"
                      "rackunit-lib"
                      "scribble-lib"
-                     "racket-doc"))
+                     "racket-doc"
+                     "html-writing"))
 
 (define compile-omit-paths (list "compiler-test"))
