@@ -1,0 +1,90 @@
+<html>
+
+<head>
+    <title>Ractive button example</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.0/jquery.min.js"></script>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css">
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js"></script>
+    <script src="http://cdn.ractivejs.org/latest/ractive.min.js"></script>
+</head>
+
+<body>
+    <div id="container"></div>
+    <script id="template" type="text/ractive">
+        <div class="container" style="margin-top: 30px">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="panel panel-default">
+                        <div class="panel-heading">
+                            <h1>Press a button</h1></div>
+                        <div class="panel-body"><button on-click="grow" class="btn btn-primary btn-lg">Grow</button> <button on-click="shrink" class="btn btn-primary">Shrink</button>{{#keep_pressing}} Now, keep pressing!{{/keep_pressing}}
+                            <h2>Statistics</h2>
+                            <table class="table table-bordered table-condensed">
+                                <tbody>
+                                    <tr>
+                                        <td><b>Clicks</b></td>
+                                        <td>{{clicks}}</td>
+                                    </tr>
+                                    <tr>
+                                        <td><b>Size</b></td>
+                                        <td>{{size}} pixels</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="panel panel-default">
+                        <div class="panel-body">
+                            <p>This totally client-side example was written in <a href="https://racket-lang.org/">Racket</a> using </p>
+                            <ul>
+                                <li><a href="https://github.com/soegaard/urlang"> Urlang</a> as a Racket-ish stand-in for JavaScript</li>
+                                <li><a href="http://ractivejs.org">ractive</a> as the key JavaScript framework to interact with the DOM</li>
+                                <li><a href="https://docs.racket-lang.org/html-writing/index.html">sxml / x-expressions</a> instead of html</li>
+                                <li><a href="http://getbootstrap.com">Bootstrap</a> for CSS styling</li>
+                            </ul>
+                            <p style="color:{{color}}; font-size:{{size}}px; font-family:{{font}}">Hello, {{name}}!</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </script>
+    <script>
+        "use strict";
+        var model = {
+                name: "Racket",
+                color: "purple",
+                font: "Georgia",
+                clicks: 0,
+                size: 60,
+                keep_pressing: false
+            },
+            ractive = new Ractive({
+                el: "#container",
+                template: "#template",
+                data: model
+            });
+
+        function inc_by(s, amount) {
+            return (ractive.set(s, ((ractive.get(s)) + amount)));
+        };
+
+        function resize(n) {
+            (inc_by("size", n));
+            (inc_by("clicks", 1));
+            return (ractive.set("keep_pressing", true));
+        };
+        (ractive.on({
+            grow: (function(e) {
+                return (resize(5));
+            }),
+            shrink: (function(e) {
+                return (resize(-5));
+            })
+        }));
+    </script>
+</body>
+
+</html>
