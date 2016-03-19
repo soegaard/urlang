@@ -16,8 +16,9 @@
          current-urlang-delete-tmp-file?)
 
 ;; Keywords
-(provide array begin block break catch continue define do-while export finally if import
-         object label lambda λ let ref require sempty sif throw topblock try urmodule var while :=)
+(provide array begin block break catch continue define do-while dot export finally if import
+         object label lambda λ let ref require sempty sif throw topblock try urmodule
+         var while :=)
 (provide bit-and bit-not bit-or bit-xor ===)
 ;; Compiler 
 (provide compile          ; syntax -> *         prints JavaScript
@@ -391,28 +392,28 @@
 ;;; KEYWORDS
 ;;;
 
-(define-syntax array       (λ (stx) (raise-syntax-error 'array       "used out of context" stx)))
-(define-syntax block       (λ (stx) (raise-syntax-error 'block       "used out of context" stx)))
-(define-syntax break       (λ (stx) (raise-syntax-error 'break       "used out of context" stx)))
-(define-syntax catch       (λ (stx) (raise-syntax-error 'catch       "used out of context" stx)))
-(define-syntax continue    (λ (stx) (raise-syntax-error 'continue    "used out of context" stx)))
-(define-syntax dot         (λ (stx) (raise-syntax-error 'dot         "used out of context" stx)))
-(define-syntax do-while    (λ (stx) (raise-syntax-error 'do-while    "used out of context" stx)))
-(define-syntax export      (λ (stx) (raise-syntax-error 'export      "used out of context" stx)))
-(define-syntax finally     (λ (stx) (raise-syntax-error 'finally     "used out of context" stx)))
-(define-syntax import      (λ (stx) (raise-syntax-error 'import      "used out of context" stx)))
-(define-syntax label       (λ (stx) (raise-syntax-error 'label       "used out of context" stx)))
-(define-syntax object      (λ (stx) (raise-syntax-error 'object      "used out of context" stx)))
-(define-syntax ref         (λ (stx) (raise-syntax-error 'ref         "used out of context" stx)))
-(define-syntax sempty      (λ (stx) (raise-syntax-error 'sempty      "used out of context" stx)))
-(define-syntax sif         (λ (stx) (raise-syntax-error 'sif         "used out of context" stx)))
-(define-syntax throw       (λ (stx) (raise-syntax-error 'throw       "used out of context" stx)))
-(define-syntax topblock    (λ (stx) (raise-syntax-error 'topblock    "used out of context" stx)))
-(define-syntax try         (λ (stx) (raise-syntax-error 'try         "used out of context" stx)))
-(define-syntax urmodule    (λ (stx) (raise-syntax-error 'urmodule    "used out of context" stx)))
-(define-syntax var         (λ (stx) (raise-syntax-error 'var         "used out of context" stx)))
-(define-syntax while       (λ (stx) (raise-syntax-error 'while       "used out of context" stx)))
-(define-syntax :=          (λ (stx) (raise-syntax-error ':=          "used out of context" stx)))
+(define-syntax array         (λ (stx) (raise-syntax-error 'array       "used out of context" stx)))
+(define-syntax block         (λ (stx) (raise-syntax-error 'block       "used out of context" stx)))
+(define-syntax break         (λ (stx) (raise-syntax-error 'break       "used out of context" stx)))
+(define-syntax catch         (λ (stx) (raise-syntax-error 'catch       "used out of context" stx)))
+(define-syntax continue      (λ (stx) (raise-syntax-error 'continue    "used out of context" stx)))
+(define-syntax dot           (λ (stx) (raise-syntax-error 'dot         "used out of context" stx)))
+(define-syntax do-while      (λ (stx) (raise-syntax-error 'do-while    "used out of context" stx)))
+(define-syntax export        (λ (stx) (raise-syntax-error 'export      "used out of context" stx)))
+(define-syntax finally       (λ (stx) (raise-syntax-error 'finally     "used out of context" stx)))
+(define-syntax import        (λ (stx) (raise-syntax-error 'import      "used out of context" stx)))
+(define-syntax label         (λ (stx) (raise-syntax-error 'label       "used out of context" stx)))
+(define-syntax object        (λ (stx) (raise-syntax-error 'object      "used out of context" stx)))
+(define-syntax ref           (λ (stx) (raise-syntax-error 'ref         "used out of context" stx)))
+(define-syntax sempty        (λ (stx) (raise-syntax-error 'sempty      "used out of context" stx)))
+(define-syntax sif           (λ (stx) (raise-syntax-error 'sif         "used out of context" stx)))
+(define-syntax throw         (λ (stx) (raise-syntax-error 'throw       "used out of context" stx)))
+(define-syntax topblock      (λ (stx) (raise-syntax-error 'topblock    "used out of context" stx)))
+(define-syntax try           (λ (stx) (raise-syntax-error 'try         "used out of context" stx)))
+(define-syntax urmodule      (λ (stx) (raise-syntax-error 'urmodule    "used out of context" stx)))
+(define-syntax var           (λ (stx) (raise-syntax-error 'var         "used out of context" stx)))
+(define-syntax while         (λ (stx) (raise-syntax-error 'while       "used out of context" stx)))
+(define-syntax :=            (λ (stx) (raise-syntax-error ':=          "used out of context" stx)))
 
 ; Note: Remember to provide all keywords
 (define-literal-set keywords (array begin block break catch continue define do-while dot export
@@ -520,7 +521,7 @@
     (ref e0 e1 e* ...)            ; reference to array index
     (array e ...)                 ; array constructor
     (object (pn e) ...)           ; object literal
-    (dot e0 e1)))                 ; property access
+    (dot e pn)))                  ; property access
 
 ;;;
 ;;; GRAMMAR AS SYNTAX CLASSES
@@ -1142,7 +1143,7 @@
                           `(begin ,e0 ,e ...))])))
 
 (define (parse-dot do)
-  ; Note: The input syntax is (dot e ...) but the output have (dot e0 e1) forms only.
+  ; Note: The input syntax is (dot e ...) but the output have (dot e pn) forms only.
   (debug (list 'parse-dot (syntax->datum do)))
   (with-output-language (Lur Expr)
     (syntax-parse do
@@ -1790,9 +1791,8 @@
                                               [+nan.0         "NaN"]
                                               [else               d])]
                               [else (error 'generate-code "expedcted datum, got ~a" d)])]
-    [(dot ,e0 ,e1)            (let ((e0 (Expr e0)) (e1 (Expr e1)))
-                                ; todo: use brackets if e1 is "complicated"
-                                (list e0 "." e1))]
+    [(dot ,e ,pn)            (let ((e (Expr e)))
+                               (list e "." pn))]
     [(if ,e0 ,e1 ,e2)       (let ((e0 (Expr e0)) (e1 (Expr e1)) (e2 (Expr e2)))
                               (~parens (~parens e0 "===false") "?" e2 ":" e1))]
     #;[(if ,e0 ,e1 ,e2)       (let ((e0 (Expr e0)) (e1 (Expr e1)) (e2 (Expr e2)))
