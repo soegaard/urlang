@@ -11,8 +11,14 @@
 (define deps       '())
 
 ;;; Dependencies here can be installed as binaries (i.e. zo-files)
-(define build-deps '("base"
-                     "rackunit-lib"))
+(define build-deps '("base"               
+                     "html-writing"          ; for example in urlang-exampes
+                     "nanopass"              ; for urlang and urlang-compiler
+                     "net-lib"               ; ? detected on build-server
+                     "rackunit-lib"          ; for tests
+                     "scribble-html-lib"     ; for urlang/html
+                     "srfi-lite-lib"         ; ? detected on build-server
+                     "web-server-lib"))      ; for urlang/html
 
 (define compile-omit-paths '())
 

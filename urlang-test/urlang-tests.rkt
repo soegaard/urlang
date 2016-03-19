@@ -56,11 +56,28 @@
 (check-equal? (rs (urlang (urmodule t17 ((lambda (x [y 2]) (+ x y)) 3)))) 5)
 (check-equal? (rs (urlang (urmodule t18 ((lambda (x [y 2]) (+ x y)) 3 4)))) 7)
 ; Object literals
-(check-equal? (rs (urlang (urmodule t19 (ref (object [foo 10] [11 12] ["bar" 13]) "foo")))) 10)
-(check-equal? (rs (urlang (urmodule t20 (ref (object [foo 10] [11 12] ["bar" 13]) 11))))    12)
-(check-equal? (rs (urlang (urmodule t21 (ref (object [foo 10] [11 12] ["bar" 13]) "bar")))) 13)
+;(check-equal? (rs (urlang (urmodule t19 (ref (object [foo 10] [11 12] ["bar" 13]) "foo")))) 10)
+;(check-equal? (rs (urlang (urmodule t20 (ref (object [foo 10] [11 12] ["bar" 13]) 11))))    12)
+;(check-equal? (rs (urlang (urmodule t21 (ref (object [foo 10] [11 12] ["bar" 13]) "bar")))) 13)
 ;; Defined functions with optional arguments
 (check-equal? (rs (urlang (urmodule t22 (define (add x [y 1]) (+ x y)) (add 3)))) 4)
+;; Dot notation
+(check-equal? (rs (urlang (urmodule t23
+                            (define t (object [n 1]
+                                              [o (object [m 10]
+                                                         [f (λ (y) (+ y 97))])]
+                                              [g (λ (x)
+                                                   (object [m (+ x 996)]
+                                                           [o (object [h (λ (y) (+ x y 9991))])]))]))
+                            (+ (dot t n)              ;     1
+                               (dot t o m)            ;    10
+                               (dot t o (f 3))        ;   100
+                               (dot t (g 4) m)        ;  1000
+                               (dot t (g 4) o (h 5))) ; 10000
+                            )))
+              11111)
+(check-equal? (rs (urlang (urmodule t24 (var [o (object [foo-bar 3])]) o.foo-bar))) 3)
+                                              
 
 ;;;
 ;;; EXPORT AND IMPORT

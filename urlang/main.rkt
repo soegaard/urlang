@@ -16,8 +16,9 @@
          current-urlang-delete-tmp-file?)
 
 ;; Keywords
-(provide array begin block break catch continue define do-while export finally if import
-         object label lambda λ let ref require sempty sif throw topblock try urmodule var while :=)
+(provide array begin block break catch continue define do-while dot export finally if import
+         object label lambda λ let ref require sempty sif throw topblock try urmodule
+         var while :=)
 (provide bit-and bit-not bit-or bit-xor ===)
 ;; Compiler 
 (provide compile          ; syntax -> *         prints JavaScript
@@ -263,6 +264,7 @@
 ; <lambda>            ::= (lambda (<formal> ...) <body>)
 ; <array-reference>   ::= (ref <expr> <expr> <expr> ...)
 ; <array>             ::= (array <expr> ...)
+; <dot>               ::= (dot <expr> ...+)
 ; <object>            ::= (object (<property-name> <expr>) ...)
 ; <property-name>     ::= x | <keyword> | <string> | <number>
 
@@ -287,7 +289,11 @@
 ;    (ref e0 "str")  becomes  e0.str    
 ;    (array e ...)   becomes  [e,...]
 
-; Property access with dot notation is rewritten to use bracket syntax in the parser.
+;    (dot e ...)     is property access / chained method calls
+
+; TODO: Fix the comment below.
+; Property access with identifier dot notation is rewritten to use bracket syntax
+; in the parser.
 ; Example:  object.property becomes object["property"]
 ; Note: keywords are allowed as property names pr ES5.
 
@@ -386,31 +392,32 @@
 ;;; KEYWORDS
 ;;;
 
-(define-syntax array       (λ (stx) (raise-syntax-error 'array       "used out of context" stx)))
-(define-syntax block       (λ (stx) (raise-syntax-error 'block       "used out of context" stx)))
-(define-syntax break       (λ (stx) (raise-syntax-error 'break       "used out of context" stx)))
-(define-syntax catch       (λ (stx) (raise-syntax-error 'catch       "used out of context" stx)))
-(define-syntax continue    (λ (stx) (raise-syntax-error 'continue    "used out of context" stx)))
-(define-syntax do-while    (λ (stx) (raise-syntax-error 'do-while    "used out of context" stx)))
-(define-syntax export      (λ (stx) (raise-syntax-error 'export      "used out of context" stx)))
-(define-syntax finally     (λ (stx) (raise-syntax-error 'finally     "used out of context" stx)))
-(define-syntax import      (λ (stx) (raise-syntax-error 'import      "used out of context" stx)))
-(define-syntax label       (λ (stx) (raise-syntax-error 'label       "used out of context" stx)))
-(define-syntax object      (λ (stx) (raise-syntax-error 'object      "used out of context" stx)))
-(define-syntax ref         (λ (stx) (raise-syntax-error 'ref         "used out of context" stx)))
-(define-syntax sempty      (λ (stx) (raise-syntax-error 'sempty      "used out of context" stx)))
-(define-syntax sif         (λ (stx) (raise-syntax-error 'sif         "used out of context" stx)))
-(define-syntax throw       (λ (stx) (raise-syntax-error 'throw       "used out of context" stx)))
-(define-syntax topblock    (λ (stx) (raise-syntax-error 'topblock    "used out of context" stx)))
-(define-syntax try         (λ (stx) (raise-syntax-error 'try         "used out of context" stx)))
-(define-syntax urmodule    (λ (stx) (raise-syntax-error 'urmodule    "used out of context" stx)))
-(define-syntax var         (λ (stx) (raise-syntax-error 'var         "used out of context" stx)))
-(define-syntax while       (λ (stx) (raise-syntax-error 'while       "used out of context" stx)))
-(define-syntax :=          (λ (stx) (raise-syntax-error ':=          "used out of context" stx)))
+(define-syntax array         (λ (stx) (raise-syntax-error 'array       "used out of context" stx)))
+(define-syntax block         (λ (stx) (raise-syntax-error 'block       "used out of context" stx)))
+(define-syntax break         (λ (stx) (raise-syntax-error 'break       "used out of context" stx)))
+(define-syntax catch         (λ (stx) (raise-syntax-error 'catch       "used out of context" stx)))
+(define-syntax continue      (λ (stx) (raise-syntax-error 'continue    "used out of context" stx)))
+(define-syntax dot           (λ (stx) (raise-syntax-error 'dot         "used out of context" stx)))
+(define-syntax do-while      (λ (stx) (raise-syntax-error 'do-while    "used out of context" stx)))
+(define-syntax export        (λ (stx) (raise-syntax-error 'export      "used out of context" stx)))
+(define-syntax finally       (λ (stx) (raise-syntax-error 'finally     "used out of context" stx)))
+(define-syntax import        (λ (stx) (raise-syntax-error 'import      "used out of context" stx)))
+(define-syntax label         (λ (stx) (raise-syntax-error 'label       "used out of context" stx)))
+(define-syntax object        (λ (stx) (raise-syntax-error 'object      "used out of context" stx)))
+(define-syntax ref           (λ (stx) (raise-syntax-error 'ref         "used out of context" stx)))
+(define-syntax sempty        (λ (stx) (raise-syntax-error 'sempty      "used out of context" stx)))
+(define-syntax sif           (λ (stx) (raise-syntax-error 'sif         "used out of context" stx)))
+(define-syntax throw         (λ (stx) (raise-syntax-error 'throw       "used out of context" stx)))
+(define-syntax topblock      (λ (stx) (raise-syntax-error 'topblock    "used out of context" stx)))
+(define-syntax try           (λ (stx) (raise-syntax-error 'try         "used out of context" stx)))
+(define-syntax urmodule      (λ (stx) (raise-syntax-error 'urmodule    "used out of context" stx)))
+(define-syntax var           (λ (stx) (raise-syntax-error 'var         "used out of context" stx)))
+(define-syntax while         (λ (stx) (raise-syntax-error 'while       "used out of context" stx)))
+(define-syntax :=            (λ (stx) (raise-syntax-error ':=          "used out of context" stx)))
 
 ; Note: Remember to provide all keywords
-(define-literal-set keywords (array begin block break catch continue define do-while export finally
-                                    if import object label lambda λ let
+(define-literal-set keywords (array begin block break catch continue define do-while dot export
+                                    finally if import object label lambda λ let
                                     ref require sempty sif throw topblock try urmodule var while :=))
 (define keyword? (literal-set->predicate keywords))
 
@@ -513,8 +520,8 @@
     (quote d)                     ; quotation (the parser quotes all datums)
     (ref e0 e1 e* ...)            ; reference to array index
     (array e ...)                 ; array constructor
-    (object (pn e) ...)))         ; object literal
-
+    (object (pn e) ...)           ; object literal
+    (dot e pn)))                  ; property access
 
 ;;;
 ;;; GRAMMAR AS SYNTAX CLASSES
@@ -590,6 +597,10 @@
 (define-syntax-class Sequence
   #:literal-sets (keywords)
   (pattern (begin e0:Expr e:Expr ...)))
+
+(define-syntax-class Dot
+  #:literal-sets (keywords)
+  (pattern (dot e0:Expr e:Expr ...)))
 
 (define-syntax-class Ternary
   #:literal-sets (keywords)
@@ -683,7 +694,8 @@
                 el:Lambda
                 e:ArrayReference
                 e:Array
-                e:Object)))
+                e:Object
+                e:Dot)))
 
 (define-syntax-class Object
   #:literal-sets (keywords)
@@ -1056,6 +1068,7 @@
       [(~and o  (object . _))                 (parse-object      #'o)]
       [(~and ar (ref . _))                    (parse-array-reference #'ar)]
       [(~and ac (array . _))                  (parse-array       #'ac)]
+      [(~and do (dot . _))                    (parse-dot         #'do)]
       [(~and a  (e ...)
              (~not (k:keyword . _)))          (parse-application #'a)]
       [_ (raise-syntax-error 'parse-expr (~a "expected an expression, got " e) e)])))
@@ -1109,15 +1122,11 @@
       #:literal-sets (keywords)
       [x:Id
        (match (regexp-match #rx"(.*)[.](.*)" (symbol->string (syntax-e #'x)))
-         [#f `,#'x]
-         [(list y.p y p)
-          ;; TODO: Bug: in foo.bar-baz this becomes (ref foo "bar-baz")
-          ; object.property becomes object["property"]
-          (let ([y (format-id #'x y #:source #'x)])
-            (with-output-language (Lur Expr)
-              (let ([e (parse-reference y)]
-                    [p (parse-datum p)])
-                `(ref ,e ,p))))])])))
+         [#f `,#'x]       ; standard reference
+         [(list y.p y p)  ; y.p is short for y["p"]
+          (with-syntax ([y  (format-id #'x y #:source #'x)]
+                        [p  (format-id #'x p #:source #'x)])
+            (parse-expr #'(dot y p)))])])))
 
 (define (parse-sequence a)
   (debug (list 'parse-sequence (syntax->datum a)))
@@ -1128,6 +1137,19 @@
       [(begin e0 e ...) (let ([e0 (parse-expr #'e0)]
                               [e  (stx-map parse-expr #'(e ...))])
                           `(begin ,e0 ,e ...))])))
+
+(define (parse-dot do)
+  ; Note: The input syntax is (dot e ...) but the output have (dot e pn) forms only.
+  (debug (list 'parse-dot (syntax->datum do)))
+  (with-output-language (Lur Expr)
+    (syntax-parse do
+      #:literal-sets (keywords)
+      [(dot e0)                       (parse-expr #'e0)]
+      [(dot e0 (x:Id e ...) e1 ...)   (parse-expr #'(dot ((dot e0 x) e ...) e1 ...))]
+      [(dot e0 e1)                   `(dot ,(parse-expr #'e0) ,(parse-expr #'e1))]
+      [(dot e0 e1 e2 ...)             (parse-expr #'(dot (dot e0 e1) e2 ...))]
+      [(dot)
+       (raise-syntax-error 'parse-dot (~a "expected a dot expression, got " do) do)])))
 
 (define (parse-assignment a)
   (debug (list 'parse-assignment (syntax->datum a)))
@@ -1625,7 +1647,8 @@
   (let ()
     ; TODO Fix this hack:
     ; HACK BEGINS
-    
+    ; The hack is related to the Racket-to-Urlang compiler.
+    ; Racket apply has a surprising expansion.    
     (define kernel:srcloc (expand-syntax #'srcloc)) ; expands to kernel:srcloc
     (global! kernel:srcloc)
     (global! (expand-syntax #'apply))               ; expands to new-apply-proc
@@ -1764,6 +1787,10 @@
                                               [+nan.0         "NaN"]
                                               [else               d])]
                               [else (error 'generate-code "expedcted datum, got ~a" d)])]
+    [(dot ,e ,pn)            (let ((e (Expr e)))
+                               (if (regexp-match #rx"^([$_a-z][$_a-z0-9]*$)" (~a (syntax-e pn)))
+                                   (list e "." pn)
+                                   (list e (~brackets "\"" pn "\""))))]
     [(if ,e0 ,e1 ,e2)       (let ((e0 (Expr e0)) (e1 (Expr e1)) (e2 (Expr e2)))
                               (~parens (~parens e0 "===false") "?" e2 ":" e1))]
     #;[(if ,e0 ,e1 ,e2)       (let ((e0 (Expr e0)) (e1 (Expr e1)) (e2 (Expr e2)))
@@ -1784,21 +1811,20 @@
                                                  (list (~property-name pn) ":" (Expr e)))))]
     [(ref ,e0 ,e1 ,e ...)  (define (pn? _)
                              (nanopass-case (L1 Expr) e1
-                               [(quote ,d) (and (property-name? d) (not (number? d)) d)]
+                               [(quote ,d) (and (property-name? d) (not (number? d))
+                                                (regexp-match #rx"^([$_a-z][$_a-z0-9]*$)"
+                                                              (~a (if (syntax? d)
+                                                                      (syntax-e d)
+                                                                      d)))
+                                                d)]
                                [else       #f]))
                            ; (displayln (map Expr (list* e0 e1 e)))
                            (match (map Expr (list* e0 e1 e))
-                             ;;; TODO XXX the following two cases are
-                             ;;; temporarily removed.
-                             ;;; Now all property accesses becomce object["name"]
-                             ;;; and not object.name. This matters when name is, say foo-bar.
                              [(list e0 (and (? pn?) (app pn? pn)))
-                              (cond
-                                [(and (identifier? e0) (identifier? pn))
-                                 (~a (mangle e0) "." (mangle pn))]
-                                [(identifier? e0) (~a (mangle e0) "."             pn)]
-                                [(identifier? pn) (list       e0  "." (~a (mangle pn)))]
-                                [else             (list       e0  "." (~a         pn))])]
+                              (cond 
+                                [(and (identifier? e0) (identifier? pn)) (~a (mangle e0) "." pn)]
+                                [(identifier? pn)                        (list e0 "." (~a pn))]
+                                [else                                    (list e0 (~brackets pn))])]
                              [(list e0 (and (? pn?) (app pn? pn)))  (list e0 "." (~a pn))]
                              [(list e0 e1)                          (list e0 (~brackets e1))]
                              [_ (raise-syntax-error 'ref "internal error" e0)])]
