@@ -76,7 +76,7 @@
                                (dot t (g 4) o (h 5))) ; 10000
                             )))
               11111)
-                            
+(check-equal? (rs (urlang (urmodule t24 (var [o (object [foo-bar 3])]) o.foo-bar))) 3)
                                               
 
 ;;;

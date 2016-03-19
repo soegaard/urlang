@@ -1122,15 +1122,11 @@
       #:literal-sets (keywords)
       [x:Id
        (match (regexp-match #rx"(.*)[.](.*)" (symbol->string (syntax-e #'x)))
-         [#f `,#'x]
-         [(list y.p y p)
-          ;; TODO: Bug: in foo.bar-baz this becomes (ref foo "bar-baz")
-          ; object.property becomes object["property"]
-          (let ([y (format-id #'x y #:source #'x)])
-            (with-output-language (Lur Expr)
-              (let ([e (parse-reference y)]
-                    [p (parse-datum p)])
-                `(ref ,e ,p))))])])))
+         [#f `,#'x]       ; standard reference
+         [(list y.p y p)  ; y.p is short for y["p"]
+          (with-syntax ([y  (format-id #'x y #:source #'x)]
+                        [p  (format-id #'x p #:source #'x)])
+            (parse-expr #'(dot y p)))])])))
 
 (define (parse-sequence a)
   (debug (list 'parse-sequence (syntax->datum a)))
@@ -1792,7 +1788,9 @@
                                               [else               d])]
                               [else (error 'generate-code "expedcted datum, got ~a" d)])]
     [(dot ,e ,pn)            (let ((e (Expr e)))
-                               (list e "." pn))]
+                               (if (regexp-match #rx"^([$_a-z][$_a-z0-9]*$)" (~a (syntax-e pn)))
+                                   (list e "." pn)
+                                   (list e (~brackets "\"" pn "\""))))]
     [(if ,e0 ,e1 ,e2)       (let ((e0 (Expr e0)) (e1 (Expr e1)) (e2 (Expr e2)))
                               (~parens (~parens e0 "===false") "?" e2 ":" e1))]
     #;[(if ,e0 ,e1 ,e2)       (let ((e0 (Expr e0)) (e1 (Expr e1)) (e2 (Expr e2)))
@@ -1813,21 +1811,20 @@
                                                  (list (~property-name pn) ":" (Expr e)))))]
     [(ref ,e0 ,e1 ,e ...)  (define (pn? _)
                              (nanopass-case (L1 Expr) e1
-                               [(quote ,d) (and (property-name? d) (not (number? d)) d)]
+                               [(quote ,d) (and (property-name? d) (not (number? d))
+                                                (regexp-match #rx"^([$_a-z][$_a-z0-9]*$)"
+                                                              (~a (if (syntax? d)
+                                                                      (syntax-e d)
+                                                                      d)))
+                                                d)]
                                [else       #f]))
                            ; (displayln (map Expr (list* e0 e1 e)))
                            (match (map Expr (list* e0 e1 e))
-                             ;;; TODO XXX the following two cases are
-                             ;;; temporarily removed.
-                             ;;; Now all property accesses becomce object["name"]
-                             ;;; and not object.name. This matters when name is, say foo-bar.
                              [(list e0 (and (? pn?) (app pn? pn)))
-                              (cond
-                                [(and (identifier? e0) (identifier? pn))
-                                 (~a (mangle e0) "." (mangle pn))]
-                                [(identifier? e0) (~a (mangle e0) "."             pn)]
-                                [(identifier? pn) (list       e0  "." (~a (mangle pn)))]
-                                [else             (list       e0  "." (~a         pn))])]
+                              (cond 
+                                [(and (identifier? e0) (identifier? pn)) (~a (mangle e0) "." pn)]
+                                [(identifier? pn)                        (list e0 "." (~a pn))]
+                                [else                                    (list e0 (~brackets pn))])]
                              [(list e0 (and (? pn?) (app pn? pn)))  (list e0 "." (~a pn))]
                              [(list e0 e1)                          (list e0 (~brackets e1))]
                              [_ (raise-syntax-error 'ref "internal error" e0)])]
