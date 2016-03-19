@@ -263,6 +263,7 @@
 ; <lambda>            ::= (lambda (<formal> ...) <body>)
 ; <array-reference>   ::= (ref <expr> <expr> <expr> ...)
 ; <array>             ::= (array <expr> ...)
+; <dot>               ::= (dot <expr> ...+)
 ; <object>            ::= (object (<property-name> <expr>) ...)
 ; <property-name>     ::= x | <keyword> | <string> | <number>
 
@@ -287,7 +288,11 @@
 ;    (ref e0 "str")  becomes  e0.str    
 ;    (array e ...)   becomes  [e,...]
 
-; Property access with dot notation is rewritten to use bracket syntax in the parser.
+;    (dot e ...)     is property access / chained method calls
+
+; TODO: Fix the comment below.
+; Property access with identifier dot notation is rewritten to use bracket syntax
+; in the parser.
 ; Example:  object.property becomes object["property"]
 ; Note: keywords are allowed as property names pr ES5.
 
@@ -391,6 +396,7 @@
 (define-syntax break       (λ (stx) (raise-syntax-error 'break       "used out of context" stx)))
 (define-syntax catch       (λ (stx) (raise-syntax-error 'catch       "used out of context" stx)))
 (define-syntax continue    (λ (stx) (raise-syntax-error 'continue    "used out of context" stx)))
+(define-syntax dot         (λ (stx) (raise-syntax-error 'dot         "used out of context" stx)))
 (define-syntax do-while    (λ (stx) (raise-syntax-error 'do-while    "used out of context" stx)))
 (define-syntax export      (λ (stx) (raise-syntax-error 'export      "used out of context" stx)))
 (define-syntax finally     (λ (stx) (raise-syntax-error 'finally     "used out of context" stx)))
@@ -409,8 +415,8 @@
 (define-syntax :=          (λ (stx) (raise-syntax-error ':=          "used out of context" stx)))
 
 ; Note: Remember to provide all keywords
-(define-literal-set keywords (array begin block break catch continue define do-while export finally
-                                    if import object label lambda λ let
+(define-literal-set keywords (array begin block break catch continue define do-while dot export
+                                    finally if import object label lambda λ let
                                     ref require sempty sif throw topblock try urmodule var while :=))
 (define keyword? (literal-set->predicate keywords))
 
@@ -513,8 +519,8 @@
     (quote d)                     ; quotation (the parser quotes all datums)
     (ref e0 e1 e* ...)            ; reference to array index
     (array e ...)                 ; array constructor
-    (object (pn e) ...)))         ; object literal
-
+    (object (pn e) ...)           ; object literal
+    (dot e0 e1)))                 ; property access
 
 ;;;
 ;;; GRAMMAR AS SYNTAX CLASSES
@@ -590,6 +596,10 @@
 (define-syntax-class Sequence
   #:literal-sets (keywords)
   (pattern (begin e0:Expr e:Expr ...)))
+
+(define-syntax-class Dot
+  #:literal-sets (keywords)
+  (pattern (dot e0:Expr e:Expr ...)))
 
 (define-syntax-class Ternary
   #:literal-sets (keywords)
@@ -683,7 +693,8 @@
                 el:Lambda
                 e:ArrayReference
                 e:Array
-                e:Object)))
+                e:Object
+                e:Dot)))
 
 (define-syntax-class Object
   #:literal-sets (keywords)
@@ -1056,6 +1067,7 @@
       [(~and o  (object . _))                 (parse-object      #'o)]
       [(~and ar (ref . _))                    (parse-array-reference #'ar)]
       [(~and ac (array . _))                  (parse-array       #'ac)]
+      [(~and do (dot . _))                    (parse-dot         #'do)]
       [(~and a  (e ...)
              (~not (k:keyword . _)))          (parse-application #'a)]
       [_ (raise-syntax-error 'parse-expr (~a "expected an expression, got " e) e)])))
@@ -1128,6 +1140,18 @@
       [(begin e0 e ...) (let ([e0 (parse-expr #'e0)]
                               [e  (stx-map parse-expr #'(e ...))])
                           `(begin ,e0 ,e ...))])))
+
+(define (parse-dot do)
+  ; Note: The input syntax is (dot e ...) but will only dot forms of the form (dot e0 e1)
+  (debug (list 'parse-dot (syntax->datum do)))
+  (with-output-language (Lur Expr)
+    (syntax-parse do
+      #:literal-sets (keywords)
+      [(dot)          (raise-syntax-error 'parse-dot (~a "expected a dot expression, got " do) do)]
+      [(dot e0)       (parse-expr #'e0)]
+      [(dot e0 (x:Id e ...) e1 ...)   (parse-expr #'(dot ((dot e0 x) e ...) e1 ...))]
+      [(dot e0 e1)                   `(dot ,(parse-expr #'e0) ,(parse-expr #'e1))]
+      [(dot e0 e1 e2 ...)             (parse-expr #'(dot (dot e0 e1) e2 ...))])))
 
 (define (parse-assignment a)
   (debug (list 'parse-assignment (syntax->datum a)))
@@ -1625,7 +1649,8 @@
   (let ()
     ; TODO Fix this hack:
     ; HACK BEGINS
-    
+    ; The hack is related to the Racket-to-Urlang compiler.
+    ; Racket apply has a surprising expansion.    
     (define kernel:srcloc (expand-syntax #'srcloc)) ; expands to kernel:srcloc
     (global! kernel:srcloc)
     (global! (expand-syntax #'apply))               ; expands to new-apply-proc
@@ -1764,6 +1789,9 @@
                                               [+nan.0         "NaN"]
                                               [else               d])]
                               [else (error 'generate-code "expedcted datum, got ~a" d)])]
+    [(dot ,e0 ,e1)            (let ((e0 (Expr e0)) (e1 (Expr e1)))
+                                ; todo: use brackets if e1 is "complicated"
+                                (list e0 "." e1))]
     [(if ,e0 ,e1 ,e2)       (let ((e0 (Expr e0)) (e1 (Expr e1)) (e2 (Expr e2)))
                               (~parens (~parens e0 "===false") "?" e2 ":" e1))]
     #;[(if ,e0 ,e1 ,e2)       (let ((e0 (Expr e0)) (e1 (Expr e1)) (e2 (Expr e2)))
