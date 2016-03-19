@@ -226,6 +226,9 @@
      ; get the numerical values
      (var [a (get ia)] [b (get ib)] [c (get ic)])
      (out.text (render (solutions a b c)))
+     ; Alternative: Use dot notation to avoid storing the dom element:
+     ; (this is less efficient though)
+     ; (dot ($ "#solutions") (text (render (solutions a b c))))
      (graph (ref ($ "#graph-canvas") 0) a b c))
 
    (define (set-keyup-handlers i)
