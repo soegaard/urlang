@@ -13,7 +13,10 @@
          current-urlang-run?                             ; run after compilation
          current-urlang-echo?                            ; echo JavaScript after compilation
          current-urlang-console.log-module-level-expr?   ; call console.log on each module-level expr?
-         current-urlang-delete-tmp-file?)
+         current-urlang-delete-tmp-file?
+         current-urlang-beatify?)                        ; process output with js-beatify ?
+
+; Note: Install js-beatify with "npm -g install js-beautify" in a terminal near you.
 
 ;; Keywords
 (provide array begin block break catch continue define do-while dot export finally if import
@@ -2057,6 +2060,7 @@
 (define current-urlang-echo?                          (make-parameter #f))
 (define current-urlang-console.log-module-level-expr? (make-parameter #f))
 (define current-urlang-delete-tmp-file?               (make-parameter #t))
+(define current-urlang-beatify?                       (make-parameter #f))
 
 (define (urmodule-name->js-file-name name)
   (match name
@@ -2100,10 +2104,13 @@
              (with-output-to-file js-path
                (λ () (emit tree))
                #:exists 'replace))
+           (when (current-urlang-beatify?)
+             (putenv "PATH" (string-append (getenv "PATH") ":/usr/local/bin/"))
+             (system (~a "/usr/local/bin/js-beautify -r  -f " js-path)))
            (parameterize ([current-urlang-exports-file exports-path])
              (with-output-to-file exports-path
                (λ () (write-exports exports))
-               #:exists 'replace))
+               #:exists 'replace))           
            (when (current-urlang-echo?)
              (with-input-from-file js-path
                (λ() (copy-port (current-input-port) (current-output-port)))))
