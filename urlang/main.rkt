@@ -1142,16 +1142,17 @@
                           `(begin ,e0 ,e ...))])))
 
 (define (parse-dot do)
-  ; Note: The input syntax is (dot e ...) but will only dot forms of the form (dot e0 e1)
+  ; Note: The input syntax is (dot e ...) but the output have (dot e0 e1) forms only.
   (debug (list 'parse-dot (syntax->datum do)))
   (with-output-language (Lur Expr)
     (syntax-parse do
       #:literal-sets (keywords)
-      [(dot)          (raise-syntax-error 'parse-dot (~a "expected a dot expression, got " do) do)]
-      [(dot e0)       (parse-expr #'e0)]
+      [(dot e0)                       (parse-expr #'e0)]
       [(dot e0 (x:Id e ...) e1 ...)   (parse-expr #'(dot ((dot e0 x) e ...) e1 ...))]
       [(dot e0 e1)                   `(dot ,(parse-expr #'e0) ,(parse-expr #'e1))]
-      [(dot e0 e1 e2 ...)             (parse-expr #'(dot (dot e0 e1) e2 ...))])))
+      [(dot e0 e1 e2 ...)             (parse-expr #'(dot (dot e0 e1) e2 ...))]
+      [(dot)
+       (raise-syntax-error 'parse-dot (~a "expected a dot expression, got " do) do)])))
 
 (define (parse-assignment a)
   (debug (list 'parse-assignment (syntax->datum a)))
