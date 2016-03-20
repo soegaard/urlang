@@ -23,3 +23,12 @@
 
 (current-urlang-console.log-module-level-expr? #t)
 
+;;;
+;;; COND
+;;;
+
+(check-equal? (rs (urlang (urmodule scond
+                            (+ (cond [#f 10] [0 1] [#t 10])    ;   1
+                               (cond [#f 4] [else 10])         ;  10
+                               (cond [else 100])))))           ; 100                 
+              111)

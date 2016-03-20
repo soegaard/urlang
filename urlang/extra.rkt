@@ -33,9 +33,16 @@
 (define-urlang-macro cond
   (λ (stx)
     (syntax-parse stx
+      #:datum-literals (else)
       [(_cond)
        (syntax/loc stx
          undefined)]
+      [(_cond [else then-body ...])
+       (syntax/loc stx
+         (let () then-body ...))]
+      [(_cond [test] clause ...)
+       (syntax/loc stx
+         (let ([t test]) (if t t (let () clause ...))))]
       [(_cond [test statement ... expr] clause ...)
        (syntax/loc stx
          (if test
