@@ -1,6 +1,6 @@
 #lang racket
 (require urlang syntax/parse)
-
+(provide else)
 ;;;
 ;;; URLANG EXTRA
 ;;;
@@ -45,12 +45,21 @@
 ;; SYNTAX  (scond [test statement ...] ...)
 ;;   Like cond in Racket. Return values of rhs not used.
 
+(define-urlang-macro else (λ (stx) (raise-syntax-error 'else "used out of context")))
+
 (define-urlang-macro scond
   (λ (stx)
     (syntax-parse stx
+      #:datum-literals (else)
       [(_scond)
        (syntax/loc stx
          undefined)]
+      [(_scond [else then-body ...])
+       (syntax/loc stx
+         (let () then-body ...))]
+      [(_scond [test] clause ...)
+       (syntax/loc stx
+         (sif t undefined (scond clause ...)))]
       [(_scond [test statement ...] clause ...)
        (syntax/loc stx
          (sif test
