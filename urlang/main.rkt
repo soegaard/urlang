@@ -1013,6 +1013,8 @@
       [(define x:Id e)
        (let ((e (parse-expr #'e)))
          `(define ,#'x ,e))]
+      [(define (f:Id φ:Formal ...))
+       (raise-syntax-error 'parse-definition "expected a non-empty body, got: " d)]
       [(define (f:Id φ:Formal ...) . b)
        (let ((x (attribute φ.x)))                                           ; all parameters
          (with-syntax ([((x0 e0) ...) (filter identity (attribute φ.xe))])  ; parameters with defaults
@@ -1661,8 +1663,9 @@
     (global! #'unsafe-fx+)
     (global! #'unsafe-fx-)
     (global! #'unsafe-fx*)
-    (global! (second (syntax->list (expand-syntax (datum->syntax #'here '(in-range 10))))))
-    ; HACK ENDS    
+    (global! (second (syntax->list (expand-syntax (datum->syntax #'here '(in-range 10))))))    
+    ; HACK ENDS
+    ; Also we need else to be know for use in macros
     (Module U)))
 
 ;;;
