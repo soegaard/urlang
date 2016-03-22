@@ -28,6 +28,7 @@
 
 
 ;; SYNTAX  (cond [test statement ... expr] ...)
+;;         The last clause can be an else clause
 ;;   Like cond in Racket. The right hand sides are in a new scope.
 
 (define-urlang-macro cond
@@ -51,7 +52,7 @@
 
 ;; SYNTAX  (scond [test statement ...] ...)
 ;;   Like cond in Racket. Return values of rhs not used.
-
+;;         The last clause can be an else clause
 (define-urlang-macro else (λ (stx) (raise-syntax-error 'else "used out of context")))
 
 (define-urlang-macro scond
