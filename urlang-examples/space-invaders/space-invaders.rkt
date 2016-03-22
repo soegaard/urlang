@@ -418,11 +418,12 @@
      <p>Use <tt>left</tt> or <tt>right</tt> to move</p>
      <p>Use <tt>space</tt> to shoot.</p>
      <p>Use <tt>r</tt> to restart</p>
-     <p>Source code:
+     <p>See source code on Github:
         <a href=
    "https://github.com/soegaard/urlang/blob/master/urlang-examples/space-invaders/space-invaders.rkt">
-           space-invaders.rkt</a>
-     </p>
+        space-invaders.rkt</a>
+     <p><canvas id="the-canvas" width="350" height="400" tabindex="1"/></p>
+     <script>@file->string{space-invaders.js}</script>
  </body>
  </html>})
 
