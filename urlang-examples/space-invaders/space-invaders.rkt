@@ -16,6 +16,9 @@
 ; original HtDP program using a few macros to implement struct and struct-copy.
 ; The intention is not to port the JavaScript version by Mary Rose line by line.
 
+; Try it here:
+;     http://soegaard.github.io/urlang/space-invaders.html
+
 ; Have fun!
 
 ;;;
