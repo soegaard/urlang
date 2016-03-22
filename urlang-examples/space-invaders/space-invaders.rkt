@@ -419,7 +419,8 @@
      <p>Use <tt>space</tt> to shoot.</p>
      <p>Use <tt>r</tt> to restart</p>
      <p>Source code:
-        <a href=https://github.com/soegaard/urlang/urlang-examples/space-invaders/space-invaders.rkt>
+        <a href=
+   "https://github.com/soegaard/urlang/blob/master/urlang-examples/space-invaders/space-invaders.rkt">
            space-invaders.rkt</a>
      </p>
  </body>
