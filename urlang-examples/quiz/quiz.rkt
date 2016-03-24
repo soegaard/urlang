@@ -85,7 +85,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <!-- The above 3 meta tags *must* come first in the head;
          any other head content must come *after* these tags -->
-    <title>Bootstrap 101 Template</title>
+    <title>The Racket Quiz</title>
 
     <!-- Bootstrap -->
     @link-css[bootstrap-css]
@@ -221,9 +221,9 @@
    (define  question-container (ref $question-container 0))
    
    (define (on-next-question)
-     (console.log "Next!")
      (:= current-card (% (+ current-card 1) the-cards.length))
-     (render-flash-card current-card))
+     (render-flash-card current-card)
+     ($answer-input.css "background-color" "white"))
 
    (define (on-answer-input-enter e)
      ; called when user hits enter
