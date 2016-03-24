@@ -157,7 +157,7 @@
 
 (define cards
   '(("Short name for: How to Design Books"              "HtDP")
-    ("Racket lists are ______ linked lists"             "single")
+    ("Racket lists are ______ linked lists"             "singly")
     ("The Racket IRC is on ________"                    "freenode")
     ("Racket was formerly known as ___ Scheme"          "PLT")
     ("A list with no elements is called the _____ list" "empty")
