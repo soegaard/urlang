@@ -183,9 +183,9 @@
    ; create-invaders : -> (list body)
    ;   create array of twenty-four invaders
    (define (create-invaders)
-     (for/array ([j in-range 0 24]) ; BUG i instead of j breaks
-       (var [x (+ 30 (* 30 (remainder j 8)))]) ; 8 columns
-       (var [y (+ 30 (* 30 (remainder j 3)))]) ; 3 rows
+     (for/array ([i in-range 0 24])
+       (var [x (+ 30 (* 30 (remainder i 8)))]) ; 8 columns
+       (var [y (+ 30 (* 30 (remainder i 3)))]) ; 3 rows
        (new-invader x y)))
    
    ; create-player : -> player
@@ -313,14 +313,14 @@
    ;   draw the bodies in the world w to the drawing context dc
    (define (draw-bodies bs dc)
      (for ([b in-array bs])
-       (unless (= b undefined)  ; TODO fix this
-         (match-define (body x y s) b)
-         (var [c (cond [(and (player? b) (player-dead? b)) "purple"]
-                       [(player? b)                        "blue"]
-                       [(invader? b)                       "red"]
-                       [else                               "black"])])
-         (:= dc "fillStyle" c)
-         (fill-rect dc x y s s))))
+       (match-define (body x y s) b)
+       (var [c (cond [(and (player? b) (player-dead? b)) "purple"]
+                     [(player? b)                        "blue"]
+                     [(invader? b)                       "red"]
+                     [else                               "black"])])
+       (:= dc "strokeStyle" c)
+       (:= dc "fillStyle" c)
+       (fill-rect dc x y s s)))
 
    (define (fill-rect dc x y w h)
      (dot dc (fillRect (+ x 0.5) (+ y 0.5) w h)))
