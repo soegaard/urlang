@@ -49,7 +49,9 @@
     [(list '*TOP* (? annotation? a*) ... comment* ... element)
      (list (map unparse-annotation a*)
            ; (map unparse-comment comment*)
-           (unparse-element element))]))
+           (cond
+             [(element? element) (unparse-element element)]
+             [else               (unparse-child-of-element element)]))]))
 
 (define (annotation? x)
   ; Note: Annotations beside DECL are ignored.
@@ -76,6 +78,9 @@
     [(list '*ENTITY* public-id system-id)
      (error 'todo-entity)]))
 
+(define (element? x)
+  (match x [(list name more ...) #t] [_ #f]))
+
 (define (unparse-element x)
   ; <Element> ::= ( <name> <annot-attributes>? <child-of-element>* )
   (match x
@@ -85,10 +90,11 @@
      (if (null? child)
          (list "@" name "[" atts* "]")
          (list "@" name "[" atts* "]" "{" child* "}"))]
-    ; no annotated attrubutes:
+    ; no annotated attributes:
     [(list name child ...)
      (define child* (map unparse-child-of-element child))
-     (list "@" name "{" child* "}")]))
+     (list "@" name "{" child* "}")]    
+    ))
 
 (define (unparse-attributes xs)
   (add-between (map unparse-attribute xs) " "))
