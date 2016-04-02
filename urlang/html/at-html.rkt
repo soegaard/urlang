@@ -36,6 +36,8 @@
 (define ~x xml->string)
 (define (~xs . xs) (string-append* (map ~x xs)))
 
+;;; Easy conversion from html or xexps to at-notation
+(require "to-at-exp.rkt")
 
 ;;; No name clashes
 
@@ -47,4 +49,5 @@
          #%top
          nav footer canvas
          (all-from-out scribble/html
-                       scribble/html/xml))
+                       scribble/html/xml
+                       "to-at-exp.rkt"))
