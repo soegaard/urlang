@@ -1,4 +1,7 @@
 #lang racket
+
+;;; TODO  1. Is the uncommented (not (keyword? ..))) correct in PropertyName
+
 ;;; This file contains the Urlang module to JavaScript file compiler.
 
 ;;; TEMPORARY: These requires and renamings are only neeed until modules are supported.
@@ -570,7 +573,7 @@
   (pattern (~and x:id (~not y:ECMA6ReservedKeyword))))
 
 (define-syntax-class PropertyName
-  (pattern (~or (~and x:id (~not y:Keyword))
+  (pattern (~or (~and x:id #;(~not y:Keyword))  ; TODO TODO is this correct?
                 d:Number
                 s:String)))
 
@@ -1690,7 +1693,8 @@
     (define (~displayln t)     (list "console.log" (~parens t)))
     (define (~top-expr t)      (if (current-urlang-console.log-module-level-expr?)
                                    (~displayln t) t))
-    (define (~string t)        (list "\"" t "\""))
+    (define (convert-string s) (regexp-replace* "\n" s "\\\\\n"))
+    (define (~string t)        (list "\"" (convert-string t) "\""))
     (define (~property-name t) (define v (syntax-e t)) (if (string? v) (~string v) t))
       
     (define (exports.id x)   (format-id x "exports.~a" x)))
@@ -1785,7 +1789,7 @@
   (Expr : Expr (e) -> * ()
     [,x x]
     [(quote ,d)             (cond
-                              [(string? d)  (list "\"" d "\"")]
+                              [(string? d)  (~string d)]
                               [(boolean? d) (if d "true" "false")]
                               [(number? d)  (match d
                                               [+inf.0    "Infinity"]
