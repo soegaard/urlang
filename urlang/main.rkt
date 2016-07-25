@@ -22,7 +22,9 @@
 ; Note: Install js-beautify with "npm -g install js-beautify" in a terminal near you.
 
 ;; Keywords
-(provide array begin block break catch continue define do-while dot export finally if import
+(provide keywords) ; a literal set
+(provide all-as array as begin block break catch continue define default do-while dot export
+         finally if import import-from
          object label lambda λ let ref require sempty sif throw topblock try urmodule
          var while :=)
 (provide bit-and bit-not bit-or bit-xor ===)
@@ -227,9 +229,12 @@
 
 ; <module>            ::= (urmodule <module-name> <module-path> <module-level-form> ...)
 
-; <module-level-form> ::= <export> | <import> | <require> | <definition> | <statement> | <topblock>
+; <module-level-form> ::= <export> | <import> | <import-from> | <require>
+;                      |  <definition> | <statement> | <topblock>
 ; <export>            ::= (export x ...)
 ; <import>            ::= (import x ...)
+; <import-from>       ::= (import-from <string-literal> <import-spec> ...)
+; <import-spec>       ::= x | (as x x) | (all-as x) | (default x)
 ; <require>           ::= (require <require-spec> ...)
 ; <topblock>          ::= (topblock <module-level-form> ...)
 ; <definition>        ::= (define (f <formal> ...) <body>)
@@ -398,16 +403,24 @@
 ;;; KEYWORDS
 ;;;
 
+; Note: After adding a new keyword, remember to update the literal set  keywords  below the
+;       the keyword definitions.
+;       Also: Remember to provide them!
+
 (define-syntax array         (λ (stx) (raise-syntax-error 'array       "used out of context" stx)))
+(define-syntax as            (λ (stx) (raise-syntax-error 'as          "used out of context" stx)))
+(define-syntax all-as        (λ (stx) (raise-syntax-error 'all-as      "used out of context" stx)))
 (define-syntax block         (λ (stx) (raise-syntax-error 'block       "used out of context" stx)))
 (define-syntax break         (λ (stx) (raise-syntax-error 'break       "used out of context" stx)))
 (define-syntax catch         (λ (stx) (raise-syntax-error 'catch       "used out of context" stx)))
 (define-syntax continue      (λ (stx) (raise-syntax-error 'continue    "used out of context" stx)))
+(define-syntax default       (λ (stx) (raise-syntax-error 'default     "used out of context" stx)))
 (define-syntax dot           (λ (stx) (raise-syntax-error 'dot         "used out of context" stx)))
 (define-syntax do-while      (λ (stx) (raise-syntax-error 'do-while    "used out of context" stx)))
 (define-syntax export        (λ (stx) (raise-syntax-error 'export      "used out of context" stx)))
 (define-syntax finally       (λ (stx) (raise-syntax-error 'finally     "used out of context" stx)))
 (define-syntax import        (λ (stx) (raise-syntax-error 'import      "used out of context" stx)))
+(define-syntax import-from   (λ (stx) (raise-syntax-error 'import-from "used out of context" stx)))
 (define-syntax label         (λ (stx) (raise-syntax-error 'label       "used out of context" stx)))
 (define-syntax object        (λ (stx) (raise-syntax-error 'object      "used out of context" stx)))
 (define-syntax ref           (λ (stx) (raise-syntax-error 'ref         "used out of context" stx)))
@@ -422,8 +435,9 @@
 (define-syntax :=            (λ (stx) (raise-syntax-error ':=          "used out of context" stx)))
 
 ; Note: Remember to provide all keywords
-(define-literal-set keywords (array begin block break catch continue define do-while dot export
-                                    finally if import object label lambda λ let
+(define-literal-set keywords (array as all-as begin block break catch continue define default
+                                    do-while dot export
+                                    finally if import import-from object label lambda λ let
                                     ref require sempty sif throw topblock try urmodule var while :=))
 (define keyword? (literal-set->predicate keywords))
 
@@ -432,7 +446,8 @@
 ; https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference
 ; /Lexical_grammar#Reserved_keywords_as_of_ECMAScript_6
 (define ecma6-reserved-keywords
-  '(break case class catch const continue debugger default
+  '(break case class catch const continue debugger
+          default 
           delete do else export extends finally for function if import in instanceof let
           new return super switch
           ; this  ; HACK temporarily allow (import ... this ...)
@@ -456,6 +471,7 @@
 (define (module-name? v)   (or (symbol? v) (string? v)))
 (define (property-name? v) (or (symbol? v) (string? v) (fixnum? v) (flonum? v)
                                (and (syntax? v) (property-name? (syntax-e v)))))
+(define (js-module-name? v) (string? v))
 ;;;
 ;;; URLANG AS NANOPASS LANGUAGE
 ;;;
@@ -470,26 +486,33 @@
    ;   x   identifier
    ((datum       (d))     . => . unparse-datum)
    (module-name  (mn))
+   (js-module-name (js-mn))
    ((property-name (pn)) . => . (λ (v) (if (syntax? v) (unparse-syntax v) v))))
   (Module (u)
     (urmodule mn m ...))
   (ModuleLevelForm (m)
     (export  x ...)        
-    (import  x ...)        ; declare that x ... are declared (builtin or required from Node)
-    (require rs ...)       ; import from modules compiled by urlang
-    (topblock m ...)       ; toplevel block
-    ;                      ; (allows macros to expand to more than one module level form)
-    δ σ)                   ; definition or statement
+    (import  x ...)              ; declare that x ... are declared (builtin or required from Node)
+    (import-from js-mn is ...)   ; ES6:   import {is ...} from the module named js-mn (string literal)
+    (require rs ...)             ; import from modules compiled by urlang
+    (topblock m ...)             ; toplevel block
+    ;                            ; (allows macros to expand to more than one module level form)
+    δ σ)                         ; definition or statement
   (RequireSpec (rs)
     mn                       ; import all exported identifers from the module with module name mn
     #;(only-in   mn x ...)   ; import x ... from the module named mn
     #;(except-in mn x ...))  ; import all exported identifiers from the module named mn except x ...
+  (ImportSpec (is)
+    (default x)              ; the default export as x
+    (as x1 x2)               ; the member x1 using the name x2 locally
+    (all-as x)               ; import all using the name x
+    x)                       ; the member named x             
   (Definition (δ)
-    (define (f φ ...) b)   ; function definition
+    (define (f φ ...) b)     ; function definition
     (define x e))
   (Formal (φ)
-    x                      ; parameter name
-    [x e])                 ; parameter name and default value
+    x                        ; parameter name
+    [x e])                   ; parameter name and default value
   (Body (b)
     (body σ ... e))
   (VarBinding (vb)
@@ -775,7 +798,9 @@
   (hash-ref macros-ht (syntax-e id) #f))
 
 (define (parse stx)
-  (parse-urmodule stx))
+  (let ([result (parse-urmodule stx)])
+    ;(displayln (list 'parse: result))
+    result))
 
 (define (parse-urmodule u)
   (with-output-language (Lur Module)
@@ -801,6 +826,28 @@
       [(import x:NonECMA6ReservedKeyword ...)
        (let ([x (syntax->list #'(x ...))])
          `(import ,x ...))])))
+
+(define (parse-import-from imf)
+  (with-output-language (Lur ModuleLevelForm)
+    (syntax-parse imf
+      #:literal-sets (keywords)
+      [(import-from d:Datum is* ...)
+       (let ([is* (map parse-import-spec (syntax->list #'(is* ...)))]
+             [d (syntax->datum #'d)])
+         `(import-from ,d ,is* ...))])))
+
+(define (parse-import-spec is)
+  (with-output-language (Lur ImportSpec)
+    (syntax-parse is
+      #:literal-sets (keywords)
+      [(default x:NonECMA6ReservedKeyword)
+       `(default ,#'x)]
+      [(as x1:NonECMA6ReservedKeyword x2:NonECMA6ReservedKeyword)
+       `(as ,#'x1 ,#'x2)]
+      [(all-as x:NonECMA6ReservedKeyword)
+       `(all-as ,#'x)]
+      [x:NonECMA6ReservedKeyword
+       `,#'x])))
 
 (define (parse-require rm)
   (with-output-language (Lur ModuleLevelForm)
@@ -830,12 +877,13 @@
     (with-output-language (Lur ModuleLevelForm)
       (syntax-parse m
         #:literal-sets (keywords)
-        [ma:MacroApplication      (parse-module-level-form (parse-macro-application #'ma))]
-        [(~and ex (export . _))   (parse-export #'ex)]
-        [(~and im (import . _))   (parse-import #'im)]
-        [(~and rm (require . _))  (parse-require #'rm)]
-        [(~and d  (define . _))   (parse-definition #'d)]
-        [(~and tb (topblock . _)) (parse-topblock #'tb)]
+        [ma:MacroApplication           (parse-module-level-form (parse-macro-application #'ma))]
+        [(~and ex  (export      . _))  (parse-export #'ex)]
+        [(~and im  (import      . _))  (parse-import #'im)]
+        [(~and rm  (require     . _))  (parse-require #'rm)]
+        [(~and d   (define      . _))  (parse-definition #'d)]
+        [(~and tb  (topblock    . _))  (parse-topblock #'tb)]
+        [(~and imf (import-from . _))  (parse-import-from #'imf)]
         [σ                       (parse-statement #'σ parse-module-level-form 'module-level-form)]))))
 
 (define (parse-statement σ [context-parse parse-statement] [parent-context 'statement])
@@ -1255,13 +1303,15 @@
     (define lifted-forms (make-parameter '()))
     (define (add-form m) (lifted-forms (cons m (lifted-forms)))) ; in reverse
     (define (flatten m)
+      ; (displayln (list 'flatten m))
       (nanopass-case (Lur ModuleLevelForm) m
-        [(export   ,x ...)  (add-form m) '()]
-        [(import   ,x ...)  (add-form m) '()]
-        [(require  ,rs ...) (add-form m) '()]
-        [(topblock ,m ...)  (append-map flatten m)]
-        [,δ                 (list δ)]
-        [,σ                 (list σ)])))
+        [(export   ,x ...)            (add-form m) '()]
+        [(import   ,x ...)            (add-form m) '()]
+        [(require  ,rs ...)           (add-form m) '()]
+        [(import-from ,js-mn ,is ...) (add-form m) '()]
+        [(topblock ,m ...)            (append-map flatten m)]        
+        [,δ                           (list δ)]
+        [,σ                           (list σ)])))
   (Statement  : Statement  (σ) ->  Statement ())
   (ModuleLevelForm : ModuleLevelForm  (m) ->  ModuleLevelForm ()
     [(topblock ,m ...) (append-map flatten m)])
@@ -1680,6 +1730,7 @@
 ; The output will be a JavaScript program.
 
 (define current-exports (make-parameter '()))
+
 (define-pass generate-code : L1 (U) -> * ()
   (definitions
     (define (~parens . t)      (list "(" t ")"))
@@ -1697,7 +1748,9 @@
     (define (~string t)        (list "\"" (convert-string t) "\""))
     (define (~property-name t) (define v (syntax-e t)) (if (string? v) (~string v) t))
       
-    (define (exports.id x)   (format-id x "exports.~a" x)))
+    (define (exports.id x)   (format-id x "exports.~a" x))
+    (define current-js-import-module-name (make-parameter #f))
+    (define jsmn current-js-import-module-name))
   (Module : Module (u) -> * ()
     [(urmodule ,mn (,an ...) ,m ...) (list (~newline (~Statement "\"use strict\""))
                                            (map (λ (an) (Annotation an 'require)) an)
@@ -1726,12 +1779,20 @@
            (list (~newline (~Statement `(var "MODULE = require(\"./" ,mn.js "\")")))
                  (for/list ([x imports])
                    (let ([x (mangle (datum->syntax #'ignored x))]) ; mangle expects ids (not symbols)
-                     (~newline (~Statement `(var ,x ,(~a " = MODULE[\"" x "\"]"))))))))])
+                     (~newline (~Statement `(var ,x ,(~a " = MODULE[\"" x "\"]"))))))))])    
   (ModuleLevelForm : ModuleLevelForm (m) -> * ()
-    [(topblock ,m* ...) (map ModuleLevelForm m*)]
-    [,δ                 (~newline (Definition δ))]
-    [,e                 (~newline (~Statement (~top-expr (Expr e))))]
-    [,σ                 (~newline (Statement σ))])
+    [(import-from ,js-mn ,is* ...) (parameterize ([current-js-import-module-name js-mn])
+                                     (map ImportSpec  is*))]
+    [(topblock ,m* ...)         (map ModuleLevelForm m*)]
+    [,δ                         (~newline (Definition δ))]
+    [,e                         (~newline (~Statement (~top-expr (Expr e))))]
+    [,σ                         (~newline (Statement σ))])
+  (ImportSpec : ImportSpec (is) -> * ()
+    [(as ,x1 ,x2)   (~newline (~Statement (list "import " (~braces x1 " as " x2)
+                                                " from " (~string (jsmn)))))]
+    [(all-as ,x)    (~newline (~Statement (list "import " '*  " as " x " from " (~string (jsmn)))))]
+    [(default ,x)   (~newline (~Statement (list "import " x " from " (~string (jsmn)))))]
+    [,x             (~newline (~Statement (list "import " (~braces x) " from " (~string (jsmn)))))])  
   (Definition : Definition (δ) -> * ()
     [(define ,x ,e)            (let ([e (Expr e)])
                                  (~Statement `(var ,x "=" ,e)))]

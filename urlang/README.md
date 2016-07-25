@@ -21,6 +21,10 @@ please file a bug.
 Besides the core constructs, you have the option of adding your own
 constructs with define-urlang-macro. See "extra.rkt" for examples.
 
+ES6
+---
+The construct  import-from  produces ES6 import commands.
+If you use it, run Babel afterwards to produce ES5 code.
 
 main.rkt
 --------
