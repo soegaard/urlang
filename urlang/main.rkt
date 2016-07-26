@@ -1,8 +1,24 @@
 #lang racket
-
 ;;; TODO  1. Is the uncommented (not (keyword? ..))) correct in PropertyName
+;;; TODO  2. Write more documentation.
 
-;;; This file contains the Urlang module to JavaScript file compiler.
+;;;
+;;; INTRODUCTION
+;;;
+
+; This file contains the Urlang module to JavaScript file compiler.
+
+;;;
+;;; INSTALLATION
+;;;
+
+;;; [Optional] Node:         Install node and npm.
+;;; [Optional] Babel:        sudo npm --global install babel-cli
+;;; [Optional] js-beautify   npm -g install js-beautify
+
+;;;
+;;; IMPLEMENTATION
+;;;
 
 ;;; TEMPORARY: These requires and renamings are only neeed until modules are supported.
 ;;;            See "hack" in α-rename.
@@ -17,9 +33,9 @@
          current-urlang-echo?                            ; echo JavaScript after compilation
          current-urlang-console.log-module-level-expr?   ; call console.log on each module-level expr?
          current-urlang-delete-tmp-file?
-         current-urlang-beautify?)                       ; process output with js-beautify ?
+         current-urlang-beautify?                        ; process output with js-beautify ?
+         current-urlang-babel?)                          ; process output with babel ?
 
-; Note: Install js-beautify with "npm -g install js-beautify" in a terminal near you.
 
 ;; Keywords
 (provide keywords) ; a literal set
@@ -2129,13 +2145,21 @@
 (define current-urlang-console.log-module-level-expr? (make-parameter #f))
 (define current-urlang-delete-tmp-file?               (make-parameter #t))
 (define current-urlang-beautify?                      (make-parameter #f))
+(define current-urlang-babel?                         (make-parameter #f))
+
+(define (urmodule-name->file-name name extension)
+  (match name
+    [(? symbol? s) (~a s "." extension)]
+    [(? string? s) s]
+    [_ (error 'urmodule-name->file-name
+              "Internal error: expected symbol or string")]))
 
 (define (urmodule-name->js-file-name name)
-  (match name
-    [(? symbol? s) (~a s ".js")]
-    [(? string? s) s]
-    [_ (error 'urmodule-name->js-file-name
-              "Internal error: expected symbol or string")]))
+  (urmodule-name->file-name name "js"))
+
+(define (urmodule-name->es6-file-name name)
+  (urmodule-name->file-name name "es6"))
+
 
 (define (urmodule-name->exports-file-name name)
   (match name
@@ -2163,25 +2187,38 @@
            (define name         (syntax-e #'mn))
            (define js-path      (or (current-urlang-output-file)  ; parameter can override module name
                                     (urmodule-name->js-file-name name)))
+           (define es6-path     (or (current-urlang-output-file)  ; parameter can override module name
+                                    (urmodule-name->es6-file-name name)))
            (define exports-path (or (current-urlang-exports-file) ; parameter can override
                                     (urmodule-name->exports-file-name name)))
            (define-values (tree exports)
              (parameterize ([current-exports '()])
                (values (compile #'urmod #f) (current-exports)))) ; #f = don't emit
-           (parameterize ([current-urlang-output-file js-path])
-             (with-output-to-file js-path
+           ;; Emit to either file.es6 (if Babel is used) or file.js 
+           (define out-path (if (current-urlang-babel?) es6-path js-path))           
+           (parameterize ([current-urlang-output-file out-path])
+             (with-output-to-file out-path
                (λ () (emit tree))
                #:exists 'replace))
+           ; TODO: Only append if not already in path
+           (putenv "PATH" (string-append (getenv "PATH") ":/usr/local/bin/"))
+           (when (current-urlang-babel?)
+             ;; Run Babel on file.es6 and output to file.sj
+             ; TODO: This simply outputs the result - we need to replace the file.
+             (system (~a "/usr/local/bin/babel -o " es6-path " "js-path)))
            (when (current-urlang-beautify?)
-             (putenv "PATH" (string-append (getenv "PATH") ":/usr/local/bin/"))
+             ;; Run the beautifier on file.js
              (system (~a "/usr/local/bin/js-beautify -r  -f " js-path)))
+           ;; Write exports to file.exports
            (parameterize ([current-urlang-exports-file exports-path])
              (with-output-to-file exports-path
                (λ () (write-exports exports))
-               #:exists 'replace))           
+               #:exists 'replace))
            (when (current-urlang-echo?)
+             ;; Display result on screen
              (with-input-from-file js-path
                (λ() (copy-port (current-input-port) (current-output-port)))))
            (when (current-urlang-run?)
+             ;; Run the resulting program using Node
              (node/break js-path)))
          ...))]))
