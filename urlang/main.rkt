@@ -1,4 +1,5 @@
 #lang racket
+;;; TODO  0. put this and super into scope in a class declaration
 ;;; TODO  1. Is the uncommented (not (keyword? ..))) correct in PropertyName
 ;;; TODO  2. Write more documentation.
 
@@ -13,7 +14,7 @@
 ;;;
 
 ;;; [Optional] Node:         Install node and npm.
-;;; [Optional] Babel:        sudo npm --global install babel-cli
+;;; [Optional] Babel:        sudo npm --global install babel-cli babel-preset-es2015
 ;;; [Optional] js-beautify   npm -g install js-beautify
 
 ;;;
@@ -39,7 +40,7 @@
 
 ;; Keywords
 (provide keywords) ; a literal set
-(provide all-as array as begin block break catch continue define default do-while dot export
+(provide all-as array as begin block break catch class continue define default do-while dot export
          finally if import import-from
          object label lambda λ let ref require sempty sif throw topblock try urmodule
          var while :=)
@@ -52,7 +53,7 @@
 ;;   The types L, L-, L0 and L1 below refer to nanopass languages. I.e. they are structures
 ;;   represeting programs. A tree is represented as nested lists.
 (provide parse            ; syntax -> L      parse and expand syntax object into L
-         flatten-topblock ; L      -> L      remove topblock
+         flatten-topblock ; L      -> L      remove topblock (in Racket this is top-level-begin)
          desugar          ; L      -> L-     remove optional arguments
          annotate-module  ; L-     -> L0     annotate module with exports, imports, funs and vars 
          annotate-bodies  ; L0     -> L1     annotate bodies with local variables
@@ -281,7 +282,7 @@
 
 ; <expr>              ::= <datum>   | <reference> | <application> | <sequence>
 ;                      |  <ternary> | <assignment> | <let> | <lambda> | <dot> | <object>
-;                      |  <array-reference> | <array>
+;                      |  <array-reference> | <array> | <class>
 ; <ternary>           ::= (if <expr> <expr> <expr>)
 ; <reference>         ::= x
 ; <application>       ::= (<expr> <expr> ...)
@@ -293,6 +294,8 @@
 ; <array>             ::= (array <expr> ...)
 ; <dot>               ::= (dot <expr> ...+)
 ; <object>            ::= (object (<property-name> <expr>) ...)
+; <class>             ::= (class <class-heritage> ((<property-name> x ...) <body>)) ...)
+; <class-heritage>    ::= x | (x x)
 ; <property-name>     ::= x | <keyword> | <string> | <number>
 
 ; <keyword>           ::= define | begin | urmodule | if | := | ...see code...
@@ -370,6 +373,7 @@
   (f* xs ρ))
 
 (define-syntax (debug stx) #'(void))
+; (define-syntax (debug stx) (syntax-parse stx [(_ e) #'(displayln e)]))
 
 (require (for-syntax racket/syntax))
 
@@ -429,6 +433,7 @@
 (define-syntax block         (λ (stx) (raise-syntax-error 'block       "used out of context" stx)))
 (define-syntax break         (λ (stx) (raise-syntax-error 'break       "used out of context" stx)))
 (define-syntax catch         (λ (stx) (raise-syntax-error 'catch       "used out of context" stx)))
+(define-syntax class         (λ (stx) (raise-syntax-error 'class       "used out of context" stx)))
 (define-syntax continue      (λ (stx) (raise-syntax-error 'continue    "used out of context" stx)))
 (define-syntax default       (λ (stx) (raise-syntax-error 'default     "used out of context" stx)))
 (define-syntax dot           (λ (stx) (raise-syntax-error 'dot         "used out of context" stx)))
@@ -451,7 +456,7 @@
 (define-syntax :=            (λ (stx) (raise-syntax-error ':=          "used out of context" stx)))
 
 ; Note: Remember to provide all keywords
-(define-literal-set keywords (array as all-as begin block break catch continue define default
+(define-literal-set keywords (array as all-as begin block break catch class continue define default
                                     do-while dot export
                                     finally if import import-from object label lambda λ let
                                     ref require sempty sif throw topblock try urmodule var while :=))
@@ -462,10 +467,14 @@
 ; https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference
 ; /Lexical_grammar#Reserved_keywords_as_of_ECMAScript_6
 (define ecma6-reserved-keywords
-  '(break case class catch const continue debugger
+  '(break case
+          ; class
+          catch const continue debugger
           default 
           delete do else export extends finally for function if import in instanceof let
-          new return super switch
+          new return
+          ; super ; HACK temporarily allow (import ... super ...)
+          switch
           ; this  ; HACK temporarily allow (import ... this ...)
           throw try typeof var void while with yield
           ; Future Keywords
@@ -554,19 +563,24 @@
     (try (σ ...) cf)
     (throw e))
   (Expr (e)
-    x                             ; reference
-    (app e0 e ...) => (e0 e ...)  ; application
-    (:= x e)                      ; assignment    x = e
-    (:= x e0 e1)                  ; assignment    x[e0] = e1
-    (begin e ...)                 ; sequence
-    (if e0 e1 e2)                 ; ternary
-    (let ((x e) ...) b)           ; local binding
-    (lambda (φ ...) b)            ; anonymous function
-    (quote d)                     ; quotation (the parser quotes all datums)
-    (ref e0 e1 e* ...)            ; reference to array index
-    (array e ...)                 ; array constructor
-    (object (pn e) ...)           ; object literal
-    (dot e pn)))                  ; property access
+    x                                   ; reference
+    (app e0 e ...) => (e0 e ...)        ; application
+    (:= x e)                            ; assignment    x = e
+    (:= x e0 e1)                        ; assignment    x[e0] = e1
+    (begin e ...)                       ; sequence
+    (if e0 e1 e2)                       ; ternary
+    (let ((x e) ...) b)                 ; local binding
+    (lambda (φ ...) b)                  ; anonymous function
+    (quote d)                           ; quotation (the parser quotes all datums)
+    (ref e0 e1 e* ...)                  ; reference to array index
+    (array e ...)                       ; array constructor
+    (object (pn e) ...)                 ; object literal
+    (class (x)     (pn e) ...)      ; class : Restriction: e is a lambda-expression
+    (class (x0 x1) (pn e) ...)      ; class
+    (dot e pn)))                        ; property access
+
+; <class>             ::= (class x class-heritage? ((<property-name> x ...) <body>)) ...)
+; <class-heritage>    ::= x | (x x)
 
 ;;;
 ;;; GRAMMAR AS SYNTAX CLASSES
@@ -745,6 +759,14 @@
 (define-syntax-class Object
   #:literal-sets (keywords)
   (pattern (object [pn:PropertyName e] ...)))  ; e is a an expression or macro application
+
+; <class>             ::= (class x class-heritage? ((<property-name> x ...) <body>)) ...)
+; <class-heritage>    ::= x | (x x)
+
+(define-syntax-class Class
+  #:literal-sets (keywords)
+  (pattern (~or (class x:Id          [(pn:PropertyName a:Id ...) e] ...)
+                (class (x0:Id x1:Id) [(pn:PropertyName a:Id ...) e] ...))))
 
 (define-syntax-class Export
   #:literal-sets (keywords)
@@ -1141,6 +1163,7 @@
       [(~and ar (ref . _))                    (parse-array-reference #'ar)]
       [(~and ac (array . _))                  (parse-array       #'ac)]
       [(~and do (dot . _))                    (parse-dot         #'do)]
+      [(~and c  (class . _))                  (parse-class       #'c)]
       [(~and a  (e ...)
              (~not (k:keyword . _)))          (parse-application #'a)]
       [_ (raise-syntax-error 'parse-expr (~a "expected an expression, got " e) e)])))
@@ -1155,6 +1178,32 @@
              [e  (stx-map parse-expr #'(e  ...))])
          `(object [,pn ,e] ...))])))
 
+(define (parse-class c)
+  (debug (list 'parse-class (syntax->datum c)))
+  (with-output-language (Lur Expr)
+    (syntax-parse c
+      #:literal-sets (keywords)
+      [(class x:Id [(pn:PropertyName a:Id ...) . b] ...)
+       (let* ([pn (syntax->list #'(pn ...))]
+              ; [e* (stx-map parse-expr #'(e  ...))]
+              [a  (stx-map syntax->list #'((a ...) ...))]
+              #;[b  (for/list ([e e*])
+                      (with-output-language (Lur Body)
+                        `(body ,e)))]
+              [b (stx-map parse-body #'(b ...))])
+         `(class (,#'x) [,pn (lambda (,a ...) ,b)] ...))]
+      [(class (x0:Id x1:Id) [(pn:PropertyName a:Id ...) . b] ...)
+       (let* ([pn (syntax->list #'(pn ...))]
+              ; [e* (stx-map parse-expr #'(e  ...))]
+              [a  (stx-map syntax->list #'((a ...) ...))]
+              #;[b  (for/list ([e e*])
+                      (with-output-language (Lur Body)
+                        `(body ,e)))]
+              [b (stx-map parse-body #'(b ...))])
+         `(class (,#'x0 ,#'x1) [,pn (lambda (,a ...) ,b)] ...))])))
+
+; <class>             ::= (class <class-heritage> ((<property-name> x ...) <body>)) ...)
+; <class-heritage>    ::= x | (x x)
 
 
 (define (parse-application a)
@@ -1763,7 +1812,11 @@
     (define (convert-string s) (regexp-replace* "\n" s "\\\\\n"))
     (define (~string t)        (list "\"" (convert-string t) "\""))
     (define (~property-name t) (define v (syntax-e t)) (if (string? v) (~string v) t))
-      
+    (define (~ClassMethod pn e)
+      (nanopass-case (L1 Expr) e
+        [(lambda (,x* ...) ,ab)
+         (list pn (~parens (~commas x*)) (AnnotatedBody ab))]))
+    
     (define (exports.id x)   (format-id x "exports.~a" x))
     (define current-js-import-module-name (make-parameter #f))
     (define jsmn current-js-import-module-name))
@@ -1896,6 +1949,10 @@
     [(array ,e ...)          (~brackets (~commas (map Expr e)))]
     [(object (,pn* ,e*) ...) (~braces (~commas (for/list ([pn pn*] [e e*])
                                                  (list (~property-name pn) ":" (Expr e)))))]
+    [(class (,x)
+       [,pn* ,e*] ...)     (list "class " x                     (~braces (map ~ClassMethod pn* e*)))]
+    [(class (,x0 ,x1)
+       [,pn* ,e*] ...)     (list "class " x0 " extends " x1 " " (~braces (map ~ClassMethod pn* e*)))]
     [(ref ,e0 ,e1 ,e ...)  (define (pn? _)
                              (nanopass-case (L1 Expr) e1
                                [(quote ,d) (and (property-name? d) (not (number? d))
@@ -2205,7 +2262,10 @@
            (when (current-urlang-babel?)
              ;; Run Babel on file.es6 and output to file.sj
              ; TODO: This simply outputs the result - we need to replace the file.
-             (system (~a "/usr/local/bin/babel -o " es6-path " "js-path)))
+             (system ; todo: remove full paths here
+              (~a
+               "/usr/local/bin/babel --presets '/usr/local/lib/node_modules/babel-preset-es2015' -o "
+               js-path " " es6-path)))
            (when (current-urlang-beautify?)
              ;; Run the beautifier on file.js
              (system (~a "/usr/local/bin/js-beautify -r  -f " js-path)))
