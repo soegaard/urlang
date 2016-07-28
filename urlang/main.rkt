@@ -1,4 +1,5 @@
 #lang racket
+;;; TODO    Fix scope of class names => make class declaration module-top-level only ?
 ;;; TODO  0. put this and super into scope in a class declaration
 ;;; TODO  1. Is the uncommented (not (keyword? ..))) correct in PropertyName
 ;;; TODO  2. Write more documentation.
@@ -1566,9 +1567,18 @@
                          `(vars    ,(vars)    ...)))))
          `(urmodule ,mn (,an ...) ,m ...)))])
   (ModuleLevelForm : ModuleLevelForm (m) -> ModuleLevelForm ()
-    [(import  ,x ...)  (for-each import! x)            remove-form]
-    [(export  ,x ...)  (for-each export! x)            remove-form]
-    [(require ,rs ...) (for-each add-require-spec! rs) remove-form])
+    [(import  ,x ...)             (for-each import! x)            remove-form]
+    [(export  ,x ...)             (for-each export! x)            remove-form]
+    [(require ,rs ...)            (for-each add-require-spec! rs) remove-form]
+    [(import-from ,js-mn ,is ...) (let ([is (map ImportSpec is)])
+                                    `(import-from ,js-mn ,is ...))])
+  (ImportSpec : ImportSpec (is) -> ImportSpec ()
+    ; This introdues variables imported via import-from into the module-level-scope
+    [(default ,x) (import! x)  `(default ,x)]
+    [(as ,x1 ,x2) (import! x2) `(as ,x1 ,x2)]
+    [(all-as ,x)  (import! x)  `(all-as ,x)]
+    [,x           (import! x)  `,x])
+  
   ;; Register variables declared with var only, when var is a module-level form.
   ;; All contexts where var-forms can appear need to change the context.
   ;; I.e. function bodies, let and lambda needs to set the context.
@@ -2264,8 +2274,12 @@
              ; TODO: This simply outputs the result - we need to replace the file.
              (system ; todo: remove full paths here
               (~a
-               "/usr/local/bin/babel --presets '/usr/local/lib/node_modules/babel-preset-es2015' -o "
-               js-path " " es6-path)))
+               "/usr/local/bin/babel "
+               "--presets '/usr/local/lib/node_modules/babel-preset-es2015,"
+                          "/usr/local/lib/node_modules/babel-preset-react,"
+                          "/usr/local/lib/node_modules/babel-preset-react-native'"
+               ; "--presets '/usr/local/lib/node_modules/babel-preset-react-native' "
+               " -o "js-path " " es6-path)))
            (when (current-urlang-beautify?)
              ;; Run the beautifier on file.js
              (system (~a "/usr/local/bin/js-beautify -r  -f " js-path)))
