@@ -1906,7 +1906,8 @@
                  ,#'void  ; Note: void is called Void in runtime.js (void is a keyword in JavaScript)
                  )
          ;; Import the Node module "runtime.js"
-         (define ,#'RUNTIME (app ,#'require '"/Users/soegaard/Dropbox/GitHub/urlang/runtime.js"))
+         (define ,#'RUNTIME
+           (app ,#'require '"/Users/soegaard/Dropbox/GitHub/urlang/compiler-rjs/runtime.js"))
          ;; Bind all imported identifiers
          (var [binding ,pr (ref ,RUNTIMES ',pr-str)] ...)
          ;; The result of evaluating this module:

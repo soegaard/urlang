@@ -18,6 +18,8 @@
 ;;; Constructors for all standard html tags: h1, p, ...
 
 (require  (except-in scribble/html var object label block))
+(require  (prefix-in html: scribble/html))
+
 ; A few of the constructors have names that class with Urlang.
 ; If you need them, then use
 ;     (require (prefix-in your-favorite-prefix var object label block))

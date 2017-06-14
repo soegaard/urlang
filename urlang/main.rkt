@@ -1180,32 +1180,24 @@
          `(object [,pn ,e] ...))])))
 
 (define (parse-class c)
+  ; <class>             ::= (class <class-heritage> ((<property-name> x ...) <body>)) ...)
+  ; <class-heritage>    ::= x | (x x)
   (debug (list 'parse-class (syntax->datum c)))
   (with-output-language (Lur Expr)
     (syntax-parse c
       #:literal-sets (keywords)
+      ; declares class x with method names pn ...
       [(class x:Id [(pn:PropertyName a:Id ...) . b] ...)
        (let* ([pn (syntax->list #'(pn ...))]
-              ; [e* (stx-map parse-expr #'(e  ...))]
               [a  (stx-map syntax->list #'((a ...) ...))]
-              #;[b  (for/list ([e e*])
-                      (with-output-language (Lur Body)
-                        `(body ,e)))]
-              [b (stx-map parse-body #'(b ...))])
+              [b  (stx-map parse-body #'(b ...))])
          `(class (,#'x) [,pn (lambda (,a ...) ,b)] ...))]
       [(class (x0:Id x1:Id) [(pn:PropertyName a:Id ...) . b] ...)
+       ; The class x0 extends the class x1, otherwise as above
        (let* ([pn (syntax->list #'(pn ...))]
-              ; [e* (stx-map parse-expr #'(e  ...))]
               [a  (stx-map syntax->list #'((a ...) ...))]
-              #;[b  (for/list ([e e*])
-                      (with-output-language (Lur Body)
-                        `(body ,e)))]
-              [b (stx-map parse-body #'(b ...))])
+              [b  (stx-map parse-body #'(b ...))])
          `(class (,#'x0 ,#'x1) [,pn (lambda (,a ...) ,b)] ...))])))
-
-; <class>             ::= (class <class-heritage> ((<property-name> x ...) <body>)) ...)
-; <class-heritage>    ::= x | (x x)
-
 
 (define (parse-application a)
   (debug (list 'parse-application (syntax->datum a)))
@@ -1972,14 +1964,13 @@
                                                                       d)))
                                                 d)]
                                [else       #f]))
-                           ; (displayln (map Expr (list* e0 e1 e)))
                            (match (map Expr (list* e0 e1 e))
                              [(list e0 (and (? pn?) (app pn? pn)))
                               (cond 
                                 [(and (identifier? e0) (identifier? pn)) (~a (mangle e0) "." pn)]
                                 [(identifier? pn)                        (list e0 "." (~a pn))]
-                                [else                                    (list e0 (~brackets pn))])]
-                             [(list e0 (and (? pn?) (app pn? pn)))  (list e0 "." (~a pn))]
+                                [else                              (list e0 (~brackets (Expr e1)))])]
+                             #;[(list e0 (and (? pn?) (app pn? pn)))  (list e0 "." (~a pn))]
                              [(list e0 e1)                          (list e0 (~brackets e1))]
                              [_ (raise-syntax-error 'ref "internal error" e0)])]
     [(app ,e0 ,e ...)      (cond
@@ -2160,7 +2151,7 @@
       (λ ()
         (define p (if (string? path) path (path->string path)))
         (parameterize ([current-subprocess-custodian-mode 'kill])
-          (system (string-append "/usr/local/bin/node " " " p))))))
+          (system (string-append "/usr/local/bin/node --use-strict --harmony" " " p))))))
 
 ;;;
 ;;; EVAL
@@ -2178,7 +2169,7 @@
 ;;   m.js      -- the JavaScript program containing a Node module
 ;;   m.exports -- a list of symbols exported by m
 ;; The convention followed by Node is that exported identifiers are
-;; exported throught the variable  exports.
+;; exported through the variable  exports.
 ;; That is, if x is exported from the module m, then m.js contains
 ;;    exports.x = x
 ;; To import a Node module m .js in a JavaScript file:
@@ -2193,6 +2184,7 @@
 (define (urmodule-name->exports name)
   (define exports-file (urmodule-name->exports-file-name name))
   (unless (file-exists? exports-file)
+    (displayln (~a "current directory: " (current-directory)))
     (error 'urmodule-name->exports "exports file not found: \"~a\"" exports-file))
   (define exports (with-input-from-file exports-file read))
   (unless (and exports (list? exports) (andmap symbol? exports))
@@ -2270,7 +2262,7 @@
            ; TODO: Only append if not already in path
            (putenv "PATH" (string-append (getenv "PATH") ":/usr/local/bin/"))
            (when (current-urlang-babel?)
-             ;; Run Babel on file.es6 and output to file.sj
+             ;; Run Babel on file.es6 and output to file.js
              ; TODO: This simply outputs the result - we need to replace the file.
              (system ; todo: remove full paths here
               (~a

@@ -1,5 +1,5 @@
 #lang racket
-(require urlang syntax/parse)
+(require urlang syntax/parse racket/syntax)
 (provide else)
 ;;;
 ;;; URLANG EXTRA
@@ -179,3 +179,56 @@
       [(_case-helper t)
        (syntax/loc stx
          undefined)])))
+
+; SYNTAX (class* heritage [(pn a ...) #:super b0 b ...] ...)
+; SYNTAX (class* heritage [(pn a ...)            b ...] ...)
+;   like (class heritage [(pn a ...) b ...] ...)
+;   but in b ... _this is bound to this.
+; Note: the keyword  this  does not have lexical scope in JavaScript,
+;       so it is convenient to have an identifier _this that does
+;       have lexical scope.
+(define-urlang-macro class*
+  (λ (stx)        
+    (syntax-parse stx
+      [(_class heritage clauses ...) ; heritage is either x or (x x)
+       (define clauses-list (syntax->list #'(clauses ...)))       
+       (define (constructor-clause? clause)
+         (syntax-parse clause
+           [ [(pn . args) #:constructor b ... bn] #t]
+           [ _                                    #f]))
+       ; the constructor needs special handling
+       (define the-constructor-clause (findf          constructor-clause?  clauses-list))
+       (define the-other-clauses      (filter (negate constructor-clause?) clauses-list))
+       ; the normal method clauses is wrappen in (let ([this this]) ...)
+       ; in order to make this have lexical scope in the body
+       (define transformed-other-clauses
+         (for/list ([clause (or the-other-clauses '())])
+           (syntax-parse clause
+             [ [(pn . args) #:super statement . b]
+               (with-syntax ([this (format-id #'b (mangle #' this))])
+                 #'[(pn . args) statement (let ([this this]) . b)])]
+             [ [(pn . args) . b]
+               (with-syntax ([this (format-id #'b (mangle #' this))])
+                 #'[(pn . args)           (let ([this this]) . b)])]
+             [_ (raise-syntax-error 'class* "huh" clause)])))
+       ; The constructor needs to call super, and since this can't be referenced
+       ; before super has been called, we don't change the binding of this except
+       ; in the last expression. (If there is only one expression, we dont bind this.
+       ; Furthermore we bind this to the instance in all the other methods.
+       (define transformed-constructor-clause
+         (syntax-parse the-constructor-clause
+           [ [(pn . args) #:constructor b ... bn]
+             (define the-methods-names
+               (for/list ([clause the-other-clauses])
+                 (syntax-parse clause [ [(pn . _) . _] #'pn])))
+             (with-syntax ([(method-str ...) (map mangle the-methods-names)]
+                           [(method     ...)             the-methods-names]
+                           [this         (format-id #'bn (mangle #'this))])
+               #'[(pn . args)
+                  b ...
+                  (:= this method-str ((dot this method bind) this)) ...
+                  (let ([this this]) bn)])]))
+         (with-syntax ([(tc ...) transformed-other-clauses]
+                       [cc       transformed-constructor-clause])
+           (syntax/loc stx
+             (class heritage cc tc ...)))])))

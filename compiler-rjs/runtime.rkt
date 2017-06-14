@@ -16,6 +16,10 @@
 
 ;;  - make andmap, ormap etc work with closures
 ;;    (copy approach used in map)
+;;  - equal? : handle cyclic data
+;;  - bytes-length : currently a.length returns undefined
+;;                   does a.prototype.length work?
+;;                   should the Int8Array be created differently?
 
 (current-urlang-run?                           #t)
 (current-urlang-echo?                          #t)
@@ -628,12 +632,15 @@
       ; (unless (mutable-string? s) (raise ...))
       ; (unless (char? c)           (raise ...))
       (:= s (+ i 1) (ref c 1)))
-    (define/export (substring3 str start end) (str.substring start end))
-    (define/export (substring2 str start)     (str.substring start (string-length str)))
+    (define/export (substring3 str start end)      
+      (str.substring start end))
+    (define/export (substring2 str start)      
+      (str.substring start (string-length str)))
     (define/export (substring) ; case-lambda
+      (var [args arguments])
       (case arguments.length
-        [(2) (substring2 (ref arguments 0) (ref arguments 1))]
-        [(3) (substring3 (ref arguments 0) (ref arguments 1) (ref arguments 2))]
+        [(2) (substring2 (ref args 0) (ref args 1))]
+        [(3) (substring3 (ref args 0) (ref args 1) (ref args 2))]
         [else (error "substring" "expected two to three arguments")]))
     (define/export (string=? str1 str2)
       (if (immutable-string? str1)
@@ -687,8 +694,8 @@
     (define/export (string-append2 str1 str2) (str1.concat str2))
     (define/export (string-append) ; variadic
       (var [args arguments])
-      (var [as (for/array #:length args.length ([a in-array args]) a)])
-      (as.join ""))
+      (var [as2 (for/array #:length args.length ([a in-array args]) a)])
+      (as2.join ""))
     
     ;;;
     ;;; 4.4 Byte Strings
@@ -745,14 +752,16 @@
       (is.set args)
       (array MUTABLE-BYTES is))
     (define/export (bytes->immutable-bytes bs)
-      (array BYTES (Int8Array.from (ref bs 1))))
+      (array BYTES         (Int8Array.from (ref bs 1))))
     (define/export (immutable-bytes->bytes bs)
       (array MUTABLE-BYTES (Int8Array.from (ref bs 1))))
     (define/export (byte? v)
       (and (exact-integer? v)
            (<= 0 v 255)))
     (define/export (bytes-length bs)
-      (ref (ref bs 1) "length"))
+      (console.log "bytes-length:")
+      (console.log (ref bs 1))
+      (ref (ref bs 1) "length")) ; sigh todo this gives  undefined  on Node
     (define/export (bytes-ref bs k)
       (ref (ref bs 1) k))
     (define/export (bytes-set! bs k b)
@@ -1860,7 +1869,7 @@
     (define (str-boolean v)
       (cond [(= v #t) "#t"]
             [(= v #f) "#f"]
-            [#t       "str -internal error"]))
+            [#t       (+ "str -internal error got: " v)]))
     (define (str-symbol  v) (string-append "'"  (string->immutable-string (symbol->string v))))
     (define (str-keyword v)       (+ "#:" (ref v 1)))
     (define (str-void v)          "#<void>")
@@ -1888,8 +1897,12 @@
         [(= v undefined)               (str-undefined)]
         [#t                            (console.log v)
                                        "str - internal error"]))
-    
-    
+
+    ;;;
+    ;;;  TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS 
+    ;;; 
+
+
     #;("tests"
        ; (str (cons 10 (cons 11 (cons 12 NULL))))
        ; (str (vector 10 11 12))
@@ -1909,12 +1922,16 @@
        (str (exact-integer? 42.0))
        (str (exact-integer? 42.1))
        ; (str (exact-integer? 42.123))
-       (make-bytes2 10 65)
-       (bytes-length (make-bytes2 10 65))                        ; 10
-       (str (bytes=? (make-bytes2 10 65) (make-bytes2 10 65)))   ; #t
-       (str (bytes=? (make-bytes2 10 65) (make-bytes2 10 66))))  ; #f
     
-    #;("even more tests"
+    (make-bytes2 10 65)
+    (str (make-bytes2 10 65))
+    (bytes-length (make-bytes2 10 65))
+    (str (bytes-length (make-bytes2 10 65)))                  ; 10
+    (str (bytes=? (make-bytes2 10 65) (make-bytes2 10 65)))   ; #t
+       ; (str (bytes=? (make-bytes2 10 65) (make-bytes2 10 66)))
+    ; )  ; #f
+    
+     ; "even more tests"
        
        (string->symbol "foo")
        (string (make-char "a") (make-char "b") (make-char "c"))
@@ -1928,8 +1945,8 @@
        (make-primitive-string 6 "a")
        (make-primitive-string 7 "a")
        (typeof (make-primitive-string 7 "a"))
-       (define as (array "a" "b"))
-       (as.join "")
+       ;(define as (array "a" "b"))  ; is   as   a reserved name?
+       ;(as.join "")
        (string->symbol "foo")
        (symbol? (string->symbol "foo"))
        (str (string->symbol "foo"))

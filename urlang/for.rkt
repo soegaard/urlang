@@ -1,7 +1,4 @@
 #lang racket
-;;; TODO:
-; Fix handle-in-string.
-; It is temporarily commented out, due to a use of string-ref.
 
 (require urlang)
 (require syntax/parse syntax/stx)
@@ -129,8 +126,8 @@
   (syntax-parse clause
     #:literal-sets (for-keywords)
     [[x in-value expr]
-     #'(([t #t])                 ; list of var clauses to create initial state
-        t                 ; termination condition (#t = never terminate)
+     #'(([t #t])           ; list of var clauses to create initial state
+        t                  ; termination condition (#t = never terminate)
         ([x expr])         ; let bindings (needs to bind x)
         ((:= t #f)))]))
 
@@ -147,13 +144,13 @@
   (syntax-parse clause
     #:literal-sets (for-keywords)
     [[x in-range from]
-     (raise-syntax-error 'in-range "expected: in-range from to")]
+     (raise-syntax-error 'in-range "expected: in-range from to  or  in-range from to step")]
     [[x in-range from to]
-     #'(([i from]       ; list of var clauses to create initial state
+     #'(([i from]          ; list of var clauses to create initial state
          [t to])
-        (< i t)         ; termination condition
-        ([x i])         ; let bindings (needs to bind x)
-        ((+= i 1)))]    ; statements to step state forward
+        (< i t)            ; termination condition
+        ([x i])            ; let bindings (needs to bind x)
+        ((+= i 1)))]       ; statements to step state forward
     [[x in-range from to step]
      #'(([i from]          ; list of var clauses to create initial state
          [t to])
@@ -245,14 +242,14 @@
              (let ([cont #t]) (label skip (while cont stat ... (:= cont #f))) undefined))
            (syntax/loc stx (block stat ...))))]
     [(_for (clause ...) statement-or-break ...)
-     ;; Note: The idea is to call (map handle-clause clauses) and the
+     ;; Note: The idea is to call (map handle-clause clauses) and then
      ;;       combine the pieces to one large while-loop.
      ;;       Since the same handler can be called multiple times.
      ;;       any variables introduced by a handler needs α-renaming.
      ;;       This is handled by marking the clause before and after
      ;;       calling handle-clause.
      (define clauses                (syntax->list #'(clause ...)))
-     (define handlers               (map get-clause-handler clauses))     
+     (define handlers               (map get-clause-handler clauses))
      (define marks                  (map make-syntax-introducer clauses))
      (define marked-handled-clauses (for/list ([clause clauses] [handle handlers] [mark marks])
                                       (mark (handle (mark clause)))))
