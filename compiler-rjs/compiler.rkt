@@ -4,6 +4,9 @@
 ;;; TODO
 ;;;
 
+; FIX tail recursion in code generator.
+;     the problem is code like   (begin (:= result call)  result)
+
 ; - fill the initial namespace
 ; - or make a kernel-namespace
 
@@ -220,6 +223,11 @@
   = < > <= >=
   null   ; special (called Null in JavaScript)
   void)  ; special (called Vull in JavaScript)
+
+(define-primitives
+  ; these are not primitives in Racket, but are reserved names in Urlang
+  not)
+
 
 (define (primitive? v)
   (and (or (and (syntax? v)   (primitive? (syntax-e v)))
@@ -667,8 +675,15 @@
 
 (define-pass α-rename : LFE2 (T) -> LFE2 ()
   (definitions
+    (define (reserved-urlang-keyword? id)
+      ; names that are reserved keywords in Urlang needs to be renamed
+      (syntax-parse (variable-id id) #:literals (not)
+        [not (variable #'PRIM_not)]
+        [_  #f]))
     (define (initial-ρ x)
-      (if (primitive? (variable-id x)) x #f))
+      (cond [(reserved-urlang-keyword? x) => values]
+            [(primitive? (variable-id x))    x]
+            [else                            #f]))
     (define (extend ρ original renamed)
       (λ (x) (if (id=? x original) renamed (ρ x))))
     (define (fresh x ρ [orig-x x])
@@ -1894,10 +1909,10 @@
        ['() (error 'generate-ur "TODO define-values of no values")])]
     [(define-syntaxes ,s (,x ...) ,e) (error 'generate-ur "TODO define-syntaxes")])
   (let* ([result #'result]
-         [t (TopLevelForm T result)] ; todo generate unique id
-         [prims  (ur-urmodule-name->exports 'runtime)]
-         [pr     (map (λ (prim) (datum->syntax #'runtime prim)) prims)]
-         [pr-str (map (λ (prim) (~a (ur-mangle prim))) pr)]
+         [t        (TopLevelForm T result)] ; todo generate unique id
+         [prims    (ur-urmodule-name->exports 'runtime)]
+         [pr       (map (λ (prim) (datum->syntax #'runtime prim)) prims)]
+         [pr-str   (map (λ (prim) (~a (ur-mangle prim))) pr)]
          [RUNTIMES (map (λ (_) #'RUNTIME) prims)])
     (with-output-language (ur-Lur Module)
       `(urmodule amodulename

@@ -20,6 +20,8 @@
 ;;  - bytes-length : currently a.length returns undefined
 ;;                   does a.prototype.length work?
 ;;                   should the Int8Array be created differently?
+;;  - finish support for namespaces
+
 
 (current-urlang-run?                           #t)
 (current-urlang-echo?                          #t)
@@ -308,7 +310,9 @@
     ;; where true and false are JavaScript booleans.
     (define/export (boolean? v)
       (= (typeof v) "boolean"))
-    ; (define (not x) (if x #f #t)) ; not is a predefined function
+    ; Note: The identifier  not  is reserved in Urlang. Here we call it PRIM_not
+    ;       and then in α-rename we rename not to PRIM_not.
+    (define/export (PRIM_not x) (if x #f #t)) ; not is a predefined function
     (define/export (equal? v w) ; TODO: handle cyclic data structures
       (cond
         [(and (boolean? v)          (boolean?        w))   (= v w)]
@@ -1225,6 +1229,7 @@
       (for ([i in-range 0 n])
         (:= a (+ i 1) (proc i)))
       a)
+
     ;;;
     ;;; 4.12 Boxes
     ;;;
@@ -1847,6 +1852,8 @@
     (define/export (unsafe-fx+ x y) (+ x y))
     (define/export (unsafe-fx- x y) (- x y))
     (define/export (unsafe-fx* x y) (* x y))
+
+    (define/export (unsafe-vector*-length v) (- v.length 1))
     
     ;;;
     ;;; Higher Order
