@@ -181,3 +181,12 @@
           (sif (= i 3) (continue) (block))
           (+= n i))
    n))
+
+
+#;(urlang
+   (urmodule label-continue
+     (define (foo x)
+       (sif (= x 42) (return 43) 44)
+       45)
+     (foo 42)))
+ ; 43 is expected

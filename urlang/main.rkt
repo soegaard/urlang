@@ -43,7 +43,7 @@
 (provide keywords) ; a literal set
 (provide all-as array as begin block break catch class continue define default do-while dot export
          finally if import import-from
-         object label lambda λ let ref require sempty sif throw topblock try urmodule
+         object label lambda λ let ref return require sempty sif throw topblock try urmodule
          var while :=)
 (provide bit-and bit-not bit-or bit-xor ===)
 ;; Compiler 
@@ -261,7 +261,7 @@
 ; <require-spec>      ::= <module-name>
 
 ; <statement>         ::= <var-decl> | <block> | <while> | <do-while> | <if>
-;                      |  <break> | <continue> | <label> | <sempty> | <expr>
+;                      |  <break> | <continue> | <return> | <label> | <sempty> | <expr>
 ; <var-decl>          ::= (var <var-binding> ...)
 ; <var-binding>       ::= x | (x e)
 ; <block>             ::= (block <statement> ...)
@@ -272,6 +272,7 @@
 ; <label>             ::= (label l <statement>)
 ; <break>             ::= (break)    | (break l)
 ; <continue>          ::= (continue) | (continue l)
+; <return>            ::= (return)   | (return e)
 ; <try>               ::= (try <block> <catch>)
 ;                      |  (try <block> <finally>)
 ;                      |  (try <block> <catch> <finally>)
@@ -446,6 +447,7 @@
 (define-syntax label         (λ (stx) (raise-syntax-error 'label       "used out of context" stx)))
 (define-syntax object        (λ (stx) (raise-syntax-error 'object      "used out of context" stx)))
 (define-syntax ref           (λ (stx) (raise-syntax-error 'ref         "used out of context" stx)))
+(define-syntax return        (λ (stx) (raise-syntax-error 'return      "used out of context" stx)))
 (define-syntax sempty        (λ (stx) (raise-syntax-error 'sempty      "used out of context" stx)))
 (define-syntax sif           (λ (stx) (raise-syntax-error 'sif         "used out of context" stx)))
 (define-syntax throw         (λ (stx) (raise-syntax-error 'throw       "used out of context" stx)))
@@ -460,7 +462,8 @@
 (define-literal-set keywords (array as all-as begin block break catch class continue define default
                                     do-while dot export
                                     finally if import import-from object label lambda λ let
-                                    ref require sempty sif throw topblock try urmodule var while :=))
+                                    ref return require sempty sif throw topblock try urmodule
+                                    var while :=))
 (define keyword? (literal-set->predicate keywords))
 
 
@@ -560,6 +563,8 @@
     (break l)
     (continue)
     (continue l)
+    (return)                      
+    (return e)
     (label l σ)
     (try (σ ...) cf)
     (throw e))
@@ -691,6 +696,7 @@
                 i:If
                 b:Break
                 c:Continue
+                r:Return
                 la:Label)))
 
 (define-syntax-class Block
@@ -739,6 +745,11 @@
   #:literal-sets (keywords)
   (pattern (continue))
   (pattern (continue la:Id)))
+
+(define-syntax-class Return
+  #:literal-sets (keywords)
+  (pattern (return))
+  (pattern (return la:Id)))
 
 (define-splicing-syntax-class Body
   (pattern (~seq σ:Statement ... b:Expr)))
@@ -937,6 +948,7 @@
                                     (context-parse expansion))]
         [(~and b  (break    . _)) (parse-break    #'b)]
         [(~and c  (continue . _)) (parse-continue #'c)]
+        [(~and r  (return   . _)) (parse-return   #'r)]
         [(~and la (label    . _)) (parse-label    #'la)]
         [(~and w  (while    . _)) (parse-while    #'w)]
         [(~and dw (do-while . _)) (parse-do-while #'dw)]
@@ -993,8 +1005,6 @@
       #:literal-sets (keywords)
       [(sempty) `(empty)])))
 
-
-
 (define (parse-continue c)
   (debug (list 'parse-continue (syntax->datum c)))
   (with-output-language (Lur Statement)
@@ -1002,6 +1012,15 @@
       #:literal-sets (keywords)
       [(continue)       `(continue)]
       [(continue la:Id) `(continue ,#'la)])))
+
+(define (parse-return r)
+  (debug (list 'parse-return (syntax->datum r)))
+  (with-output-language (Lur Statement)
+    (syntax-parse r
+      #:literal-sets (keywords)
+      [(return)   `(return)]
+      [(return e) (let ([e  (parse-expr #'e)])
+                    `(return ,e))])))
 
 (define (parse-label la)
   (debug (list 'parse-label (syntax->datum la)))
@@ -1901,6 +1920,8 @@
     [(break ,l)           (~Statement "break" " " l)]
     [(continue)           (~Statement "continue")]
     [(continue ,l)        (~Statement "continue" " " l)]
+    [(return)             (~Statement "return")]
+    [(return ,e)          (~Statement "return" " " (Expr e))]
     [(label ,l ,σ)        (~Statement l ":" (Statement σ))]
     [(try (,σ ...) ,cf)   (let ((σ (map Statement σ)))
                             (~Statement "try " (~braces σ) (CatchFinally cf)))]
@@ -1928,7 +1949,7 @@
                                               [-inf.0 "(-Infinity)"]
                                               [+nan.0         "NaN"]
                                               [else               d])]
-                              [else (error 'generate-code "expedcted datum, got ~a" d)])]
+                              [else (error 'generate-code "expected datum, got ~a" d)])]
     [(dot ,e ,pn)            (let ((e (Expr e)))
                                (if (regexp-match #rx"^([$_a-z][$_a-z0-9]*$)" (~a (syntax-e pn)))
                                    (list e "." pn)
