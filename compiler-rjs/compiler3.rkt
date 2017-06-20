@@ -1,5 +1,29 @@
 #lang racket
 
+    #;[(letrec-values ,s (((,x** ...) ,ce*) ...) ,e)
+     (define init
+       (for/list ([x* x**] [ce ce*])
+         (match (map Var x*)
+           ; single value return is the common case, so this needs to be fast
+           [(list x)                  (CExpr ce x cd)]  ; single value
+           ; multiple values are returned in a tagged array [VALUES,v0,v1,...]
+           ; to avoid allocating an extra variable, we receive the array in x0,
+           ; then assign the individual variables (in reverse order so x0 is last)
+           [(list x0 x1 ...) `(block ,(CExpr ce x0 cd)
+                                     ,(for/list ([i (in-range (length x*) 0 -1)]
+                                                 [x (reverse (cons x0 x1))])
+                                       `(:= ,x (ref ,x0 ',i)))
+                                     ...)]
+           ; no values are expected
+           ['() (CExpr ce #f cd)])))
+     (let* ([x*         (map Var (append* x**))]
+            [undefined* (map (λ(_) #'undefined) x*)]
+            [e          (Expr e dd)])
+       `(block (var ,x* ...)   ; declare
+               ,init ...       ; initialize
+               ,e))]
+
+
 (module+ test (require rackunit))
 (require nanopass/base)
 (require
@@ -13,6 +37,9 @@
   (only-in srfi/1 list-index))
 
 (require "compiler2.rkt")
+
+(define datum:true  (datum #f #t))
+(define datum:false (datum #f #f))
 
 ;;;
 ;;; GENERATING URLANG (JAVASCRIPT)
@@ -57,14 +84,7 @@
     (Expr (e)
       ce
       (letrec-values s (((x ...) ce) ...) e)
-      (let-values s (((x ...) ce) ...) e))
-    (AExpr (ae)
-      x
-      ca
-      (free-ref x i)
-      (quote s d)
-      (quote-syntax s d)
-      (top s x))
+      (let-values    s (((x ...) ce) ...) e))
     (CExpr (ce)
       ae
       (closedapp s ca ae1 ...)
@@ -75,10 +95,46 @@
       (primapp s pr ae1 ...)
       (begin s e0 e1 ...)
       (begin0 s e0 e1 ...))
+    (AExpr (ae)
+      x
+      ca
+      (free-ref x i)
+      (quote s d)
+      (quote-syntax s d)
+      (top s x))    
     (ConvertedAbstraction (cab)
       (λ s f e))
     (ClosureAllocation (ca)
       (closure s l ae1 ...)))
+
+;;; This code generator is inspired by "Destination-driven Code Generation"
+;;; by Dybvig, Hieb and Butler. There are som differences however. The code
+;;; generator in the paper generates "flat" code (assembler) where as we
+;;; generate nested JavaScript constructs.
+
+;;; The code generator for an expression takes a data destination (dd) and a control destionation (cd)
+;;; as arguments. The data destination determines where the value of the expression is to be placed.
+;;;
+;;;    dd in Data Destination  is  #f or a location (identifier),
+;;;
+;;; here #f means the expression is evaluated for its effect.
+
+;;; If the data destination is #f (an effect) the value of the expression does not need to be stored.
+;;; The control destination
+;;;
+;;;    cd in ControlDestination  is  label  or  label x label
+;;;
+;;; If the label is #f (return) it means that the value is to be returned from the function.
+;;; If two labels are given, then there are two branches according to the expression value.
+
+; Data destinations (also an identifier)
+(define <effect> '<effect>)
+(define <value>  '<value>)
+; Control destinations
+(define <test>   '<test>)
+(define <return> '<return>)
+(define <expr>   '<expr>)
+(define <stat>   '<stat>)
 
 (define-pass generate-ur : LANF+closure (T) -> ur-Lur ()
   (definitions
@@ -99,30 +155,36 @@
       (Var (cond [(hash-ref encoding (syntax-e (variable-id pr)) #f)
                   => (λ (PRIMpr) (variable (datum->syntax #'here PRIMpr)))]
                  [else pr])))
+    (define (Expr e dd cd)           #;(displayln (list 'Expr e dd cd)) (Expr2 e dd cd))
+    (define (AExpr2 ae [dd #f])      #;(displayln (list 'AExpr ae dd))  (AExpr3 ae dd))
     (define (AExpr ae)               (AExpr2 ae #f))
     (define (AExpr* aes)             (map (λ (ae) (AExpr2 ae #f)) aes))
-    (define (Expr* es dest)          (map (λ (e)  (Expr e dest)) es))
-    (define (TopLevelForm* ts dest)  (map (λ (t)  (TopLevelForm t dest)) ts)))
-  (ClosureAllocation : ClosureAllocation (ca dest) -> Expr ()
-    ; dest = #f, means the ca is in value position
+    (define (Expr* es dd cd)         (map (λ (e)  (Expr e dd cd)) es))
+    (define (CExpr ce dd cd)         #;(displayln (list 'CExpr ce dd cd)) (CExpr2 ce dd cd))      
+    (define (TopLevelForm* ts dd)    (map (λ (t)  (TopLevelForm t dd)) ts)))
+  (ClosureAllocation : ClosureAllocation (ca dd) -> Expr ()
+    ; dd = #f, means the ca is in value position
     [(closure ,s ,l ,ae1 ...)
      ; Note: We need to allocate the closure and then fill the free slots
      ;       in order to handle recursive references to the closure.
-     ; If one of the ae1 ... are equal to dest, then closure has a recursive reference.
+     ; If one of the ae1 ... are equal to dd, then closure has a recursive reference.
      ; If there is no self-reference then allocation is simple.
      ; If there is a self-reference we first need to allocate the closure,
      ; and then mutate fields with self-references.
-     (define (maybe-store-in-dest e) (if dest `(:= ,dest ,e) e))
+     (define (maybe-store-in-dest e)
+       (match dd
+         [(or '<effect> '<test> '<value> #f)              e]
+         [dest                               `(:= ,dest ,e)]))
      (define self-reference-indices
        (for/list ([ae ae1] [i (in-naturals)]
-                           #:when (and (variable? ae) (syntax? dest)
-                                       (eq? (syntax-e (Var ae)) (syntax-e dest))))
+                           #:when (and (variable? ae) (syntax? dd)
+                                       (eq? (syntax-e (Var ae)) (syntax-e dd))))
          i))
      (maybe-store-in-dest
      (match self-reference-indices
        ['() (let ([ae1 (AExpr* ae1)] [l (Label l)])
               `(array '"CLOS" ,l ,ae1 ...))]
-       [is  (define t (or dest (Var (new-var)))) ; reuse dest if possible
+       [is  (define t (or dd (Var (new-var)))) ; reuse dest if possible
             (define inits (for/list ([ae ae1] [j (in-naturals)])
                             (if (member j is) #'undefined (AExpr ae))))            
             (let ([l (Label l)])
@@ -135,10 +197,10 @@
                           `(app ,#'array! ,t ',(+ i 2) ,t))
                        ...
                        ,t))))]))])
-  (CaseClosureAllocation : CaseClosureAllocation (cca dest) -> Expr ()
+  (CaseClosureAllocation : CaseClosureAllocation (cca dd) -> Expr ()
     ; dest = #f, means the cca is in value position
     [(case-closure ,s ,l [,ar ,ca] ...)
-     (define t (or dest (Var (new-var)))) ; reuse dest if possible
+     (define t (or dd (Var (new-var)))) ; reuse dest if possible
      (let ([l  (Label l)]
            [ca (for/list ([c ca]) (ClosureAllocation c #f))])
        `(app (lambda ()
@@ -147,20 +209,20 @@
                                         (array (quote ,ar) ...)
                                         (array ,ca ...))])
                 ,t))))])
-  (AExpr2 : AExpr (ae [dest #f]) -> Expr ()  ; only ca needs dest
-    [,x                    (if (memq (syntax-e (variable-id x)) primitives)
-                               ; Note: α-conversion means rebinding primitives work
-                               (PrimRef x)  ; reference to primitive
-                               (Var x))]    ; reference to non-free variable
-    [,ca                   (ClosureAllocation ca dest)]
-    [(quote ,s ,d)         (let ([v (datum-value d)])
-                             (cond
-                               [(null? v)    `,#'NULL]
-                               [(symbol? v)  `(app ,#'string->symbol ',(~a v))]
-                               [(char? v)    `(app ,#'string-ref ',(~a v) '0)]
-                               [(keyword? v) `(app ,#'string->keyword ',(~a (keyword->string v)))]
-                               [else         `',v]))]
-    [(free-ref ,x ,i)      `(ref ,#'_free (app ,#'+ ',i '2))] ; tag and label occupy first two slots
+  (AExpr3 : AExpr (ae [dd #f]) -> Expr ()  ; only ca needs dest
+    [,x               (if (memq (syntax-e (variable-id x)) primitives)
+                          ; Note: α-conversion means rebinding primitives work
+                          (PrimRef x)  ; reference to primitive
+                          (Var x))]    ; reference to non-free variable
+    [,ca              (ClosureAllocation ca dd)]
+    [(quote ,s ,d)    (let ([v (datum-value d)])
+                        (cond
+                          [(null? v)    `,#'NULL]
+                          [(symbol? v)  `(app ,#'string->symbol ',(~a v))]
+                          [(char? v)    `(app ,#'string-ref ',(~a v) '0)]
+                          [(keyword? v) `(app ,#'string->keyword ',(~a (keyword->string v)))]
+                          [else         `',v]))]
+    [(free-ref ,x ,i) `(ref ,#'_free (app ,#'+ ',i '2))] ; tag and label occupy first two slots
     ;                                                         ; (ignore x which is for debug only)
     [(top ,s ,x)
      ; Note: This is a quick hack until namespaces are implemented.
@@ -173,170 +235,171 @@
      ;(Var x)
      #;(error 'generate-ur "TODO top level reference - implement namespaces")]
     [(quote-syntax ,s ,d)  (error 'generate-ur "TODO quote-syntax not supported" s)])
-  (CExpr : CExpr (ce dest) -> Statement ()
-    ;; All Complex Expressions are translated to statements
-    [,ae                       `(:= ,dest ,(AExpr2 ae dest))] ; ClosureAllocation needs the dest
-    [(if ,s ,ae0 ,e1 ,e2)      `(sif ,(AExpr ae0) ,(Expr e1 dest) ,(Expr e2 dest))]
-    [(set! ,s ,x ,ae)          `(:= ,(Var x) ,(AExpr ae))]
-    [(begin  ,s ,e0 ,e1 ...)   `(block ,(Expr e0 dest) ,(Expr* e1 dest) ...)]
+
+  (CExpr2 : CExpr (ce dd cd) -> Statement ()
+    ;; All Complex Expressions are translated to statements    
+    [,ae                     (match dd
+                               ['<effect>  `(begin)]
+                               ['<value>   (match cd ; ClosureAllocation needs the dest
+                                             ['<return> `(return ,(AExpr2 ae dd))]
+                                             [_                 `,(AExpr2 ae dd)])]
+                               [x          `(:= ,x ,(AExpr2 ae x))])]
+
+    [(if ,s ,ae0 ,e1 ,e2)    `(sif ,(AExpr2 ae0 <test>) ,(Expr e1 dd cd) ,(Expr e2 dd cd))]
+
+    [(set! ,s ,x ,ae)        (match dd
+                               ['<effect>  `(:= ,(Var x) ,(AExpr2 ae dd))]
+                               ['<value>   `(begin (:= ,(Var x) ,(AExpr2 ae <effect>)) ,(void))]
+                               [y         (CExpr `(begin (:= ,(Var x) ,(AExpr ae))
+                                                         (:= ,y ,(Var x))) dd cd)])]
+    
+    [(begin  ,s ,e0 ,e1 ... ) (match (cons e0 e1)
+                                [(list e0 ... en)
+                                 (let ([e0 (Expr* e0 <effect> <stat>)]
+                                       [en (Expr  en dd cd)])
+                                   `(block ,e0 ... ,en))])]
     [(begin0 ,s ,e0 ,e1 ...)   (let ([t (Var (new-var))]) ; redirect output
                                  `(let ([,t ,#'undefined])
                                     (body
-                                     ,(Expr e0 dest)
+                                     ,(Expr e0 dd)
                                      ,(Expr* e1 t) ...)))] ; TODO use #f
     [(primapp ,s ,pr ,ae1 ...) (define sym (syntax->datum (variable-id pr)))
-                               (match (length ae1)
-                                 [0 (case sym
-                                      [(+)  `(:= ,dest '0)]
-                                      [(-)  `(app '"ERROR - arity mismatch")]
-                                      [(*)  `(:= ,dest '1)]
-                                      [(/)  `(app '"ERROR / arity mismatch")]
-                                      [else `(:= ,dest (app ,(Prim pr)))])]
-                                 [1 (case sym
-                                      [(+ *)  `(:= ,dest ,(AExpr (first ae1)))]
-                                      [(-)    `(:= ,dest (app ,(Prim pr) ,(AExpr (first ae1))))]
-                                      [(/)    `(:= ,dest (app ,(Prim pr) '1 ,(AExpr (first ae1))))]
-                                      [else `(:= ,dest (app ,(Prim pr) ,(AExpr (first ae1))))])]
-                                 [_
-                                  `(:= ,dest (app ,(Prim pr) ,(AExpr* ae1) ...))])]
-    [(app ,s ,ae ,ae1 ...)     (let ([f (Var (new-var 'f))])
-                                 `(block
-                                   (var [binding ,f ,(AExpr ae)])
-                                   (:= ,dest
-                                       (if (app ,#'closure? ,f)
-                                           (app ,(~clos-label f) ,(cons f (AExpr* ae1)) ...)
-                                           (app ,f ,(AExpr* ae1) ...)))))]    
+                               (define work                                 
+                                 (match (length ae1)
+                                   [0 (case sym
+                                        [(+)  `'0]
+                                        [(-)  `(app '"ERROR - arity mismatch")]
+                                        [(*)  `'1]
+                                        [(/)  `(app '"ERROR / arity mismatch")]
+                                        [else `(app ,(Prim pr))])]
+                                   [1 (case sym
+                                        [(+ *)  (AExpr (first ae1))]
+                                        [(-)    `(app ,(Prim pr)    ,(AExpr (first ae1)))]
+                                        [(/)    `(app ,(Prim pr) '1 ,(AExpr (first ae1)))]
+                                        [else   `(app ,(Prim pr)    ,(AExpr (first ae1)))])]
+                                   [_ `(app ,(Prim pr) ,(AExpr* ae1) ...)]))
+                               (match dd
+                                 [(or '<value> '<effect>)
+                                  (match cd
+                                    ['<return>             `(return ,work)]
+                                    [(or '<expr> '<stat>)            work]
+                                    [_ (error)])]
+                                 [x  `(:= ,x ,work)])]
+    [(app ,s ,ae ,ae1 ...)
+     (let* ([f    (Var (new-var 'f))]
+            [work `(if (app ,#'closure? ,f)
+                       (app ,(~clos-label f) ,(cons f (AExpr* ae1)) ...)
+                       (app ,f ,(AExpr* ae1) ...))])
+       (match dd
+         ['<effect> (match cd
+                      ['<expr>   `(let               ([,f ,(AExpr ae)]) (body        ,work))]
+                      ['<stat>   `(block (var [binding ,f ,(AExpr ae)])              ,work)]
+                      [_         (error "this combination ought to be impossible")])]
+         ['<value>  (match cd
+                      ['<return> `(block (var [binding ,f ,(AExpr ae)])      (return ,work))]
+                      ['<expr>   `(let               ([,f ,(AExpr ae)]) (body        ,work))]
+                      [_         (display (list 'app ce dd cd))
+                                 (error)])]
+         [x         `(let ([,f ,(AExpr ae)]) (body (:= ,x ,work)))]))]
     [(closedapp ,s ,ca ,ae2 ...)
      (let ([ae2 (AExpr* ae2)])
        (nanopass-case (LANF+closure ClosureAllocation) ca
          [(closure ,s ,l ,ae1 ...)
-          (match ae1
-            [(list) ; no free variable => no need to actually allocate a closure, just jump to label
-             `(:= ,dest (app ,(Label l) ,#'undefined ,ae2 ...))] ; undefined due to no closure
-            [_ `(block
-                 ,(ClosureAllocation ca dest) ; use dest as temporary
-                 (:= ,dest (app ,(Label l) ,dest ,ae2 ...)))])]))]
+          (define work
+            (match ae1
+              [(list) ; no free variable => no need to actually allocate a closure, just jump to label
+               `(app ,(Label l) ,#'undefined ,ae2 ...)] ; undefined due to no closure
+              [_ (match dd
+                   [(or '<effect> '<value>)
+                    (let ([f (Var (new-var 'f))])
+                      `(let ([,f ,#'undefined])
+                         (body ,(ClosureAllocation ca f)
+                               (app ,(Label l) ,f ,ae2 ...))))]
+                   [y
+                    `(begin
+                       ,(ClosureAllocation ca dd) ; use dest as temporary
+                       (app ,(Label l) ,dd ,ae2 ...))])]))
+          (match dd
+            [(or '<effect> '<value>)  `,work]
+            [y                        `(:= ,y ,work)])]))]
     [(wcm ,s ,ae0 ,ae1 ,e)       (error 'generate-ur "TODO with-continuation-mark")])
-  (Expr : Expr  (e  dest) -> Statement ()
-    [,ce (CExpr ce dest)]
-    #;[(letrec-values ,s (((,x** ...) ,ce*) ...) ,e)
-     (define init
-       (for/list ([x* x**] [ce ce*])
-         (match (map Var x*)
-           ; single value return is the common case, so this needs to be fast
-           [(list x)                  (CExpr ce x)]  ; single value
-           ; multiple values are returned in a tagged array [VALUES,v0,v1,...]
-           ; to avoid allocating an extra variable, we receive the array in x0,
-           ; then assign the individual variables (in reverse order so x0 is last)
-           [(list x0 x1 ...) `(block ,(CExpr ce x0)
-                                     ,(for/list ([i (in-range (length x*) 0 -1)]
-                                                 [x (reverse (cons x0 x1))])
-                                       `(:= ,x (ref ,x0 ',i)))
-                                     ...)]
-           ; no values are expected
-           ['() (CExpr ce #f)])))
-     (let* ([x*         (map Var (append* x**))]
-            [undefined* (map (λ(_) #'undefined) x*)]
-            [e          (Expr e dest)])
-       `(block (var ,x* ...)   ; declare
-               ,init ...       ; initialize
-               ,e))]
-    [(letrec-values ,s (((,x* ...) ,ce) ...) ,e)
-     (define (AllocateClosure ca dest) ; called by letrec-values
-      (nanopass-case (LANF+closure ClosureAllocation) ca
-        [(closure ,s ,l ,ae1 ...)
-         ; TODO: No need to fill in quotations later.
-         ;       Do them there. And skip in FillClosure.
-         (let ([0s (map (λ(_) `'0) ae1)]
-               [l (Label l)])
-           `(:= ,dest (array '"CLOS" ,l ,0s ...)))]))
-    (define (FillClosure ca dest)
-      (nanopass-case (LANF+closure ClosureAllocation) ca
-        [(closure ,s ,l ,ae1 ...)
-         
-           `(block ,(for/list ([i (in-naturals 2)] [ae (AExpr* ae1)])
-                      `(app ,#'array! ,dest ',i ,ae))
-                   ...)]))
-     ;;      (letrec-values (((even) (closure label_7 odd))
-     ;;                      ((odd) (closure label_6 even)))
-     ;;         expression)
-     (unless (apply = (list* 1 1 (map length x*))) ; all clauses expect one value?
-       (error 'generate-ur "TODO support multiple values in letrec-values"))
-     (let* ([x  (map Var (map first x*))])
-       `(block (var ,x ...)  ; declaration
-               ,(map AllocateClosure ce x) ...
-               ,(map FillClosure ce x) ...
-               ,(Expr e dest)))]
-    #;[(letrec-values ,s (((,x** ...) ,ce*) ...) ,e)
-     ;;      (letrec-values (((even) (closure label_7 odd))
-     ;;                      ((odd) (closure label_6 even)))
-     ;;         expression)
+  (Expr2 : Expr  (e  dd [cd #f]) -> Statement ()  ; todo the #f default is a temporary fix
+    [,ce (CExpr ce dd cd)]
 
-     ;; TODO: At this time we can assume that all ce are lambda expressions
-     ;;       - change code to allocate closures, then fill in free variables
-     ;;       - this will allow mutual recursive references.
-     ;; this is the version that does not support multiple values
-     (unless (apply = (list* 1 1 (map length x**))) ; all clauses expect one value?
-       (error 'generate-ur "TODO support multiple values in letrec-values"))
-     (let* ([x* (map Var (map first x**))]
-            [ce (map CExpr ce* x*)])
-       `(block (var ,x* ...)        ; declare variables
-               ,ce ...              ; initialize them
-               ,(Expr e dest)))]    ; body 
     [(let-values ,s (((,x** ...) ,ce*) ...) ,e)
      (define initialize
        (for/list ([x* x**] [ce ce*])
          (match (map Var x*)
            ; single value return is the common case, so this needs to be fast
-           [(list x)                  (CExpr ce x)]  ; single value
+           [(list x)                  (CExpr ce x <stat>)]  ; single value
            ; multiple values are returned in a tagged array [VALUES,v0,v1,...]
            ; to avoid allocating an extra variable, we receive the array in x0,
            ; then assign the individual variables (in reverse order so x0 is last)
-           [(list x0 x1 ...) `(block ,(CExpr ce x0)
+           [(list x0 x1 ...) `(block ,(CExpr ce x0 <stat>)
                                      ,(for/list ([i (in-range (length x*) 0 -1)]
                                                  [x (reverse (cons x0 x1))])
                                        `(:= ,x (ref ,x0 ',i)))
                                      ...)]
            ; no values are expected
-           ['() (CExpr ce #f)]))) ; todo: signal error if values are produced
+           ['() (CExpr ce <effect> cd)]))) ; todo: signal error if values are produced
      (let* ([xs         (map Var (append* x**))]
             [undefined* (map (λ(_) #'undefined) xs)]
-            [e          (Expr e dest)])
-       `(let ([,xs ,undefined*] ...) ; declare variable
-          (body ,initialize ...      ; initialize
-                ,e                   ; evaluate
-                ,dest)))]            ; return
-    ) ; TODO use #f instead of t
+            [e          (Expr e dd cd)])
+       `(block
+         (var ,xs ...)     ; declare variables
+         ,initialize ...   ; initialize
+         ,e))]
+
+    [(letrec-values ,s (((,x* ...) ,ce) ...) ,e)
+     (define (AllocateClosure ca dest) ; called by letrec-values
+       (nanopass-case (LANF+closure ClosureAllocation) ca
+         [(closure ,s ,l ,ae1 ...)
+          ; TODO: No need to fill in quotations later.
+          ;       Do them here. And skip in FillClosure.
+          (let ([0s (map (λ(_) `'0) ae1)]
+                [l (Label l)])
+            `(:= ,dest (array '"CLOS" ,l ,0s ...)))]))
+     (define (FillClosure ca dd)
+       (nanopass-case (LANF+closure ClosureAllocation) ca
+         [(closure ,s ,l ,ae1 ...)          
+          `(begin ,(for/list ([i (in-naturals 2)] [ae (AExpr* ae1)])
+                     `(app ,#'array! ,dd ',i ,ae))
+                  ...)]))
+     ;;      (letrec-values (((even) (closure label_7 odd))
+     ;;                      ((odd) (closure label_6 even)))
+     ;;         expression)
+     (unless (apply = (list* 1 1 (map length x*))) ; all clauses expect one value?
+       (error 'generate-ur "TODO support multiple values in letrec-values"))
+     (let* ([x  (map Var (map first x*))]
+            [u  (for/list ([x x*]) `,#'undefined)]
+            [e  (Expr e dd cd)])  ; todo: change #f to undefined
+       `(block (var ,x ...)                    ; declare 
+               (:= ,x ,u) ...                  ; undefined
+               ,(map AllocateClosure ce x) ... 
+               ,(map FillClosure ce x) ...
+               ,e))])
   (ConvertedAbstraction : ConvertedAbstraction (cab) -> Expr ()
     [(λ ,s (formals (,x ...)) ,e)
-     (let* ([t (Var (new-var 'r))] [x (map Var x)] [e (Expr e t)])
+     (let* ([x (map Var x)] [σ (Expr e <value> <return>)])
        `(lambda (,#'_free ,x ...)
-          (body (var ,t) ,e ,t)))]
+          (body ,σ ,#'void)))] ; TODO TODO ...
     [(λ ,s (formals ,x) ,e)
-     (let* ([t (Var (new-var 'r))] [x (Var x)] [e (Expr e t)])
+     (let* ([x (Var x)] [e (Expr e <value> <expr>)])
        `(lambda (,#'_free ,x)
-          (body (var ,t)
-                (:= ,x (app ,#'cdr (app ,#'array->list ,#'arguments)))
-                ,e ,t)))]
+          (body (:= ,x (app ,#'cdr (app ,#'array->list ,#'arguments)))
+                ,e)))]
     [(λ ,s (formals (,x0 ,x1 ... . ,xd)) ,e)
-     (let* ([t (Var (new-var 'r))] [x0 (Var x0)] [x1 (map Var x1)] [xd (Var xd)] [e (Expr e t)])
+     (let* ([x0 (Var x0)] [x1 (map Var x1)] [xd (Var xd)] [e (Expr e <value> <expr>)])
        `(lambda (,#'_free ,x0 ,x1 ... ,xd)
-          (body (var ,t)
-                (:= ,xd (app ,#'array-end->list ,#'arguments ',(length (cons x0 x1))))
-                ,e ,t)))])
-  (TopLevelForm : TopLevelForm (t dest) -> ModuleLevelForm ()
-    [,g                       (GeneralTopLevelForm g dest)]
-    [(#%expression ,s ,e)     (Expr e dest)]
-    [(define-label ,l ,cab)  `(var [binding ,(Label l) ,(ConvertedAbstraction cab)])]
-    [(topbegin ,s ,t ...)     (let ([t (TopLevelForm* t dest)])
-                                `(block ,t ...))])
-  (GeneralTopLevelForm : GeneralTopLevelForm (g dest) -> ModuleLevelForm ()
-    [,e                           (Expr e dest)]
+          (body (:= ,xd (app ,#'array-end->list ,#'arguments ',(length (cons x0 x1))))
+                ,e)))])
+  (GeneralTopLevelForm : GeneralTopLevelForm (g dd) -> ModuleLevelForm ()
+    [,e                           (Expr e dd <stat>)]
     [(#%require     ,s ,rrs ...)  `'"ignored #%require"]
-    [(define-values ,s (,x ...) ,e)
+    [(define-values ,s (,x ...)   ,e)
      (match (map Var x)
        [(list x0) ; single value is the common case
-        `(block (var ,x0) ,(Expr e x0))]
+        `(block (var ,x0) ,(Expr e x0 <stat>))]
        [(list x0 x1 ...)
         (define x* (cons x0 x1))
         `(block (var ,x0 ,x1 ...)
@@ -347,7 +410,13 @@
                 ...)]
        ['() (error 'generate-ur "TODO define-values of no values")])]
     [(define-syntaxes ,s (,x ...) ,e) (error 'generate-ur "TODO define-syntaxes")])
-  (let* ([result #'result]
+  (TopLevelForm : TopLevelForm (t dd) -> ModuleLevelForm ()
+    [,g                       (GeneralTopLevelForm g dd)]
+    [(#%expression ,s ,e)     (Expr e dd)]
+    [(define-label ,l ,cab)  `(var [binding ,(Label l) ,(ConvertedAbstraction cab)])]
+    [(topbegin ,s ,t ...)     (let ([t (TopLevelForm* t dd)])
+                                `(block ,t ...))])
+  (let* ([result #'result] ; this is an urlang identifier
          [t        (TopLevelForm T result)] ; todo generate unique id
          [prims    (ur-urmodule-name->exports 'runtime)]
          [pr       (map (λ (prim) (datum->syntax #'runtime prim)) prims)]
@@ -416,3 +485,5 @@
 (ur-current-urlang-echo?                          #t) ; print generated JavaScript?
 (ur-current-urlang-console.log-module-level-expr? #t) ; print top-level expression?
 (ur-current-urlang-delete-tmp-file?               #f)
+
+(eval #'(displayln ((λ() 42))))
