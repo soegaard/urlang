@@ -1,7 +1,6 @@
 #lang racket
 (require urlang urlang/extra urlang/for
          syntax/parse syntax/stx)
-
 ;;; This file contains the runtime library for the
 ;;; Racket to JavaScript compiler in urlang/compiler-rjs.
 ;;; The compiler and the runtime is included as an *example*
@@ -1300,41 +1299,60 @@
     (define/export (apply proc xs) ; variadic
       ; (apply proc v ... lst #:<kw> kw-arg ...) → any
       ; todo: we ignore #:<kw> kw-arg ...  for the moment
-      (var [n arguments.length])
-      (case n
+      (var [args arguments]
+           [n args.length])
+      ;(console.log (+ "apply: " n " " (Array (ref args 1) (ref args 2) (ref args 3) (ref args 4))))
+      ;(console.log "apply")
+      ;(console.log args)
+      (case n 
+        [(2)   (apply3 proc 0       0                                                 (ref args 1))]
+        [(3)   (apply3 proc 1       (array (ref args 1))                              (ref args 2))]
+        [(4)   (apply3 proc 2       (array (ref args 1) (ref args 2))                 (ref args 3))]
+        [(5)   (apply3 proc 3       (array (ref args 1) (ref args 2) (ref args 3))    (ref args 4))]
         [(0 1) (error "procedure?" "expected two or more arguments")]
-        [(2)   (apply3 proc NULL xs)]
-        [(3)   (apply3 proc (cons (ref arguments 1) NULL) xs)]
-        [(4)   (apply3 proc (cons (ref arguments 1) (cons (ref arguments 2) NULL)) xs)]
-        [(5)   (apply3 proc (cons (ref arguments 1)
-                                  (cons (ref arguments 2) (cons (ref arguments 3) NULL))) xs)]
-        [(6)   (apply3 proc (for/list ([i in-range 1 (- n 2)]) (ref arguments i)) xs)]))
-    (define (apply3 proc vs xs)
-      (var [nvs (length vs)]
-           [nxs (length xs)]
+        ; the (6) case outght to be [else ...] ... also: it returns incorrect values TODO
+        [(6)   (apply3 proc (- n 2) (for/array ([i in-range 1 (- n 2)]) (ref args i)) (ref args 5))]))
+    (define (apply3 proc nvs vs xs)
+      ;(console.log "--- apply3 ---")
+      ;(console.log "nvs:")
+      ;(console.log nvs)
+      ;(console.log "vs:")
+      ;(console.log vs)
+      ;(console.log "xs:")
+      ;(console.log xs)
+      (var [nxs (length xs)]
            [n   (+ nvs nxs)]
            [a   (Array n)])
-      (if (js-function? proc)
+      (if (js-function? proc)          ; non-closure (primitive or ...)
           (begin
-            (for ([i in-range 0 nvs]
-                  [v in-list vs])
-              (:= a i v))
+            ;(console.log "js-function")
+            ;(console.log (+ "n: " n " nvs: " nvs))
+            ;(console.log "vs:")
+            (for ([i in-range 0 nvs])
+              ;(console.log (ref vs i))
+              (:= a i (ref vs i)))
+            ;(console.log "xs:")
             (for ([i in-range nvs n]
                   [x in-list xs])
+              ;(console.log x)
               (:= a i x))
             (proc.apply #f a))
           (if (closure? proc)
               (begin
-                (array! a 0 proc)
-                (for ([i in-range 0 nvs]
-                      [v in-list vs])
-                  (:= a (+ i 1) v))
+                ;(console.log "closure")
+                ;(console.log (+ "n: " n " nvs: " nvs))
+                ;(console.log "vs:")
+                (array! a 0 proc)                
+                (for ([i in-range 0 nvs])
+                  ;(console.log (ref vs i))
+                  (:= a (+ i 1) (ref vs i)))
+                ;(console.log "xs:")
                 (for ([i in-range nvs n]
                       [x in-list xs])
+                  ;(console.log x)
                   (:= a (+ i 1) x))                
                 ((ref (ref proc 1) "apply") #f a))
               "apply3 - error")))
-    
     (define/export new-apply-proc apply) ; todo: support keywords    
     ;;;
     ;;; 4.18 Void
