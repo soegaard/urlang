@@ -1,4 +1,12 @@
 #lang racket
+ 
+
+;;; TODO
+; Handle an '<effect> destination in wcm
+;    (begin (with-continuation-mark 1 2 (with-continuation-mark 1 3 (current-continuation-marks))) 42)
+; Fix display of symbols
+; unsafe-cdr
+; make-sequence
 
     #;[(letrec-values ,s (((,x** ...) ,ce*) ...) ,e)
      (define init
@@ -161,7 +169,9 @@
     (define (AExpr* aes)             (map (λ (ae) (AExpr2 ae #f)) aes))
     (define (Expr* es dd cd)         (map (λ (e)  (Expr e dd cd)) es))
     (define (CExpr ce dd cd)         #;(displayln (list 'CExpr ce dd cd)) (CExpr2 ce dd cd))      
-    (define (TopLevelForm* ts dd)    (map (λ (t)  (TopLevelForm t dd)) ts)))
+    (define (TopLevelForm* ts dd)    (map (λ (t)  (TopLevelForm t dd)) ts))
+    (define f-tmp                    (Var (new-var 'f))) ; used by app
+    )
   (ClosureAllocation : ClosureAllocation (ca dd) -> Expr ()
     ; dd = #f, means the ca is in value position
     [(closure ,s ,l ,ae1 ...)
@@ -173,7 +183,7 @@
      ; and then mutate fields with self-references.
      (define (maybe-store-in-dest e)
        (match dd
-         [(or '<effect> '<test> '<value> #f)              e]
+         [(or '<effect> '<value> #f)                     e]
          [dest                               `(:= ,dest ,e)]))
      (define self-reference-indices
        (for/list ([ae ae1] [i (in-naturals)]
@@ -181,22 +191,22 @@
                                        (eq? (syntax-e (Var ae)) (syntax-e dd))))
          i))
      (maybe-store-in-dest
-     (match self-reference-indices
-       ['() (let ([ae1 (AExpr* ae1)] [l (Label l)])
-              `(array '"CLOS" ,l ,ae1 ...))]
-       [is  (define t (or dd (Var (new-var)))) ; reuse dest if possible
-            (define inits (for/list ([ae ae1] [j (in-naturals)])
-                            (if (member j is) #'undefined (AExpr ae))))            
-            (let ([l (Label l)])
-              `(app (lambda ()
-                      (body
-                       ; allocate closure
-                       (var [binding ,t (array '"CLOS" ,l ,inits ...)])
-                       ; plug any slots that are self-referencing
-                       ,(for/list ([i self-reference-indices])
-                          `(app ,#'array! ,t ',(+ i 2) ,t))
-                       ...
-                       ,t))))]))])
+      (match self-reference-indices
+        ['() (let ([ae1 (AExpr* ae1)] [l (Label l)])
+               `(array '"CLOS" ,l ,ae1 ...))]
+        [is  (define t (or dd (Var (new-var)))) ; reuse dest if possible
+             (define inits (for/list ([ae ae1] [j (in-naturals)])
+                             (if (member j is) #'undefined (AExpr ae))))            
+             (let ([l (Label l)])
+               `(app (lambda ()
+                       (body
+                        ; allocate closure
+                        (var [binding ,t (array '"CLOS" ,l ,inits ...)])
+                        ; plug any slots that are self-referencing
+                        ,(for/list ([i self-reference-indices])
+                           `(app ,#'array! ,t ',(+ i 2) ,t))
+                        ...
+                        ,t))))]))])
   (CaseClosureAllocation : CaseClosureAllocation (cca dd) -> Expr ()
     ; dest = #f, means the cca is in value position
     [(case-closure ,s ,l [,ar ,ca] ...)
@@ -286,21 +296,23 @@
                                     [_ (error)])]
                                  [x  `(:= ,x ,work)])]
     [(app ,s ,ae ,ae1 ...)
-     (let* ([f    (Var (new-var 'f))]
+     ; NOTE: Only one function application is active at a time, so we can
+     ;       reuse the variable holding the function f-tmp.
+     (let* ([f    f-tmp]
             [work `(if (app ,#'closure? ,f)
                        (app ,(~clos-label f) ,(cons f (AExpr* ae1)) ...)
                        (app ,f ,(AExpr* ae1) ...))])
        (match dd
          ['<effect> (match cd
-                      ['<expr>   `(let               ([,f ,(AExpr ae)]) (body        ,work))]
-                      ['<stat>   `(block (var [binding ,f ,(AExpr ae)])              ,work)]
-                      [_         (error "this combination ought to be impossible")])]
+                      ['<expr>   `(begin (:= ,f ,(AExpr ae)) ,work)]
+                      ['<stat>   `(begin (:= ,f ,(AExpr ae)  ,work))]
+                      [_         (error "INTERNAL ERROR - combination impossible")])]
          ['<value>  (match cd
-                      ['<return> `(block (var [binding ,f ,(AExpr ae)])      (return ,work))]
-                      ['<expr>   `(let               ([,f ,(AExpr ae)]) (body        ,work))]
+                      ['<return> `(block (:= ,f ,(AExpr ae)) (return ,work))]
+                      ['<expr>   `(begin (:= ,f ,(AExpr ae))         ,work)]
                       [_         (display (list 'app ce dd cd))
                                  (error)])]
-         [x         `(let ([,f ,(AExpr ae)]) (body (:= ,x ,work)))]))]
+         [x         `(begin (:= ,f ,(AExpr ae))  (:= ,x ,work))]))]
     [(closedapp ,s ,ca ,ae2 ...)
      (let ([ae2 (AExpr* ae2)])
        (nanopass-case (LANF+closure ClosureAllocation) ca
@@ -322,7 +334,28 @@
           (match dd
             [(or '<effect> '<value>)  `,work]
             [y                        `(:= ,y ,work)])]))]
-    [(wcm ,s ,ae0 ,ae1 ,e)       (error 'generate-ur "TODO with-continuation-mark")])
+    [(wcm ,s ,ae0 ,ae1 ,e)
+     (displayln (list 'wcm dd cd))
+     (define-values (dest dest-declaration)
+       (match dd
+         ['<value>  (let ([r (Var (new-var 'res))]) (values r          `(var [binding ,r '#f])))]
+         ['<effect>                                 (values '<effect>  `(block))]
+         [y                                         (values y          `(block))]))
+     (let* ([key    (AExpr ae0)]
+            [val    (AExpr ae1)]
+            [result (Expr e dest cd)] ; todo : is this correct?
+            [enter  (match cd
+                      ['<return>  `(app ,#'set-continuation-mark       ,key ,val)]
+                      [_          `(app ,#'new-continuation-mark-frame ,key ,val)])]
+            [leave   (match cd
+                       ['<return> `(block)] ; no frame to remove in tail position
+                       [_         `(app ,#'remove-continuation-mark-frame)])])
+       `(block
+         ,dest-declaration        ; maybe declare temporary variable
+         (try {,enter             ; add new frame (in non-tail position)
+               ,result}           ; calculate resute
+              (finally  ,leave))  ; remove frame  (in non-tail position)
+         ,dest))])                ; return the result                
   (Expr2 : Expr  (e  dd [cd #f]) -> Statement ()  ; todo the #f default is a temporary fix
     [,ce (CExpr ce dd cd)]
 
@@ -384,15 +417,15 @@
        `(lambda (,#'_free ,x ...)
           (body ,σ ,#'void)))] ; TODO TODO ...
     [(λ ,s (formals ,x) ,e)
-     (let* ([x (Var x)] [e (Expr e <value> <expr>)])
+     (let* ([x (Var x)] [σ (Expr e <value> <return>)])
        `(lambda (,#'_free ,x)
           (body (:= ,x (app ,#'cdr (app ,#'array->list ,#'arguments)))
-                ,e)))]
+                ,σ ,#'void)))]
     [(λ ,s (formals (,x0 ,x1 ... . ,xd)) ,e)
-     (let* ([x0 (Var x0)] [x1 (map Var x1)] [xd (Var xd)] [e (Expr e <value> <expr>)])
+     (let* ([x0 (Var x0)] [x1 (map Var x1)] [xd (Var xd)] [σ (Expr e <value> <return>)])
        `(lambda (,#'_free ,x0 ,x1 ... ,xd)
           (body (:= ,xd (app ,#'array-end->list ,#'arguments ',(length (cons x0 x1))))
-                ,e)))])
+                ,σ ,#'void)))])
   (GeneralTopLevelForm : GeneralTopLevelForm (g dd) -> ModuleLevelForm ()
     [,e                           (Expr e dd <stat>)]
     [(#%require     ,s ,rrs ...)  `'"ignored #%require"]
@@ -433,6 +466,8 @@
            (app ,#'require '"/Users/soegaard/Dropbox/GitHub/urlang/compiler-rjs/runtime.js"))
          ;; Bind all imported identifiers
          (var [binding ,pr (ref ,RUNTIMES ',pr-str)] ...)
+         ;; Global variabled used by applications as a temporary variable.
+         (var ,f-tmp)
          ;; The result of evaluating this module:
          (define ,result '0) ; todo: make it undefined
          ,t))))
@@ -487,3 +522,11 @@
 (ur-current-urlang-delete-tmp-file?               #f)
 
 (eval #'(displayln ((λ() 42))))
+
+#;(begin
+    (require racket/unsafe/ops)
+    (eval #'(begin
+                    (let () (define (fn lst)
+                              (for ([v (in-list lst)])
+                                (displayln v)))            
+                      (fn (list 1 2 3 4))))))

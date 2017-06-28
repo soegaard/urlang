@@ -9,6 +9,16 @@
 ;;; Neither the compiler nor this runtime is needed in order to use Urlang.
 ;;; Currently this file contains the largest example of Urlang.
 
+
+;;;
+;;; NOTES
+;;;
+
+; Primitives are representation as javascript functions.
+; Closures are represented as arrays whose first element is a tag.
+; See "4.17 Procedures" below for details on the representation of closures.
+; 
+
 ;;;
 ;;; TODO
 ;;;
@@ -147,9 +157,17 @@
     (define/export NAMESPACE              (array "namespace"))
     (define/export STRING-PORT            (array "string-port"))
     (define/export EOF-OBJECT             (array "eof-object"))
+    (define/export CONTINUATION-MARK-SET  (array "continutation-mark-set"))
     
     (define/export VOID (array))    ; singleton
     (define/export NULL (array))    ; singleton
+
+    ;;;
+    ;;; GLOBAL VARIABLES
+    ;;;
+
+    (define/export CMS (array ))   ; current continuation marks (see section 10.5 below)
+    
     
     ;;;
     ;;; CASE-LAMBDA
@@ -162,7 +180,7 @@
     
     ;; Encoding of arities:
     ;;   +n means precisely n
-    ;;    0 means preciely  0
+    ;;    0 means precisely 0
     ;;   -1 means at least  0
     ;;   -2 means at least  1
     ;;   -n means at least  n-1
@@ -1614,6 +1632,84 @@
              [line              (string-append source "::"         column)]
              [position          (string-append source "::"         position)]
              [#t                (string-append source "::-1")])))
+
+    ;;; 10.5 Continuation Marks
+
+    (define the-empty-continuation-mark-set (array)) ; see section 10.5 on continuation marks
+    (define (empty-continuation-mark-set? v) (= v the-empty-continuation-mark-set))
+    (define/export (new-continuation-mark-frame key val)
+      (var [frame (object)])
+      (:= frame key val)
+      (:= CMS (array frame CMS)))
+    (define/export (set-continuation-mark key val)
+      (var [frame (ref CMS 0)])
+      (:= frame key val)
+      CMS)
+    (define/export (remove-continuation-mark-frame)
+      (:= CMS (ref CMS 1)))
+    (define/export (continuation-mark-set-first mark-set key-v)
+      ; two optional arguments: none-v and prompt-tag are optional
+      (var [ms (or mark-set (current-continuation-marks))]   ; todo: add prompt tag here
+           [val undefined]
+           [ht  #f])
+      (while (not (= ms the-empty-continuation-mark-set))
+             (:= ht  (ref ms 0))
+             (:= val (ref ht key-v))
+             (sif (= val undefined)
+                  (:= ms (ref ms 1))
+                  (break)))
+      (if (= val undefined)
+          #f ; todo use none-v here
+          val))    
+    ;; Representation:
+    ;;   A continuation mark set is a 
+    ;;      NULL or {array CONTINUATION-MARK-SET continuation}
+    ;;   where a continuation is a "linked list" of frames.
+    (define/export (continuation-mark-set? v)
+      (and (array? v) (= (tag v) CONTINUATION-MARK-SET)))
+    
+    (define/export (current-continuation-marks prompt-tag)      
+      (array CONTINUATION-MARK-SET CMS))
+    
+    
+    ; continuation-marks
+    ; current-continuation-marks
+    ; continuation-mark-set->list
+    ; make-continuation-mark-key
+    ; continuation-mark-set->list*
+    ; continuation-mark-set-first
+    ; call-with-immediate-continuation-mark
+    ; continuation-mark-key?
+    ; continuation-mark-set?
+    ; continuation-mark-set->context
+
+    ;;;
+    ;;; Concurrency and Parallelism
+    ;;;
+
+    ;;; 11.3.2 Parameters
+
+    ; The form `parameterize` is defined racket/more-scheme.rkt.
+    ; The parameterization is stored using continuation marks.
+    ; 
+    ; A use a parameterize expands into with-continuation-mark
+    
+    ; The function  extend-parameterization  is in the kernel.
+    ; Parameterizations are stored as continnuation marks.
+    ; The key to get the parameterizations is  parameterization-key/
+    ; The list p/v is a flat list of the form (id1 value1 id2 value2 ...).
+    ; (with-syntax ([(p/v ...) (apply append (map list (syntax->list #'(param ...))
+    ;                                                  (syntax->list #'(val ...))))])
+    ;    omitted
+    ;    (extend-parameterization (continuation-mark-set-first #f parameterization-key) p/v ...)
+    ; So extend-parameterization is a variable arity function. 
+    ; The first argument is the ...
+    ; and ...
+    ; The values should be stored in tread cells (since each thread has its own version of
+    ; the parameter values.
+    
+    
+
     
     ;;;
     ;;; 13 INPUT AND OUTPUT
@@ -1896,12 +1992,13 @@
             [(= v #f) "#f"]
             [#t       (+ "str -internal error got: " v)]))
     (define (str-symbol  v) (string-append "'"  (string->immutable-string (symbol->string v))))
-    (define (str-keyword v)       (+ "#:" (ref v 1)))
-    (define (str-void v)          "#<void>")
-    (define (str-box v)           (+ "#&" (str (unbox v))))
-    (define (str-box-immutable v) (+ "#&" (str (unbox v))))
-    (define (str-char v)          (+ "#\\\\" (ref v 1)))
-    (define (str-undefined)       "#<js-undefined>")
+    (define (str-keyword v)             (+ "#:" (ref v 1)))
+    (define (str-void v)                "#<void>")
+    (define (str-box v)                 (+ "#&" (str (unbox v))))
+    (define (str-box-immutable v)       (+ "#&" (str (unbox v))))
+    (define (str-char v)                (+ "#\\\\" (ref v 1)))
+    (define (str-undefined)             "#<js-undefined>")
+    (define (str-continuation-mark-set v) (console.log v) "#<continuation-mark-set>")
     (define/export (str v)
       (cond
         [(null? v)                     (str-null)]
@@ -1920,6 +2017,7 @@
         [(struct-type-descriptor? v)   (str-struct-type-descriptor v)]
         [(struct? v)                   (str-struct v)]
         [(= v undefined)               (str-undefined)]
+        [(continuation-mark-set? v)    (str-continuation-mark-set v)]
         [#t                            (console.log v)
                                        "str - internal error"]))
 

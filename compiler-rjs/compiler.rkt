@@ -28,20 +28,20 @@
 ; CLOSE  8. source locations
 ; DONE       srcloc, srcloc->string
 ; TODO       store source locations for each application, etc ...
-;        9. parameters
-;       10. exceptions
-;       11. error checking
+; CLOSE  9. tco (trampoline)
+;       10. with-continuation-mark
+;       11. parameters
+;       12. exceptions
+;       13. error checking
 ;             - applications of non-procedures
 ;             - arities
 ;             - wrong number of return values
-;       12. top-level-namespaces
-;       13. modules
-;       14. submodules
-;       15. top-level requires
-;       16. tco (trampoline)
-;       17. with-continuation-mark
-;       18. #%variable-reference
-;       19 test suite
+;       14. top-level-namespaces
+;       15. modules
+;       17. submodules
+;       18. top-level requires
+;       19. #%variable-reference
+;       20. test suite
 
 ;;;
 ;;; NOTES

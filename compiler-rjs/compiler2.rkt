@@ -1,10 +1,11 @@
 #lang racket
+(require "compiler.rkt")
 (provide (all-defined-out)
          (all-from-out "compiler.rkt"))
 
 (module+ test (require rackunit))
 (require nanopass/base)
-(require
+(require 
   (prefix-in ur- urlang)
   (for-syntax nanopass/base syntax/parse racket/syntax)
   syntax/kerncase ; for kernel-form-identifier-list
@@ -13,9 +14,6 @@
   (except-in syntax/parse str) ; the identifier str is used in the runtime 
   (rename-in racket/match [match Match])
   (only-in srfi/1 list-index))
-
-(require "compiler.rkt")
-
 
 ;;;
 ;;; ASSIGNMENT CONVERSION
@@ -183,7 +181,7 @@
 ;;    (closedapp   s ab  e1 ...)    application of an abstraction
 ;;    (app         s e0  e1 ...)    application of a  general procedure
 
-;; Closed applications of the type ((λ (x ...) e) e) is rewritten to let-values.
+;; Closed applications of the type ((λ (x ...) e) e) are rewritten to let-values.
 ;; Closed application where the abstraction have formals of the form (x ... . y) and x
 ;; are kept (for now).
 
@@ -281,7 +279,7 @@
 ;;;
 
 ; All subexpression are given a name unless
-;  1) it is a RHS in a let-assigment  (it already has a name)
+;  1) it is a RHS in a let-assignment (it already has a name)
 ;  2) it is a tail expression         (avoid building context)
 ;  3) it is an atomic expression
 ;  4) the value will be ignored       (non-last expressions in a begin)
@@ -459,6 +457,11 @@
          (let ([e0 (Expr/id e0)] [e1 (map Expr/id e1)])
            (k (with-output-language (LANF Expr)
                 `(begin0 ,s ,e0 ,e1 ...))))]
+        [(wcm ,s ,e0 ,e1 ,e2)
+         (Expr/name e0
+           (λ (ae0) (Expr/name e1
+                      (λ (ae1)
+                        (k `(wcm ,s ,ae0 ,ae1 ,(Expr e2 id)))))))]
         [else
          (displayln (list 'anormalize-Expr "got" E))
          (error 'anormalize-Expr "internal error")])))

@@ -2221,7 +2221,7 @@
 (define current-urlang-output-file                    (make-parameter #f))
 (define current-urlang-exports-file                   (make-parameter #f))
 (define current-urlang-run?                           (make-parameter #f))
-(define current-urlang-echo?                          (make-parameter #f))
+(define current-urlang-echo?                          (make-parameter #t)) ; XXX
 (define current-urlang-console.log-module-level-expr? (make-parameter #f))
 (define current-urlang-delete-tmp-file?               (make-parameter #t))
 (define current-urlang-beautify?                      (make-parameter #f))
