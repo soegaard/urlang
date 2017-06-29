@@ -1,6 +1,12 @@
 #lang racket
 (require urlang urlang/extra urlang/for
          syntax/parse syntax/stx)
+;;;
+;;; NOTE: When you add a new primitive using define/export,
+;;;       Add a space to compiler.rkt then run both
+;;;       compiler.rkt and compiler2.rkt before running compiler3.rkt.
+
+
 ;;; This file contains the runtime library for the
 ;;; Racket to JavaScript compiler in urlang/compiler-rjs.
 ;;; The compiler and the runtime is included as an *example*
@@ -157,7 +163,7 @@
     (define/export NAMESPACE              (array "namespace"))
     (define/export STRING-PORT            (array "string-port"))
     (define/export EOF-OBJECT             (array "eof-object"))
-    (define/export CONTINUATION-MARK-SET  (array "continutation-mark-set"))
+    (define/export CONTINUATION-MARK-SET  (array "continuation-mark-set"))
     
     (define/export VOID (array))    ; singleton
     (define/export NULL (array))    ; singleton
@@ -166,7 +172,7 @@
     ;;; GLOBAL VARIABLES
     ;;;
 
-    (define/export CMS (array ))   ; current continuation marks (see section 10.5 below)
+    (define/export CMS (array (array) NULL))   ; current continuation marks (see section 10.5 below)
     
     
     ;;;
@@ -1049,21 +1055,21 @@
                                        (proc x))]
                [(closure? proc)      (var [lab (ref proc 1)])
                                      (for/list ([x in-list xs])
-                                       (lab proc x))]
+                                       (lab proc #f x))] ; #f means non-tail call
                [#t                   ("ERROR - map")])]
         [(3) (cond
                [(js-function? proc)  (for/list ([x in-list xs] [y in-list ys])
                                        (proc x y))]
                [(closure? proc)      (var [lab (ref proc 1)])
                                      (for/list ([x in-list xs] [y in-list ys])
-                                       (lab proc x y))]
+                                       (lab proc #f x y))]
                [#t                   ("ERROR - map")])]
         [(4) (cond
                [(js-function? proc)  (for/list ([x in-list xs] [y in-list ys] [z in-list zs])
                                        (proc x y z))]
                [(closure? proc)      (var [lab (ref proc 1)])
                                      (for/list ([x in-list xs] [y in-list ys] [z in-list zs])
-                                       (lab proc x y z))]
+                                       (lab proc #f x y z))]
                [#t                   ("ERROR - map")])]
         [(0) (error "map" "expected at least two arguments")]
         [else (/ 1 0)  ])) ; TODO
@@ -1297,7 +1303,8 @@
     ;;;        {array CLOS label value0 ... }
     ;;;     Tagged array.
     ;;;     label       is the (JavaScript) function to call, when the closure is invoked.
-    ;;;                 The first argument of label is the closure.
+    ;;;                 The first  argument of label is the closure.
+    ;;;                 The second argument of label is a flag indicating tail position
     ;;;     value0 ...  are the values of the free variables
     
     (define/export (closure? v)   (and (Array.isArray v) (= (ref v 0) "CLOS")))    
@@ -1313,33 +1320,49 @@
             (for ([i in-range 0 n])
               (:= a (+ i 1) (ref args i)))
             (lab.apply #f a))
-          (f.apply #f args)))    
-    (define/export (apply proc xs) ; variadic
-      ; (apply proc v ... lst #:<kw> kw-arg ...) → any
+          (f.apply #f args)))
+
+    
+    ; The call to proc is a tail call, if the call to apply is a tail call.
+    ; This means apply needs to know whether it is tail called or not.
+    ; We therefore make  apply  a closure.
+    ; Primitives implemented as closures are special - so it must me
+    ; added to special-primitive? in "compiler.rkt".
+    (define/export apply (array "CLOS" apply-label))
+    (define (apply-label free tc proc xs)
+      ;(console.log "XXX apply")
+      ; (apply _free _tc proc v ... lst #:<kw> kw-arg ...) → any
       ; todo: we ignore #:<kw> kw-arg ...  for the moment
       (var [args arguments]
-           [n args.length])
-      ;(console.log (+ "apply: " n " " (Array (ref args 1) (ref args 2) (ref args 3) (ref args 4))))
-      ;(console.log "apply")
+           [m    args.length]
+           [n    (- m 2)]
+           [tc   (ref args 1)])
       ;(console.log args)
       (case n 
-        [(2)   (apply3 proc 0       0                                                 (ref args 1))]
-        [(3)   (apply3 proc 1       (array (ref args 1))                              (ref args 2))]
-        [(4)   (apply3 proc 2       (array (ref args 1) (ref args 2))                 (ref args 3))]
-        [(5)   (apply3 proc 3       (array (ref args 1) (ref args 2) (ref args 3))    (ref args 4))]
+        [(2)   (apply3 tc proc 0     0                                                 (ref args 3))]
+        [(3)   (apply3 tc proc 1     (array (ref args 2))                              (ref args 4))]
+        [(4)   (apply3 tc proc 2     (array (ref args 2) (ref args 3))                 (ref args 5))]
+        [(5)   (apply3 tc proc 3     (array (ref args 2) (ref args 3) (ref args 4))    (ref args 6))]
         [(0 1) (error "procedure?" "expected two or more arguments")]
         ; the (6) case outght to be [else ...] ... also: it returns incorrect values TODO
-        [(6)   (apply3 proc (- n 2) (for/array ([i in-range 1 (- n 2)]) (ref args i)) (ref args 5))]))
-    (define (apply3 proc nvs vs xs)
+        [(6)   (apply3 tc proc (- n 2)
+                       (for/array ([i in-range 2 (- n 2)]) (ref args i)) (ref args 6))]))
+    (define (apply3 tc proc nvs vs xs)
       ;(console.log "--- apply3 ---")
+      ;(console.log "tc: ")
+      ;(console.log tc)
+      ;(console.log "proc: ")
+      ;(console.log proc)      
       ;(console.log "nvs:")
       ;(console.log nvs)
       ;(console.log "vs:")
       ;(console.log vs)
       ;(console.log "xs:")
       ;(console.log xs)
-      (var [nxs (length xs)]
-           [n   (+ nvs nxs)]
+      (var [nxs    (length xs)]
+           [n      (+ nvs nxs
+                      ; we need an extra slot for tc if we are applying a closure
+                      (if (js-function? proc) 0 1))]
            [a   (Array n)])
       (if (js-function? proc)          ; non-closure (primitive or ...)
           (begin
@@ -1359,16 +1382,18 @@
               (begin
                 ;(console.log "closure")
                 ;(console.log (+ "n: " n " nvs: " nvs))
-                ;(console.log "vs:")
-                (array! a 0 proc)                
+                ;(console.log "vs:")                
+                (array! a 0 proc)
+                (array! a 1 tc)
                 (for ([i in-range 0 nvs])
                   ;(console.log (ref vs i))
-                  (:= a (+ i 1) (ref vs i)))
+                  (:= a (+ i 2) (ref vs i)))
                 ;(console.log "xs:")
                 (for ([i in-range nvs n]
                       [x in-list xs])
                   ;(console.log x)
-                  (:= a (+ i 1) x))                
+                  (:= a (+ i 2) x))
+                ;(console.log a)
                 ((ref (ref proc 1) "apply") #f a))
               "apply3 - error")))
     (define/export new-apply-proc apply) ; todo: support keywords    
@@ -1634,54 +1659,83 @@
              [#t                (string-append source "::-1")])))
 
     ;;; 10.5 Continuation Marks
+    ; Test of continuation marks are here:
+    ; https://github.com/racket/racket/blob/master/pkgs/racket-test-core/tests/racket/contmark.rktl
 
+    ; TODO:
+    ;   continuation-marks
+    ;   make-continuation-mark-key
+    ;   continuation-mark-set->list*
+    ;   call-with-immediate-continuation-mark
+    ;   continuation-mark-key?
+    ;   continuation-mark-set?
+    ;   continuation-mark-set->context
     (define the-empty-continuation-mark-set (array)) ; see section 10.5 on continuation marks
     (define (empty-continuation-mark-set? v) (= v the-empty-continuation-mark-set))
     (define/export (new-continuation-mark-frame key val)
+      ;(console.log "new-continuation-mark-frame:")
+      ;(console.log (+ "key: " key))
+      ;(console.log (+ "val: " val))
       (var [frame (object)])
       (:= frame key val)
       (:= CMS (array frame CMS)))
     (define/export (set-continuation-mark key val)
+      ;(console.log "set-continuation-mark:")
+      ;(console.log (+ "key: " key))
+      ;(console.log (+ "val: " val))
       (var [frame (ref CMS 0)])
       (:= frame key val)
       CMS)
     (define/export (remove-continuation-mark-frame)
+      ;(console.log "remove-continuation-mark-frame:")
       (:= CMS (ref CMS 1)))
-    (define/export (continuation-mark-set-first mark-set key-v)
-      ; two optional arguments: none-v and prompt-tag are optional
-      (var [ms (or mark-set (current-continuation-marks))]   ; todo: add prompt tag here
-           [val undefined]
-           [ht  #f])
-      (while (not (= ms the-empty-continuation-mark-set))
+    (define/export (continuation-mark-set-first mark-set key-v none-v prompt-tag)
+      ; mark-set is either #f or is a continuation-mark-set
+      ; none-v is optional, default is #f
+      ; prompt-tag is optional, default is (default-continuation-prompt-tag)
+      ; TODO: prompt-tag is ignored for now
+      (var [tagged-ms (or mark-set (current-continuation-marks))]   ; todo: add prompt tag here
+           [ms        (ref tagged-ms 1)]
+           [val       undefined]
+           [ht        #f])
+      (while (not (= ms NULL))
+             (console.log ms)
              (:= ht  (ref ms 0))
              (:= val (ref ht key-v))
              (sif (= val undefined)
                   (:= ms (ref ms 1))
                   (break)))
       (if (= val undefined)
-          #f ; todo use none-v here
-          val))    
+          (if (= none-v undefined) #f none-v)
+          val))
     ;; Representation:
     ;;   A continuation mark set is a 
     ;;      NULL or {array CONTINUATION-MARK-SET continuation}
     ;;   where a continuation is a "linked list" of frames.
     (define/export (continuation-mark-set? v)
       (and (array? v) (= (tag v) CONTINUATION-MARK-SET)))
-    
-    (define/export (current-continuation-marks prompt-tag)      
-      (array CONTINUATION-MARK-SET CMS))
-    
-    
-    ; continuation-marks
-    ; current-continuation-marks
-    ; continuation-mark-set->list
-    ; make-continuation-mark-key
-    ; continuation-mark-set->list*
-    ; continuation-mark-set-first
-    ; call-with-immediate-continuation-mark
-    ; continuation-mark-key?
-    ; continuation-mark-set?
-    ; continuation-mark-set->context
+    (define/export (current-continuation-marks prompt-tag)
+      ;(console.log "continuation-marks:")
+      ;(console.log CMS)
+      ; TODO: prompt-tag is ignored here
+      (array CONTINUATION-MARK-SET CMS))    
+    (define/export (continuation-mark-set->list mark-set key-v prompt-tag)
+      ;(console.log "continuation-mark-set->list:")
+      ;(console.log mark-set)
+      ; prompt-tag is opptional
+      (var [ms  (ref mark-set 1)]  ; get frames
+           [val undefined]
+           [ht  #f]
+           [xs  NULL])
+      (while (not (= ms NULL))             
+             (:= ht  (ref ms 0))
+             (:= val (ref ht key-v))
+             (sif (= val undefined)
+                  (block)
+                  (:= xs (cons val xs)))
+             (:= ms (ref ms 1)))
+      (reverse xs)) ; todo: it would be better to build in the correct order ...
+  
 
     ;;;
     ;;; Concurrency and Parallelism

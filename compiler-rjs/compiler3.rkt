@@ -143,6 +143,7 @@
 (define <return> '<return>)
 (define <expr>   '<expr>)
 (define <stat>   '<stat>)
+(define _tc      #'_tc)
 
 (define-pass generate-ur : LANF+closure (T) -> ur-Lur ()
   (definitions
@@ -173,7 +174,6 @@
     (define f-tmp                    (Var (new-var 'f))) ; used by app
     )
   (ClosureAllocation : ClosureAllocation (ca dd) -> Expr ()
-    ; dd = #f, means the ca is in value position
     [(closure ,s ,l ,ae1 ...)
      ; Note: We need to allocate the closure and then fill the free slots
      ;       in order to handle recursive references to the closure.
@@ -249,7 +249,7 @@
   (CExpr2 : CExpr (ce dd cd) -> Statement ()
     ;; All Complex Expressions are translated to statements    
     [,ae                     (match dd
-                               ['<effect>  `(begin)]
+                               ['<effect>  `(block)]
                                ['<value>   (match cd ; ClosureAllocation needs the dest
                                              ['<return> `(return ,(AExpr2 ae dd))]
                                              [_                 `,(AExpr2 ae dd)])]
@@ -268,11 +268,19 @@
                                  (let ([e0 (Expr* e0 <effect> <stat>)]
                                        [en (Expr  en dd cd)])
                                    `(block ,e0 ... ,en))])]
-    [(begin0 ,s ,e0 ,e1 ...)   (let ([t (Var (new-var))]) ; redirect output
-                                 `(let ([,t ,#'undefined])
-                                    (body
-                                     ,(Expr e0 dd)
-                                     ,(Expr* e1 t) ...)))] ; TODO use #f
+    [(begin0 ,s ,e0 ,e1 ...)  (match dd
+                                ['<effect> `(block
+                                             ,(Expr  e0 '<effect> '<stat>)
+                                             ,(Expr* e1 '<effect> '<stat>) ...)]
+                                ['<value>  (let ([t (Var (new-var))])
+                                             `(let ([,t ,#'undefined])
+                                                (body
+                                                 ,(Expr  e0 t         '<stat>)
+                                                 ,(Expr* e1 '<effect> '<stat>) ...
+                                                 ,t)))]
+                                [y           `(block
+                                               ,(Expr  e0 y         '<stat>)
+                                               ,(Expr* e1 '<effect> '<stat>) ...)])]
     [(primapp ,s ,pr ,ae1 ...) (define sym (syntax->datum (variable-id pr)))
                                (define work                                 
                                  (match (length ae1)
@@ -299,13 +307,14 @@
      ; NOTE: Only one function application is active at a time, so we can
      ;       reuse the variable holding the function f-tmp.
      (let* ([f    f-tmp]
+            [tc   (eq? cd '<return?)]
             [work `(if (app ,#'closure? ,f)
-                       (app ,(~clos-label f) ,(cons f (AExpr* ae1)) ...)
+                       (app ,(~clos-label f) ,f ',tc ,(AExpr* ae1) ...)
                        (app ,f ,(AExpr* ae1) ...))])
        (match dd
          ['<effect> (match cd
                       ['<expr>   `(begin (:= ,f ,(AExpr ae)) ,work)]
-                      ['<stat>   `(begin (:= ,f ,(AExpr ae)  ,work))]
+                      ['<stat>   `(begin (:= ,f ,(AExpr ae)) ,work)]
                       [_         (error "INTERNAL ERROR - combination impossible")])]
          ['<value>  (match cd
                       ['<return> `(block (:= ,f ,(AExpr ae)) (return ,work))]
@@ -317,45 +326,60 @@
      (let ([ae2 (AExpr* ae2)])
        (nanopass-case (LANF+closure ClosureAllocation) ca
          [(closure ,s ,l ,ae1 ...)
+          (define tc (eq? cd '<return>))
           (define work
             (match ae1
               [(list) ; no free variable => no need to actually allocate a closure, just jump to label
-               `(app ,(Label l) ,#'undefined ,ae2 ...)] ; undefined due to no closure
+               `(app ,(Label l) ,#'undefined ',tc ,ae2 ...)] ; undefined due to no closure
               [_ (match dd
                    [(or '<effect> '<value>)
                     (let ([f (Var (new-var 'f))])
                       `(let ([,f ,#'undefined])
                          (body ,(ClosureAllocation ca f)
-                               (app ,(Label l) ,f ,ae2 ...))))]
+                               (app ,(Label l) ,f ',tc ,ae2 ...))))]
                    [y
                     `(begin
                        ,(ClosureAllocation ca dd) ; use dest as temporary
-                       (app ,(Label l) ,dd ,ae2 ...))])]))
+                       (app ,(Label l) ,dd ',tc ,ae2 ...))])]))
           (match dd
             [(or '<effect> '<value>)  `,work]
             [y                        `(:= ,y ,work)])]))]
     [(wcm ,s ,ae0 ,ae1 ,e)
-     (displayln (list 'wcm dd cd))
+     ;(displayln (list 'wcm 'dd dd 'cd cd s))
      (define-values (dest dest-declaration)
        (match dd
-         ['<value>  (let ([r (Var (new-var 'res))]) (values r          `(var [binding ,r '#f])))]
-         ['<effect>                                 (values '<effect>  `(block))]
-         [y                                         (values y          `(block))]))
-     (let* ([key    (AExpr ae0)]
-            [val    (AExpr ae1)]
-            [result (Expr e dest cd)] ; todo : is this correct?
-            [enter  (match cd
-                      ['<return>  `(app ,#'set-continuation-mark       ,key ,val)]
-                      [_          `(app ,#'new-continuation-mark-frame ,key ,val)])]
-            [leave   (match cd
-                       ['<return> `(block)] ; no frame to remove in tail position
-                       [_         `(app ,#'remove-continuation-mark-frame)])])
+         [(or '<value> '<effect>) (let ([r (Var (new-var 'res))])
+                                    (values r `(var [binding ,r '#f])))]
+         [y                         (values y `(block))]))
+     (let* ([key       (AExpr ae0)]
+            [val       (AExpr ae1)]
+            [result    (Expr e dest '<return>)] ; todo : is this correct?
+            [enter     (match cd
+                         ['<return>  `(sif ,_tc
+                                           (app ,#'set-continuation-mark       ,key ,val)
+                                           (app ,#'new-continuation-mark-frame ,key ,val))]
+                         [_          `(app ,#'new-continuation-mark-frame ,key ,val)])]
+            [leave     (match cd
+                         ['<return> `(sif ,_tc
+                                          (block) ; no frame to remove in tail position
+                                          (app ,#'remove-continuation-mark-frame))]
+                         [_         `(app ,#'remove-continuation-mark-frame)])]
+            [return-it (match cd
+                         ['<return> `(return ,dest)]
+                         ['<effect> `(block)]
+                         [_                   dest])])
        `(block
-         ,dest-declaration        ; maybe declare temporary variable
-         (try {,enter             ; add new frame (in non-tail position)
-               ,result}           ; calculate resute
-              (finally  ,leave))  ; remove frame  (in non-tail position)
-         ,dest))])                ; return the result                
+         (var [binding ,#'old_tc ,_tc])
+         ; (app ,#'console.log ,_tc)
+         ,dest-declaration                            ; maybe declare temporary variable
+         (try {,enter                                 ; add new frame (in non-tail position)
+               (:= ,_tc '#t)                          ; an inner wcm is in tail pos (relatively)
+               ; wrap in lambda - since result might have a return
+               (app (lambda () (body ,result '#f)))} ; calculate result
+              (finally
+               (:= ,_tc ,#'old_tc)
+               ,leave))                      ; remove frame  (in non-tail position)
+         ,return-it))])                               ; return the result                
   (Expr2 : Expr  (e  dd [cd #f]) -> Statement ()  ; todo the #f default is a temporary fix
     [,ce (CExpr ce dd cd)]
 
@@ -374,7 +398,7 @@
                                        `(:= ,x (ref ,x0 ',i)))
                                      ...)]
            ; no values are expected
-           ['() (CExpr ce <effect> cd)]))) ; todo: signal error if values are produced
+           ['() (CExpr ce <effect> '<statement>)]))) ; todo: signal error if values are produced
      (let* ([xs         (map Var (append* x**))]
             [undefined* (map (λ(_) #'undefined) xs)]
             [e          (Expr e dd cd)])
@@ -395,7 +419,7 @@
      (define (FillClosure ca dd)
        (nanopass-case (LANF+closure ClosureAllocation) ca
          [(closure ,s ,l ,ae1 ...)          
-          `(begin ,(for/list ([i (in-naturals 2)] [ae (AExpr* ae1)])
+          `(block ,(for/list ([i (in-naturals 2)] [ae (AExpr* ae1)])
                      `(app ,#'array! ,dd ',i ,ae))
                   ...)]))
      ;;      (letrec-values (((even) (closure label_7 odd))
@@ -414,16 +438,16 @@
   (ConvertedAbstraction : ConvertedAbstraction (cab) -> Expr ()
     [(λ ,s (formals (,x ...)) ,e)
      (let* ([x (map Var x)] [σ (Expr e <value> <return>)])
-       `(lambda (,#'_free ,x ...)
+       `(lambda (,#'_free ,_tc ,x ...)
           (body ,σ ,#'void)))] ; TODO TODO ...
     [(λ ,s (formals ,x) ,e)
      (let* ([x (Var x)] [σ (Expr e <value> <return>)])
-       `(lambda (,#'_free ,x)
+       `(lambda (,#'_free ,_tc ,x)
           (body (:= ,x (app ,#'cdr (app ,#'array->list ,#'arguments)))
                 ,σ ,#'void)))]
     [(λ ,s (formals (,x0 ,x1 ... . ,xd)) ,e)
      (let* ([x0 (Var x0)] [x1 (map Var x1)] [xd (Var xd)] [σ (Expr e <value> <return>)])
-       `(lambda (,#'_free ,x0 ,x1 ... ,xd)
+       `(lambda (,#'_free ,_tc ,x0 ,x1 ... ,xd)
           (body (:= ,xd (app ,#'array-end->list ,#'arguments ',(length (cons x0 x1))))
                 ,σ ,#'void)))])
   (GeneralTopLevelForm : GeneralTopLevelForm (g dd) -> ModuleLevelForm ()
@@ -466,8 +490,9 @@
            (app ,#'require '"/Users/soegaard/Dropbox/GitHub/urlang/compiler-rjs/runtime.js"))
          ;; Bind all imported identifiers
          (var [binding ,pr (ref ,RUNTIMES ',pr-str)] ...)
-         ;; Global variabled used by applications as a temporary variable.
-         (var ,f-tmp)
+         ;; Global variables
+         (var ,f-tmp)              ; used by applications to store the function temporarily
+         (var [binding ,_tc '#f]) ; used by wcm (also top-level expressions aren't in tc)
          ;; The result of evaluating this module:
          (define ,result '0) ; todo: make it undefined
          ,t))))

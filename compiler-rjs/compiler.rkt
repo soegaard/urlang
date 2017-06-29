@@ -1,5 +1,5 @@
 #lang racket
-(provide eval)
+(provide eval) 
 (provide (all-defined-out))
 
 ;;;
@@ -236,6 +236,13 @@
            (and (variable? v) (primitive? (variable-id v)))
            (member v primitives))
        #t))
+
+; A few primitives need access to _tc and are therefore wrapped in a closure.
+; This means that applications of these are (app ...) and not (primapp ...).
+(define (special-primitive? x)
+  (cond [(syntax? x)   (special-primitive? (syntax-e x))]
+        [(variable? x) (special-primitive? (variable-id x))]
+        [else          (or (eq? x 'apply))]))
 
 (define (unparse-primitive pr)
   (unparse-variable pr))

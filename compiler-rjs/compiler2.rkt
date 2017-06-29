@@ -214,9 +214,11 @@
   (GeneralTopLevelForm : GeneralTopLevelForm (G) -> GeneralTopLevelForm ())
   (Expr : Expr (E) -> Expr ()
     ; the rule order is important here, since this rule applies in the other cases too    
-    [(app ,s ,x    ,[e1] ...) (guard (primitive? x))  `(primapp   ,s ,x              ,e1 ...)]
-    [(app ,s (λ ,s1 ,[f] ,[e]) ,[e1] ...)             `(closedapp ,s ,`(λ ,s1 ,f ,e) ,e1 ...)]
-    [(app ,s ,[e0] ,[e1] ...)                         `(app       ,s ,e0             ,e1 ...)])
+    [(app ,s ,x    ,[e1] ...) (guard (primitive? x))  (if (special-primitive? x)
+                                                          `(app       ,s ,x              ,e1 ...)
+                                                          `(primapp   ,s ,x              ,e1 ...))]
+    [(app ,s (λ ,s1 ,[f] ,[e]) ,[e1] ...)                 `(closedapp ,s ,`(λ ,s1 ,f ,e) ,e1 ...)]
+    [(app ,s ,[e0] ,[e1] ...)                             `(app       ,s ,e0             ,e1 ...)])
   (TopLevelForm T))
 
 (module+ helpers
@@ -612,7 +614,9 @@
     [,ae                                      (AExpr ae xs)]
     [(if ,s ,[ae0 xs0] ,[e1 xs1] ,[e2 xs2])   (values CE (set-union* (list xs0 xs1 xs2)))]
     [(wcm ,s ,[ae0 xs0] ,[ae1 xs1] ,[e xs2])  (values CE (set-union* (list xs0 xs1 xs2)))]
-    [(app       ,s ,[ae xs] ,[ae1 xs1] ...)   (values CE (set-union* (cons xs xs1)))]
+    [(app       ,s ,[ae xs] ,[ae1 xs1] ...)   (if (special-primitive? ae)
+                                                  (values CE (set-union* xs1))
+                                                  (values CE (set-union* (cons xs xs1))))]
     [(primapp   ,s ,pr      ,[ae1 xs1] ...)   (values CE (set-union* xs1))]
     [(closedapp ,s ,[ab xs] ,[ae1 xs1] ...)   (values CE (set-union* (cons xs xs1)))]
     [(begin     ,s ,[e0 xs0] ,[e1 xs] ...)    (values CE (set-union* (cons xs0 xs)))]
