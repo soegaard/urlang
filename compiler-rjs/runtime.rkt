@@ -1815,11 +1815,23 @@
     ;     (array ht parameterization) or #f.
     ; where ht maps parameter keys to thread cells.
     (define/export (extend-parameterization tagged-p param val)
-      (var [p    (ref tagged-p 1)]
-           [key  (ref param 3)]
-           [cell (array val)]
-           [ht   (array)])
-      (:= ht key cell)      
+      ; there can be several param val pairs here.      
+      (var [args arguments]
+           [n    args.length]
+           [p    (ref tagged-p 1)]
+           [key  #f]
+           [cell #f]
+           [ht   (array)]
+           [i    0]
+           [par  #f]  ; param
+           [v    #f]) ; val
+      (while (< i (- n 1)) ;
+             (:= par (ref args (+ 1 i)))
+             (:= v   (ref args (+ 2 i)))
+             (:= key  (ref par 3))
+             (:= cell (array v))  ; make thread cell
+             (:= ht key cell)
+             (:= i (+ i 2)))
       (array PARAMETERIZATION (array ht p)))
     
       ; p is the result of:

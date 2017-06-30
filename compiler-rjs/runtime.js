@@ -306,7 +306,7 @@ function parameter_p(v){return ((closure_p(v))&&(v[2]===PARAMETER));};
 function get_current_parameterization(){var p=(continuation_mark_set_first(false,parameterization_key,false));return p;};
 function parameterization_p(v){return ((array_p(v))&&(v[0]===PARAMETERIZATION));};
 function current_parameterization(){var p=(continuation_mark_set_first(false,parameterization_key,false));return [PARAMETERIZATION,p];};
-function extend_parameterization(tagged_p,param,val){var p=tagged_p[1],key=param[3],cell=[val],ht=[];(ht[key]=cell);return [PARAMETERIZATION,[ht,p]];};
+function extend_parameterization(tagged_p,param,val){var args=arguments,n=args.length,p=tagged_p[1],key=false,cell=false,ht=[],i=0,par=false,v=false;while((i<(n-1))){(par=args[(1+i)]);(v=args[(2+i)]);(key=par[3]);(cell=[v]);(ht[key]=cell);(i=(i+2));};return [PARAMETERIZATION,[ht,p]];};
 var eof=EOF_OBJECT;
 function eof_object_p(v){return (v===EOF_OBJECT);};
 function string_port_p(p){return ((array_p(p))&&((tag(p))===STRING_PORT));};
