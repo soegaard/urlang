@@ -164,16 +164,33 @@
     (define/export STRING-PORT            (array "string-port"))
     (define/export EOF-OBJECT             (array "eof-object"))
     (define/export CONTINUATION-MARK-SET  (array "continuation-mark-set"))
+    (define/export PARAMETERIZATION       (array "parameterization"))
+
+    (define/export CLOS                   "CLOS") ; easier in code generator
+    (define/export PARAMETER              (array "parameter"))
     
     (define/export VOID (array))    ; singleton
     (define/export NULL (array))    ; singleton
 
     ;;;
-    ;;; GLOBAL VARIABLES
+    ;;; PARAMZ
     ;;;
 
-    (define/export CMS (array (array) NULL))   ; current continuation marks (see section 10.5 below)
-    
+    ; The will eventually be part of #%paramz
+    (define/export parameterization-key (array "parameterization-key"))
+
+    ;;;
+    ;;; GLOBAL VARIABLES
+    ;;;
+    (define TOP-CMS                    (let ([ht (array)])
+                                         (:= ht parameterization-key
+                                             (array PARAMETERIZATION  ; tag
+                                                    (array (array)    ; empty ht
+                                                           #f)))
+                                         (array ht #f)))
+
+    ; note: no tag is needed here, see current-continuation-marks
+    (define/export CMS TOP-CMS)   ; current continuation marks (see section 10.5 below)
     
     ;;;
     ;;; CASE-LAMBDA
@@ -1307,7 +1324,7 @@
     ;;;                 The second argument of label is a flag indicating tail position
     ;;;     value0 ...  are the values of the free variables
     
-    (define/export (closure? v)   (and (Array.isArray v) (= (ref v 0) "CLOS")))    
+    (define/export (closure? v)   (and (Array.isArray v) (= (ref v 0) "CLOS")))
     (define/export (procedure? v) (or (= (typeof v) "function") (closure? v)))
     (define (js-function? v)      (= (typeof v) "function"))
     (define (invoke f) ; variadic arguments
@@ -1673,21 +1690,14 @@
     (define the-empty-continuation-mark-set (array)) ; see section 10.5 on continuation marks
     (define (empty-continuation-mark-set? v) (= v the-empty-continuation-mark-set))
     (define/export (new-continuation-mark-frame key val)
-      ;(console.log "new-continuation-mark-frame:")
-      ;(console.log (+ "key: " key))
-      ;(console.log (+ "val: " val))
       (var [frame (object)])
       (:= frame key val)
       (:= CMS (array frame CMS)))
     (define/export (set-continuation-mark key val)
-      ;(console.log "set-continuation-mark:")
-      ;(console.log (+ "key: " key))
-      ;(console.log (+ "val: " val))
       (var [frame (ref CMS 0)])
       (:= frame key val)
       CMS)
     (define/export (remove-continuation-mark-frame)
-      ;(console.log "remove-continuation-mark-frame:")
       (:= CMS (ref CMS 1)))
     (define/export (continuation-mark-set-first mark-set key-v none-v prompt-tag)
       ; mark-set is either #f or is a continuation-mark-set
@@ -1698,8 +1708,7 @@
            [ms        (ref tagged-ms 1)]
            [val       undefined]
            [ht        #f])
-      (while (not (= ms NULL))
-             (console.log ms)
+      (while ms
              (:= ht  (ref ms 0))
              (:= val (ref ht key-v))
              (sif (= val undefined)
@@ -1718,7 +1727,7 @@
       ;(console.log "continuation-marks:")
       ;(console.log CMS)
       ; TODO: prompt-tag is ignored here
-      (array CONTINUATION-MARK-SET CMS))    
+      (array CONTINUATION-MARK-SET CMS))
     (define/export (continuation-mark-set->list mark-set key-v prompt-tag)
       ;(console.log "continuation-mark-set->list:")
       ;(console.log mark-set)
@@ -1735,14 +1744,93 @@
                   (:= xs (cons val xs)))
              (:= ms (ref ms 1)))
       (reverse xs)) ; todo: it would be better to build in the correct order ...
-  
 
     ;;;
     ;;; Concurrency and Parallelism
     ;;;
 
     ;;; 11.3.2 Parameters
+    ; A parameter is a procedure. It is represented as a special type of closure.
+    ;         {array CLOS label PARAMETER key guard}
+    ; where
+    ;     label is a JavaScript function 
+    ;     key   is used to locate the parameter in a parameterization
+    ;     guard is #f or the supplied guard procedure
 
+    ; An untagged parameterization is either
+    ;     (array ht parameterization) or #f.
+    ; where ht maps parameter keys to thread cells.
+    (define (find-parameter-cell tagged-parameterization key)
+      (var [p  (and      tagged-parameterization
+                    (ref tagged-parameterization 1))] ; remove tag
+           [ht #f]
+           [c  #f])
+      (while p
+             (:= ht (ref p 0))
+             (:= c  (ref ht key))
+             (sif (= c undefined)
+                  (block)
+                  (return c))
+             (:= p  (ref p 1)))
+      #f) ; not found
+    
+    (define parameter-count 0)
+    (define/export (make-parameter v opt-guard)
+      ; guard is optional, defaults to #f
+      (var [guard (if (= opt-guard undefined) #f opt-guard)]
+           [key   (array (+ "parameter-key-" parameter-count))] ; allocates a new key
+           [lab   #f])
+      (+= parameter-count 1)
+      (:= lab (λ (param tc opt-val) ; 0 or 1 arguments
+                (var [n arguments.length]
+                     [p (continuation-mark-set-first #f parameterization-key #f)]
+                     [c (find-parameter-cell p key)]
+                     [ht #f])
+                (case n                      
+                  [(2) (if c (ref c 0) v)]
+                  [(3) (cond
+                         [c    (:= c 0 opt-val) VOID]
+                         [else
+                          ; can't postpone allocating a cell any longer
+                          (:= c  (array opt-val))
+                          (:= ht (ref (ref (ref (ref TOP-CMS 0) parameterization-key) 1) 0))
+                          (:= ht key c)
+                          VOID])])))
+      (array CLOS lab PARAMETER key guard))
+
+    (define/export (parameter? v)
+      (and (closure? v) (= (ref v 2) PARAMETER)))
+
+    (define (get-current-parameterization)
+      (var [p (continuation-mark-set-first #f parameterization-key #f)])
+      p)
+
+    (define/export (parameterization? v)
+      (and (array? v) (= (ref v 0) PARAMETERIZATION)))
+    
+    (define/export (current-parameterization)
+      (var [p (continuation-mark-set-first #f parameterization-key #f)])
+      {array PARAMETERIZATION p})      
+    ; An untagged parameterization is either
+    ;     (array ht parameterization) or #f.
+    ; where ht maps parameter keys to thread cells.
+    (define/export (extend-parameterization tagged-p param val)
+      (var [p    (ref tagged-p 1)]
+           [key  (ref param 3)]
+           [cell (array val)]
+           [ht   (array)])
+      (:= ht key cell)      
+      (array PARAMETERIZATION (array ht p)))
+    
+      ; p is the result of:
+      ;    (#%app continuation-mark-set-first '#f parameterization-key)
+      ; optional arguments:
+      ;    parameter1 new-value1 parameter2 new-value 2 ...
+      
+
+    
+      
+    
     ; The form `parameterize` is defined racket/more-scheme.rkt.
     ; The parameterization is stored using continuation marks.
     ; 
@@ -2053,6 +2141,8 @@
     (define (str-char v)                (+ "#\\\\" (ref v 1)))
     (define (str-undefined)             "#<js-undefined>")
     (define (str-continuation-mark-set v) (console.log v) "#<continuation-mark-set>")
+    (define (str-parameterization v)      (console.log v) "#<parameterization>")
+    (define (str-parameter v)             (console.log v) "#<parameter>")
     (define/export (str v)
       (cond
         [(null? v)                     (str-null)]
@@ -2072,6 +2162,8 @@
         [(struct? v)                   (str-struct v)]
         [(= v undefined)               (str-undefined)]
         [(continuation-mark-set? v)    (str-continuation-mark-set v)]
+        [(parameterization? v)         (str-parameterization v)]
+        [(parameter? v)                (str-parameter v)]
         [#t                            (console.log v)
                                        "str - internal error"]))
 

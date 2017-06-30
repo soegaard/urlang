@@ -1,6 +1,5 @@
 #lang racket
  
-
 ;;; TODO
 ; Handle an '<effect> destination in wcm
 ;    (begin (with-continuation-mark 1 2 (with-continuation-mark 1 3 (current-continuation-marks))) 42)
@@ -30,7 +29,6 @@
        `(block (var ,x* ...)   ; declare
                ,init ...       ; initialize
                ,e))]
-
 
 (module+ test (require rackunit))
 (require nanopass/base)
@@ -143,6 +141,7 @@
 (define <return> '<return>)
 (define <expr>   '<expr>)
 (define <stat>   '<stat>)
+; identifier used to hold tail call flag
 (define _tc      #'_tc)
 
 (define-pass generate-ur : LANF+closure (T) -> ur-Lur ()
@@ -307,7 +306,7 @@
      ; NOTE: Only one function application is active at a time, so we can
      ;       reuse the variable holding the function f-tmp.
      (let* ([f    f-tmp]
-            [tc   (eq? cd '<return?)]
+            [tc   (eq? cd '<return>)]
             [work `(if (app ,#'closure? ,f)
                        (app ,(~clos-label f) ,f ',tc ,(AExpr* ae1) ...)
                        (app ,f ,(AExpr* ae1) ...))])

@@ -2,7 +2,7 @@
 (provide eval) 
 (provide (all-defined-out))
 
-;;;
+;;; 
 ;;; TODO
 ;;;
 
@@ -29,12 +29,12 @@
 ; DONE       srcloc, srcloc->string
 ; TODO       store source locations for each application, etc ...
 ; CLOSE  9. tco (trampoline)
-;       10. with-continuation-mark
+; DONE  10. with-continuation-mark
 ;       11. parameters
 ;       12. exceptions
 ;       13. error checking
 ;             - applications of non-procedures
-;             - arities
+;             - arities  
 ;             - wrong number of return values
 ;       14. top-level-namespaces
 ;       15. modules
@@ -42,6 +42,7 @@
 ;       18. top-level requires
 ;       19. #%variable-reference
 ;       20. test suite
+;       21. keywords
 
 ;;;
 ;;; NOTES
@@ -71,8 +72,9 @@
   racket/syntax
   (except-in syntax/parse str) ; the identifier str is used in the runtime 
   (rename-in racket/match [match Match])
-  (only-in srfi/1 list-index))
-
+  (only-in srfi/1 list-index)
+  '#%paramz) ; contains the identifier parameterization-key
+  
 ;;;
 ;;; EXPANSION
 ;;;

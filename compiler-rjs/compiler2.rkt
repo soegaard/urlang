@@ -13,7 +13,8 @@
   racket/syntax
   (except-in syntax/parse str) ; the identifier str is used in the runtime 
   (rename-in racket/match [match Match])
-  (only-in srfi/1 list-index))
+  (only-in srfi/1 list-index)
+  '#%paramz)  
 
 ;;;
 ;;; ASSIGNMENT CONVERSION
@@ -612,9 +613,9 @@
     [(top ,s ,x)          (values AE empty-set)])
   (CExpr : CExpr (CE xs) -> CExpr (xs)
     [,ae                                      (AExpr ae xs)]
-    [(if ,s ,[ae0 xs0] ,[e1 xs1] ,[e2 xs2])   (values CE (set-union* (list xs0 xs1 xs2)))]
-    [(wcm ,s ,[ae0 xs0] ,[ae1 xs1] ,[e xs2])  (values CE (set-union* (list xs0 xs1 xs2)))]
-    [(app       ,s ,[ae xs] ,[ae1 xs1] ...)   (if (special-primitive? ae)
+    [(if  ,s ,[ae0 xs0] ,[e1  xs1] ,[e2 xs2]) (values CE (set-union* (list xs0 xs1 xs2)))]
+    [(wcm ,s ,[ae0 xs0] ,[ae1 xs1] ,[e  xs2]) (values CE (set-union* (list xs0 xs1 xs2)))]
+    [(app ,s ,[ae  xs]  ,[ae1 xs1] ...)       (if (special-primitive? ae)
                                                   (values CE (set-union* xs1))
                                                   (values CE (set-union* (cons xs xs1))))]
     [(primapp   ,s ,pr      ,[ae1 xs1] ...)   (values CE (set-union* xs1))]
