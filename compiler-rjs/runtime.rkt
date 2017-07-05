@@ -973,9 +973,6 @@
     (define/export (symbol<? a-sym b-sym)
       (string<? (symbol->string a-sym) (symbol->string b-sym)))
     
-    (define/export (error who msg)
-      (console.log (+ "error: " who ": " msg)))
-    
     ;;;
     ;;; 4.8 Keywords
     ;;;
@@ -1672,16 +1669,53 @@
       ; opt-barrier = optional predicate  TODO ignored
       (throw-it v))
 
-    ; error
+    (define/export (raise-argument-error name expected v-or-bad-pos opt-v*)
+      (if (= opt-v* undefined)
+          (raise-argument-error-3 name expected v-or-bad-pos)
+          (raise-argument-error-4 name expected v-or-bad-pos opt-v*)))
+    (define (raise-argument-error-3 name expected v)
+      ; TODO: check input types
+      (var [n (or name "raise-argument-error")]
+           [msg (+ (str n) ": contract violation\n"
+                   "  expected: " (str expected display-mode) "\n"
+                   "  given: "    (str v display-mode)        "\n")])
+      (raise (exn:fail:contract msg (current-continuation-marks))))
+    (define (raise-argument-error-4 name expected bad-pos opt-v*)
+      (raise "raise-argument-error-4 - todo"))
+
+    (define/export (error a0 a1 a2 more)
+      (var [args arguments] [n args.length])
+      (cond
+        [(and (= n 1) (symbol? a0))  (error-sym args)]
+        [(and (= n 1) (string? a0))  (error-msg args)]
+        [(string? a0)                (error-msg args)]
+        [(symbol? a0)                (error-src args)]
+        [else                        (error (string->symbol "error")
+                                            "expected symbol or string as first argument")]))
+    (define (error-sym args)
+      (var [sym (ref args 0)])
+      (raise (exn:fail (+ "error: " (str (symbol->string sym) display-mode))
+                       (current-continuation-marks))))
+    (define (error-msg args)
+      (var [xs  (for/array #:length args.length ([v in-array args]) (str v write-mode))]
+           [msg (xs.join " ")])
+      (raise (exn:fail msg (current-continuation-marks))))
+    (define (error-src args)
+      (var [xs  (for/array #:length args.length ([v in-array args]) (str v write-mode))]
+           [msg (xs.join " ")])
+      (raise (exn:fail (+ "TODO - implement format - " msg) (current-continuation-marks))))
+          
     ; raise-user-error
-    ; raise-argument-error
     ; raise-result-error
     ; raise-arguments-error
     ; raise-range-error
     ; raise-type-error
     ; raise-mismatch-error
     ; raise-arity-error
-    ; raise-syntax-error
+    
+    (define/export (raise-syntax-error name message opt-expr opt-sub-expr opt-extra-sources)
+      ; Creates an exn:fail:syntax value and raises it as an exception.
+      (raise (exn:fail:syntax message (current-continuation-marks))))
 
     ;;; 10.2.3 Handling Exceptions
     
@@ -1778,8 +1812,7 @@
     (define/export (exn message continuation-marks)
       (array STRUCT exn-struct-type-descriptor
              message continuation-marks))
-    (define/export kernel:exn exn)
-    
+    (define/export kernel:exn exn)    
     ; (struct exn:fail exn ())
     (define exn:fail-struct-type-descriptor
       (array STRUCT-TYPE-DESCRIPTOR "exn:fail" exn-struct-type-descriptor
@@ -1788,7 +1821,6 @@
       (array STRUCT exn:fail-struct-type-descriptor
              message continuation-marks))
     (define/export kernel:exn:fail exn:fail)
-
     ; (struct exn:fail:contract exn:fail ())
     (define exn:fail:contract-struct-type-descriptor
       (array STRUCT-TYPE-DESCRIPTOR "exn:fail:contract" exn:fail-struct-type-descriptor
@@ -1796,8 +1828,7 @@
     (define/export (exn:fail:contract message continuation-marks)
       (array STRUCT exn:fail:contract-struct-type-descriptor
              message continuation-marks))
-    (define/export kernel:exn:fail:contract exn:fail:contract)
-    
+    (define/export kernel:exn:fail:contract exn:fail:contract)    
     ; (struct exn:fail:contract:arity exn:fail:contract ())
     (define exn:fail:contract:arity-struct-type-descriptor
       (array STRUCT-TYPE-DESCRIPTOR "exn:fail:contract:arity" exn:fail:contract-struct-type-descriptor
@@ -1806,7 +1837,6 @@
       (array STRUCT exn:fail:contract:arity-struct-type-descriptor
              message continuation-marks))
     (define/export kernel:exn:fail:contract:arity exn:fail:contract:arity)
-
     ; (struct exn:fail:contract:divide-by-zero exn:fail:contract ())
     (define exn:fail:contract:divide-by-zero-struct-type-descriptor
       (array STRUCT-TYPE-DESCRIPTOR
@@ -1816,12 +1846,28 @@
       (array STRUCT exn:fail:contract:divide-by-zero-struct-type-descriptor
              message continuation-marks))
    (define/export kernel:exn:fail:contract:divide-by-zero exn:fail:contract:divide-by-zero)
+    ; TODO (struct exn:fail:contract:non-fixnum-result exn:fail:contract ())
+    ; TODO (struct exn:fail:contract:continuation exn:fail:contract ()
+    ; TODO (struct exn:fail:contract:variable exn:fail:contract (id))    
+    ; (struct exn:fail:syntax exn:fail (exprs) 
+    (define exn:fail:syntax-struct-type-descriptor
+      (array STRUCT-TYPE-DESCRIPTOR "exn:fail:syntax" exn:fail-struct-type-descriptor
+             3 (list 0 1 2) NULL NULL #f #f NULL #f "make-exn:fail:syntax"))
+    (define/export (exn:fail:syntax message continuation-marks exprs)
+      (array STRUCT exn:fail:syntax-struct-type-descriptor
+             message continuation-marks exprs))
+    ; (struct exn:fail:syntax:unbound exn:fail:syntax ())
+    (define exn:fail:syntax:unbound-struct-type-descriptor
+      (array STRUCT-TYPE-DESCRIPTOR "exn:fail:syntax:unbound" exn:fail:syntax-struct-type-descriptor
+             3 (list 0 1 2) NULL NULL #f #f NULL #f "make-exn:fail:syntax:unbound"))
+    (define/export (exn:fail:syntax:unbound message continuation-marks exprs)
+      (array STRUCT exn:fail:syntax:unbound-struct-type-descriptor
+             message continuation-marks exprs))
+    ; TODO more ...
     
     ;;       (array STRUCT-TYPE-DESCRIPTOR name super-type total-field-count
     ;;              init-field-indices auto-field-indices auto-field-values
     ;;              properties inspector immutables guard constructor-name)
-
-
     
     ;; Note: this is in #%kernel
     

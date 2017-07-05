@@ -1825,7 +1825,7 @@
                        (expand-syntax #'exn:fail)
                        (expand-syntax #'exn:fail:contract)
                        (expand-syntax #'exn:fail:contract:arity)
-                       (expand-syntax #'exn:fail:contract:divide-by-zero)))
+                       (expand-syntax #'exn:fail:contract:divide-by-zero)))                       
     (global! (second (syntax->list (expand-syntax (datum->syntax #'here '(in-range 10))))))    
     ; HACK ENDS
     ; Also we need `else` to be know for use in macros
