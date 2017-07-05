@@ -1,5 +1,5 @@
 #lang racket
-(provide eval) 
+(provide eval)   
 (provide (all-defined-out))
 
 ;;; 
@@ -74,7 +74,7 @@
   (rename-in racket/match [match Match])
   (only-in srfi/1 list-index)
   '#%paramz) ; contains the identifier parameterization-key
-  
+   
 ;;;
 ;;; EXPANSION
 ;;;
@@ -232,6 +232,7 @@
   ; these are not primitives in Racket, but are reserved names in Urlang
   not)
 
+(define macro-introduced '(call-handled-body))
 
 (define (primitive? v)
   (and (or (and (syntax? v)   (primitive? (syntax-e v)))
@@ -244,7 +245,7 @@
 (define (special-primitive? x)
   (cond [(syntax? x)   (special-primitive? (syntax-e x))]
         [(variable? x) (special-primitive? (variable-id x))]
-        [else          (or (eq? x 'apply))]))
+        [else          (or (memq x '(apply call-handled-body)))]))
 
 (define (unparse-primitive pr)
   (unparse-variable pr))

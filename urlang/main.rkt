@@ -1693,7 +1693,13 @@
       (displayln "global:")           (displayln (map syntax-e (globals)))
       (displayln "var introduced:")   (displayln (map syntax-e (vars)))
       (displayln "unbound variable:") (displayln x)
-      (raise-syntax-error 'α-rename "(urlang) unbound variable" x))
+      ; HACK - only in place until macros are introduced      
+      (define macro-introduced-identifiers
+        '(select-handler/no-breaks ; from racket/private/more-scheme produced by with-handlers
+          call-handled-body))
+      (if (memq (syntax-e x) macro-introduced-identifiers)
+          x
+          (raise-syntax-error 'α-rename "(urlang) unbound variable" x)))
     (define pre-body-ρ (make-parameter #f)))
   (Annotation : Annotation (an) -> Annotation ()
     [(export  ,x   ...)                      an]
@@ -1802,9 +1808,27 @@
     (global! #'unsafe-fx+)
     (global! #'unsafe-fx-)
     (global! #'unsafe-fx*)
+    ; (global! #'select-handler/no-breaks) ; in expansion of with-handlers
+    (global! ;select-handler/no-breaks
+     (second (syntax->list
+              (third (syntax->list
+                      (fourth (syntax->list
+                               (last (syntax->list
+                                      (last (syntax->list
+                                             (expand-syntax #'(with-handlers ([f g]) b)))))))))))))
+    (global! ; call-handled-body
+     (second (syntax->list
+              (last (syntax->list
+                     (last (syntax->list
+                            (expand-syntax #'(with-handlers ([f g]) b)))))))))
+    (map global! (list (expand-syntax #'exn)
+                       (expand-syntax #'exn:fail)
+                       (expand-syntax #'exn:fail:contract)
+                       (expand-syntax #'exn:fail:contract:arity)
+                       (expand-syntax #'exn:fail:contract:divide-by-zero)))
     (global! (second (syntax->list (expand-syntax (datum->syntax #'here '(in-range 10))))))    
     ; HACK ENDS
-    ; Also we need else to be know for use in macros
+    ; Also we need `else` to be know for use in macros
     (Module U)))
 
 ;;;
@@ -2145,8 +2169,8 @@
 ; Node is used.
 
 (define (run js-tree [delete-tmp? (current-urlang-delete-tmp-file?)])
-  (define tmp (make-temporary-file "tmp~a.js"))
-  ; (displayln (path->string tmp))
+  (define tmp (make-temporary-file "tmp~a.js"))  
+  (displayln (path->string tmp))
   (with-output-to-file tmp
     (λ () (emit js-tree))
     #:exists 'replace)

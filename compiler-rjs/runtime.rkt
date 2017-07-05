@@ -1,11 +1,6 @@
 #lang racket
 (require urlang urlang/extra urlang/for
          syntax/parse syntax/stx)
-;;;
-;;; NOTE: When you add a new primitive using define/export,
-;;;       Add a space to compiler.rkt then run both
-;;;       compiler.rkt and compiler2.rkt before running compiler3.rkt.
-
 
 ;;; This file contains the runtime library for the
 ;;; Racket to JavaScript compiler in urlang/compiler-rjs.
@@ -15,7 +10,6 @@
 ;;; Neither the compiler nor this runtime is needed in order to use Urlang.
 ;;; Currently this file contains the largest example of Urlang.
 
-
 ;;;
 ;;; NOTES
 ;;;
@@ -23,7 +17,11 @@
 ; Primitives are representation as javascript functions.
 ; Closures are represented as arrays whose first element is a tag.
 ; See "4.17 Procedures" below for details on the representation of closures.
-; 
+
+; When you add a new primitive using define/export,
+; Add a space to compiler.rkt then run both
+; compiler.rkt and compiler2.rkt before running compiler3.rkt.
+
 
 ;;;
 ;;; TODO
@@ -177,16 +175,25 @@
     ;;;
 
     ; The will eventually be part of #%paramz
-    (define/export parameterization-key (array "parameterization-key"))
-
+    (define/export parameterization-key  (array "parameterization-key"))
+    (define/export exception-handler-key (array "exception-handler-key"))
+    ; Note: breaks aren't supported by this compiler, but we need to fake 
+    ;       support in order for exceptions to work.
+    (define/export break-enabled-key     (array "break-enabled-key"))
+    
     ;;;
     ;;; GLOBAL VARIABLES
     ;;;
     (define TOP-CMS                    (let ([ht (array)])
+                                         ; ht holds the initial marks
                                          (:= ht parameterization-key
                                              (array PARAMETERIZATION  ; tag
                                                     (array (array)    ; empty ht
                                                            #f)))
+                                         (:= ht break-enabled-key
+                                             (make-thread-cell #f))
+                                         
+                                         
                                          (array ht #f)))
 
     ; note: no tag is needed here, see current-continuation-marks
@@ -1474,10 +1481,10 @@
          (str (ref s 1)) " " (str (ref s 2))  " " (str (ref s 3)) " " (str (ref s 4)) " "
          (str (ref s 5)) " " (str (ref s 6))  " " (str (ref s 7)) " " (str (ref s 8)) " "
          (str (ref s 9)) " " (str (ref s 10)) " " (str (ref s 11)) ")"))
-    (define/export (str-struct s)
-      (var [n s.length] [fields (for/array ([i in-range 2 n]) (ref s i))])
-      (+ "(struct " (str (ref s 1)) " " (fields.join " ") ")"))
-    
+    (define/export (str-struct s opt-mode)
+      (var [mode (if (= opt-mode undefined) write-mode opt-mode)]
+           [n s.length] [fields (for/array ([i in-range 2 n]) (str (ref s i) mode))])
+      (+ "#(struct " (str (ref s 1) mode) " " (fields.join " ") ")"))
     
     (define/export (make-struct-type-descriptor
                     name super-type init-field-count auto-field-count
@@ -1638,7 +1645,93 @@
         [#t             (receiver.apply #f vals)]))
     
     ;;; 10.2 Exceptions
+
+    ;;; 10.2.2 Raising Exceptions
+
+    (define (throw-it e) (throw e) VOID)
+    (define/export (raise v opt-barrier)
+      ; v           = the exception being raised
+      ; opt-barrier = optional predicate  TODO ignored
+      (throw-it v))
+
+    ; error
+    ; raise-user-error
+    ; raise-argument-error
+    ; raise-result-error
+    ; raise-arguments-error
+    ; raise-range-error
+    ; raise-type-error
+    ; raise-mismatch-error
+    ; raise-arity-error
+    ; raise-syntax-error
+
+    ;;; 10.2.3 Handling Exceptions
     
+    ; call-with-exception-handler
+    ; uncaught-exception-handler
+    ; with-handlers
+    ; with-handlers*
+
+    ; The form  with-handlers  expand into uses of
+    ; call-handled-body  and  select-handler/no-breaks.
+    ; These are defined in racket/private/more-scheme.rkt.
+    ; We implement them here, until modules are supported.
+
+    (define/export call-handled-body (array "CLOS" call-handled-body-label))
+    (define/export (call-handled-body-label free tc bpz handle-proc body-thunk)
+      ; Note: Original in racket/private/more-scheme.rkt
+      ; Note: Since  call-handled-body  is represented as a closure, it
+      ;       is added as a special-primitive in compiler.rkt.
+      ; bpz         = the break parameterization (ignored here)
+      ; handle-proc =
+      ; Note: In real racket, this  call-handled-body  disables breaks
+      ;       before the handler is called (and enables them after).
+      ;       Since we don't support breaks, this definition can be
+      ;       much simpler.
+
+      ; We basically need to do the following:
+      ; 
+      ;     (with-continuation-mark
+      ;       exception-handler-key (lambda (e) (abort-current-continuation handler-prompt-key e))
+      ;       (body-thunk))
+      (var [key exception-handler-key]
+           [val throw-it])               ; (abort-current-continuation-label handler-prompt-key e)
+          
+      (try {; install new exception-handler
+            (sif tc
+                 (set-continuation-mark       key val)
+                 (new-continuation-mark-frame key val))
+            ;
+            ;(console.log "call-handled-body-label:")
+            ;(console.log body-thunk)
+            ; call body-thunk
+            (return
+             (if (closure? body-thunk)
+                 ((ref body-thunk 1) body-thunk #t)
+                 (body-thunk)))}
+           (catch e
+             (return ((ref handle-proc 1) handle-proc #t e)))
+           (finally
+            ; remove the exception-handler
+            (sif tc
+                 (block)
+                 (remove-continuation-mark-frame))))
+      VOID)
+
+    (define/export (select-handler/no-breaks e bpz l)
+      (var [h #f])
+      ; TODO: we ignore breaks (ok in the browser)
+      ; l   is a list of (cons handler-predicate handler)
+      ; bpz is the break-parameterization (ignored here)
+      (if (null? l)
+          (raise e)
+          (if ((car (car l)) e) ; call predicate
+              (begin
+                (:= h (cdr (car l)))
+                ((ref h 1) h #t e)) ; call handler (a closure)
+              ; try the next handler:
+              (select-handler/no-breaks e bpz (cdr l)))))
+  
     ;;; 10.2.5 Built-in Exception Types
     
     ;; (struct srcloc (source line column position span)
@@ -1652,6 +1745,58 @@
     ;;       (array STRUCT-TYPE-DESCRIPTOR name super-type total-field-count
     ;;              init-field-indices auto-field-indices auto-field-values
     ;;              properties inspector immutables guard constructor-name)
+
+    ; (struct exn (message continuation-marks))
+    (define exn-struct-type-descriptor
+      (array STRUCT-TYPE-DESCRIPTOR "exn" #f
+             2 (list 0 1) NULL NULL #f #f NULL #f "make-exn"))
+    (define/export (exn message continuation-marks)
+      (array STRUCT exn-struct-type-descriptor
+             message continuation-marks))
+    (define/export kernel:exn exn)
+    
+    ; (struct exn:fail exn ())
+    (define exn:fail-struct-type-descriptor
+      (array STRUCT-TYPE-DESCRIPTOR "exn:fail" exn-struct-type-descriptor
+             2 (list 0 1) NULL NULL #f #f NULL #f "make-exn:fail"))
+    (define/export (exn:fail message continuation-marks)
+      (array STRUCT exn:fail-struct-type-descriptor
+             message continuation-marks))
+    (define/export kernel:exn:fail exn:fail)
+
+    ; (struct exn:fail:contract exn:fail ())
+    (define exn:fail:contract-struct-type-descriptor
+      (array STRUCT-TYPE-DESCRIPTOR "exn:fail:contract" exn:fail-struct-type-descriptor
+             2 (list 0 1) NULL NULL #f #f NULL #f "make-exn:fail:contract"))
+    (define/export (exn:fail:contract message continuation-marks)
+      (array STRUCT exn:fail:contract-struct-type-descriptor
+             message continuation-marks))
+    (define/export kernel:exn:fail:contract exn:fail:contract)
+    
+    ; (struct exn:fail:contract:arity exn:fail:contract ())
+    (define exn:fail:contract:arity-struct-type-descriptor
+      (array STRUCT-TYPE-DESCRIPTOR "exn:fail:contract:arity" exn:fail:contract-struct-type-descriptor
+             2 (list 0 1) NULL NULL #f #f NULL #f "make-exn:fail:contract:arity"))
+    (define/export (exn:fail:contract:arity message continuation-marks)
+      (array STRUCT exn:fail:contract:arity-struct-type-descriptor
+             message continuation-marks))
+    (define/export kernel:exn:fail:contract:arity exn:fail:contract:arity)
+
+    ; (struct exn:fail:contract:divide-by-zero exn:fail:contract ())
+    (define exn:fail:contract:divide-by-zero-struct-type-descriptor
+      (array STRUCT-TYPE-DESCRIPTOR
+             "exn:fail:contract:divide-by-zero" exn:fail:contract-struct-type-descriptor
+             2 (list 0 1) NULL NULL #f #f NULL #f "make-exn:fail:contract:divide-by-zero"))
+    (define/export (exn:fail:contract:divide-by-zero message continuation-marks)
+      (array STRUCT exn:fail:contract:divide-by-zero-struct-type-descriptor
+             message continuation-marks))
+   (define/export kernel:exn:fail:contract:divide-by-zero exn:fail:contract:divide-by-zero)
+    
+    ;;       (array STRUCT-TYPE-DESCRIPTOR name super-type total-field-count
+    ;;              init-field-indices auto-field-indices auto-field-values
+    ;;              properties inspector immutables guard constructor-name)
+
+
     
     ;; Note: this is in #%kernel
     
@@ -1749,6 +1894,13 @@
     ;;; Concurrency and Parallelism
     ;;;
 
+    ;;; 11.3.1 Thread Cells
+
+    (define (make-thread-cell v opt-preserved)
+      ; TODO
+      (array v))
+      
+
     ;;; 11.3.2 Parameters
     ; A parameter is a procedure. It is represented as a special type of closure.
     ;         {array CLOS label PARAMETER key guard}
@@ -1815,7 +1967,10 @@
     ;     (array ht parameterization) or #f.
     ; where ht maps parameter keys to thread cells.
     (define/export (extend-parameterization tagged-p param val)
-      ; there can be several param val pairs here.      
+      ; tagged-p is the result of:
+      ;    (continuation-mark-set-first '#f parameterization-key)
+      ; optional arguments:
+      ;    parameter1 new-value1 parameter2 new-value 2 ...
       (var [args arguments]
            [n    args.length]
            [p    (ref tagged-p 1)]
@@ -1833,15 +1988,6 @@
              (:= ht key cell)
              (:= i (+ i 2)))
       (array PARAMETERIZATION (array ht p)))
-    
-      ; p is the result of:
-      ;    (#%app continuation-mark-set-first '#f parameterization-key)
-      ; optional arguments:
-      ;    parameter1 new-value1 parameter2 new-value 2 ...
-      
-
-    
-      
     
     ; The form `parameterize` is defined racket/more-scheme.rkt.
     ; The parameterization is stored using continuation marks.
@@ -1967,16 +2113,16 @@
     ;;;
     
     (define/export (displayln v)
-      (console.log (str v)))
+      (console.log (str v display-mode)))
     
     (define/export (newline)
       (console.log ""))
     
     (define/export (display v)
-      (process.stdout.write (str v)))
+      (process.stdout.write (str v display-mode)))
     
     (define/export (write v)
-      (process.stdout.write (str v)))
+      (process.stdout.write (str v write-mode)))
     
     (define/export (console-log str)
       (console.log str))
@@ -2129,49 +2275,71 @@
     
     ;;; FORMAT
     ;; The str functions convert values into strings.
+    (define write-mode   0)
+    (define display-mode 1)
+    (define print-mode   2) ; TODO
     (define (str-null)      "()")
     (define (str-number v)  (v.toString))
-    (define (str-string v)
-      (var [s (if (mutable-string? v) (string->immutable-string v) v)])
-      (+ "\\\"" s "\\\""))
-    (define (str-list v)
-      (var [a (for/array ([x in-list v]) (str x))])
+    (define (str-string v opt-mode)
+      (var [mode (if (= opt-mode undefined) write-mode opt-mode)]
+           [s    (if (mutable-string? v) (string->immutable-string v) v)])
+      (cond
+        [(= mode write-mode)   (+ "\\\"" s "\\\"")]
+        [(= mode display-mode) s]
+        [else                  s]))
+    (define (str-list v opt-mode)
+      (var [mode (if (= opt-mode undefined) write-mode opt-mode)]
+           [a (for/array ([x in-list v]) (str x mode))])
       (+ "(" (a.join " ") ")"))
-    (define (str-vector v)
-      (var [a (for/array ([x in-vector v]) (str x))])
+    (define (str-vector v opt-mode)
+      (var [mode (if (= opt-mode undefined) write-mode opt-mode)]
+           [a (for/array ([x in-vector v]) (str x mode))])
       (+ "#(" (a.join " ") ")"))
-    (define (str-pair v)   (+ "(" (str (car v)) " . " (str (cdr v)) ")"))
+    (define (str-pair v opt-mode)
+      (var [mode (if (= opt-mode undefined) write-mode opt-mode)])
+      (+ "(" (str (car v) mode) " . " (str (cdr v) mode) ")"))
     (define (str-boolean v)
       (cond [(= v #t) "#t"]
             [(= v #f) "#f"]
             [#t       (+ "str -internal error got: " v)]))
-    (define (str-symbol  v) (string-append "'"  (string->immutable-string (symbol->string v))))
+    (define (str-symbol  v)             (string->immutable-string (symbol->string v)))
     (define (str-keyword v)             (+ "#:" (ref v 1)))
     (define (str-void v)                "#<void>")
-    (define (str-box v)                 (+ "#&" (str (unbox v))))
-    (define (str-box-immutable v)       (+ "#&" (str (unbox v))))
-    (define (str-char v)                (+ "#\\\\" (ref v 1)))
-    (define (str-undefined)             "#<js-undefined>")
-    (define (str-continuation-mark-set v) (console.log v) "#<continuation-mark-set>")
-    (define (str-parameterization v)      (console.log v) "#<parameterization>")
-    (define (str-parameter v)             (console.log v) "#<parameter>")
-    (define/export (str v)
+    (define (str-box v opt-mode)
+      (var [mode (if (= opt-mode undefined) write-mode opt-mode)])
+      (+ "#&" (str (unbox v) mode)))
+    (define (str-box-immutable v opt-mode)
+      (var [mode (if (= opt-mode undefined) write-mode opt-mode)])
+      (+ "#&" (str (unbox v) mode)))
+    (define (str-char v opt-mode)
+      (var [mode (if (= opt-mode undefined) write-mode opt-mode)]
+           [t    (ref v 1)])
+      (cond
+        [(= mode write-mode)   (+ "#\\\\" t)]
+        [(= mode display-mode) t]
+        [else                  t]))
+    (define (str-undefined)               "#<js-undefined>")
+    (define (str-continuation-mark-set v) "#<continuation-mark-set>")
+    (define (str-parameterization v)      "#<parameterization>")
+    (define (str-parameter v)             "#<parameter>")
+    (define/export (str v opt-mode)
+      (var [mode (if (= opt-mode undefined) write-mode opt-mode)])
       (cond
         [(null? v)                     (str-null)]
-        [(string? v)                   (str-string v)]
-        [(number? v)                   (str-number v)]
-        [(list? v)                     (str-list v)]
-        [(pair? v)                     (str-pair v)]
-        [(vector? v)                   (str-vector v)]
-        [(boolean? v)                  (str-boolean v)]
-        [(symbol? v)                   (str-symbol v)]
-        [(keyword? v)                  (str-keyword v)]
-        [(void? v)                     (str-void v)]
-        [(immutable-box? v)            (str-box-immutable v)]
-        [(box? v)                      (str-box v)]        
-        [(char? v)                     (str-char v)]
+        [(string? v)                   (str-string                 v mode)]
+        [(number? v)                   (str-number                 v)]
+        [(list? v)                     (str-list                   v mode)]
+        [(pair? v)                     (str-pair                   v mode)]
+        [(vector? v)                   (str-vector                 v mode)]
+        [(boolean? v)                  (str-boolean                v)]
+        [(symbol? v)                   (str-symbol                 v)]
+        [(keyword? v)                  (str-keyword                v)]
+        [(void? v)                     (str-void                   v)]
+        [(immutable-box? v)            (str-box-immutable          v mode)]
+        [(box? v)                      (str-box                    v mode)]        
+        [(char? v)                     (str-char                   v mode)]
         [(struct-type-descriptor? v)   (str-struct-type-descriptor v)]
-        [(struct? v)                   (str-struct v)]
+        [(struct? v)                   (str-struct                 v mode)]
         [(= v undefined)               (str-undefined)]
         [(continuation-mark-set? v)    (str-continuation-mark-set v)]
         [(parameterization? v)         (str-parameterization v)]
