@@ -6,9 +6,6 @@
 ;;; TODO
 ;;;
 
-; FIX tail recursion in code generator.
-;     the problem is code like   (begin (:= result call)  result)
-
 ; - fill the initial namespace
 ; - or make a kernel-namespace
 
@@ -498,7 +495,25 @@
           [else             `(quote ,h ,(datum s v))]))))
   (Expr : Expr (e) -> Expr ()
     [(quote ,s ,d)
-     (datum->construction-expr s (datum-value d))])
+     (datum->construction-expr s (datum-value d))]
+    [(quote-syntax ,s ,d)
+     (let* ([src (syntax-source s)]
+            [src (if (path? src)   (path->string src)   src)] ; no paths yet ...
+            [src (if (symbol? src) (symbol->string src) src)] ; keep it simple for now ...
+            [src   (Expr `(quote ,s ,(datum s src)))]
+            [l     (Expr `(quote ,s ,(datum s (syntax-line s))))]
+            [c     (Expr `(quote ,s ,(datum s (syntax-column s))))]
+            [p     (Expr `(quote ,s ,(datum s (syntax-position s))))]
+            [sp    (Expr `(quote ,s ,(datum s (syntax-span s))))]
+            [false (Expr `(quote ,s ,(datum s #f)))]
+            [v     (Expr `(quote ,s ,d))])
+       (displayln (list 'generate-ur: 'quote-syntax s d (list src l c p sp)))
+       ; srcloc(source,line,column,position,span)
+       ; make_syntax_object(source_location,lexical_info,datum)       
+       `(app ,s ,(var:make-syntax-object)
+             (app ,s ,(var:srcloc) ,src ,l ,c ,p ,sp) ; source location
+             ,false                                   ; lexical info
+             ,v))])
   (TopLevelForm : TopLevelForm (t) -> TopLevelForm ())
 
   (let ([T (TopLevelForm T)]

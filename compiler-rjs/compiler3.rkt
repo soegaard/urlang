@@ -233,7 +233,7 @@
                           [(keyword? v) `(app ,#'string->keyword ',(~a (keyword->string v)))]
                           [else         `',v]))]
     [(free-ref ,x ,i) `(ref ,#'_free (app ,#'+ ',i '2))] ; tag and label occupy first two slots
-    ;                                                         ; (ignore x which is for debug only)
+    ;                                                    ; (ignore x which is for debug only)
     [(top ,s ,x)
      ; Note: This is a quick hack until namespaces are implemented.
      ;       Note that if x is present in a top-level define-values
@@ -241,10 +241,9 @@
      ; Note: What is missing here: is error handling for an undefined top-level-variable.
      `(app ,#'namespace-variable-value (app ,#'string->symbol ',(symbol->string (syntax-e (Var x))))
            ',#f ; use-mapping? TODO: this should be #t but that isn't implemented yet in runtime
-           )
-     ;(Var x)
-     #;(error 'generate-ur "TODO top level reference - implement namespaces")]
-    [(quote-syntax ,s ,d)  (error 'generate-ur "TODO quote-syntax not supported" s)])
+           )]
+    [(quote-syntax ,s ,d)
+     (raise-syntax-error 'geneerate-ur "quote-syntax gone at this point")])
 
   (CExpr2 : CExpr (ce dd cd) -> Statement ()
     ;; All Complex Expressions are translated to statements    

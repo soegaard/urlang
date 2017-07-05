@@ -163,6 +163,7 @@
     (define/export EOF-OBJECT             (array "eof-object"))
     (define/export CONTINUATION-MARK-SET  (array "continuation-mark-set"))
     (define/export PARAMETERIZATION       (array "parameterization"))
+    (define/export SYNTAX-OBJECT          (array "syntax-object"))
 
     (define/export CLOS                   "CLOS") ; easier in code generator
     (define/export PARAMETER              (array "parameter"))
@@ -348,6 +349,23 @@
               (for ([i in-range 2 (- n 1)])
                 (:= s  (and s (< (ref args i) (ref args (+ i 1))))))
               s]))
+
+    ;;;
+    ;;; 3 Syntactic Forms
+    ;;;
+
+    ;;;
+    ;;; 3.21 Syntax Quoting: quote-syntax
+    ;;;
+    
+    (define syntax-object-struct-type-descriptor
+      (array STRUCT-TYPE-DESCRIPTOR "syntax-object" #f
+             3 (list 0 1 2) NULL NULL #f #f NULL #f "make-syntax-object"))
+    (define/export (make-syntax-object source-location lexical-info datum)
+      ; A syntax object stores a datum with lexical information and source location information.
+      ; Here we just store the source location informations in the form of a srcloc struct.
+      (array STRUCT syntax-object-struct-type-descriptor
+             source-location lexical-info datum))
     
     ;;;
     ;;; 4.1 Booleans and equality
@@ -1737,7 +1755,14 @@
     ;; (struct srcloc (source line column position span)
     ;;   #:transparent
     ;;   #:extra-constructor-name make-srcloc)
-    
+
+    (define srcloc-struct-type-descriptor
+        (array STRUCT-TYPE-DESCRIPTOR "srcloc" #f
+             5 (list 0 1 2 3 4) NULL NULL #f #f NULL #f "make-srcloc"))
+    (define/export (srcloc source line column position span)
+      (array STRUCT srcloc-struct-type-descriptor
+             srcloc source line column position span))
+      
     ;; Representation:
     ;;   A structure is represented as an array tagged with STRUCT
     ;;       (array STRUCT <a-struct-type-descriptor> field0 field1 ...)
@@ -1748,7 +1773,7 @@
 
     ; (struct exn (message continuation-marks))
     (define exn-struct-type-descriptor
-      (array STRUCT-TYPE-DESCRIPTOR "exn" #f
+        (array STRUCT-TYPE-DESCRIPTOR "exn" #f
              2 (list 0 1) NULL NULL #f #f NULL #f "make-exn"))
     (define/export (exn message continuation-marks)
       (array STRUCT exn-struct-type-descriptor
