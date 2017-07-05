@@ -1721,7 +1721,17 @@
     ; TODO:
     ;  - call-with-exception-handler
     ;  - uncaught-exception-handler
-    ;  - with-handlers*
+
+    (define default-exception-handler (array "CLOS" default-exception-handler-label))
+    (define (default-exception-handler-label e) ; any -> any
+      ; The default uncaught-exception handler prints an error message using
+      ; the current error display handler (see error-display-handler), unless
+      ; the argument to the handler is an instance of exn:break:hang-up.
+      (console.log "uncaught exception")
+      (console.log e)
+      (exit))
+
+    (define/export uncaught-exception-handler (make-parameter default-exception-handler))
 
     ; The form  with-handlers  expand into uses of
     ; call-handled-body  and  select-handler/no-breaks.
@@ -2394,7 +2404,7 @@
     (define (str-undefined)               "#<js-undefined>")
     (define (str-continuation-mark-set v) "#<continuation-mark-set>")
     (define (str-parameterization v)      "#<parameterization>")
-    (define (str-parameter v)             "#<parameter>")
+    (define (str-parameter v)             (console.log v) "#<parameter>")
     (define/export (str v opt-mode)
       (var [mode (if (= opt-mode undefined) write-mode opt-mode)])
       (cond

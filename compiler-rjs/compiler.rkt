@@ -242,7 +242,9 @@
 (define (special-primitive? x)
   (cond [(syntax? x)   (special-primitive? (syntax-e x))]
         [(variable? x) (special-primitive? (variable-id x))]
-        [else          (or (memq x '(apply call-handled-body)))]))
+        [else          (or (memq x '(apply
+                                     call-handled-body
+                                     uncaught-exception-handler)))]))
 
 (define (unparse-primitive pr)
   (unparse-variable pr))
