@@ -1718,11 +1718,10 @@
       (raise (exn:fail:syntax message (current-continuation-marks))))
 
     ;;; 10.2.3 Handling Exceptions
-    
-    ; call-with-exception-handler
-    ; uncaught-exception-handler
-    ; with-handlers
-    ; with-handlers*
+    ; TODO:
+    ;  - call-with-exception-handler
+    ;  - uncaught-exception-handler
+    ;  - with-handlers*
 
     ; The form  with-handlers  expand into uses of
     ; call-handled-body  and  select-handler/no-breaks.
@@ -1783,6 +1782,9 @@
                 ((ref h 1) h #t e)) ; call handler (a closure)
               ; try the next handler:
               (select-handler/no-breaks e bpz (cdr l)))))
+    ; Note: The form  with-handlers*  expands into a use of select-handler/breaks-as-is.
+    ;       Without breaks implemented, we can use simply use the same as above.
+    (define/export select-handler/breaks-as-is select-handler/no-breaks)
   
     ;;; 10.2.5 Built-in Exception Types
     

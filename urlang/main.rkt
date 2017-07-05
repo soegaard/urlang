@@ -1809,13 +1809,20 @@
     (global! #'unsafe-fx-)
     (global! #'unsafe-fx*)
     ; (global! #'select-handler/no-breaks) ; in expansion of with-handlers
-    (global! ;select-handler/no-breaks
+    (global! ; select-handler/no-breaks
      (second (syntax->list
               (third (syntax->list
                       (fourth (syntax->list
                                (last (syntax->list
                                       (last (syntax->list
                                              (expand-syntax #'(with-handlers ([f g]) b)))))))))))))
+    (global! ; select-handler/breaks-as-is
+     (second (syntax->list
+              (third (syntax->list
+                      (fourth (syntax->list
+                               (last (syntax->list
+                                      (last (syntax->list
+                                             (expand-syntax #'(with-handlers* ([f g]) b)))))))))))))
     (global! ; call-handled-body
      (second (syntax->list
               (last (syntax->list
