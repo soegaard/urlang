@@ -1064,9 +1064,11 @@
                  xs]))
     (define/export (build-list n proc)
       (var [a (Array n)])
-      (for ([i in-range 0 n])
-        ; (:= a i (proc i)
-        (:= a i ((ref proc 1) proc i))) ; apply closure - TODO: error check
+      (cond
+        [(js-function? proc)  (for ([i in-range 0 n])
+                                (:= a i (proc i)))]
+        [(closure? proc)      (for ([i in-range 0 n])
+                                (:= a i (closapp #f proc i)  ))])
       (array->list a))
     (define/export (length xs)
       (var (n 0))
