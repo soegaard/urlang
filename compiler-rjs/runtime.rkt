@@ -1376,10 +1376,14 @@
     (define/export (build-vector n proc)
       (var [a (Array (+ n 1))])
       (:= a 0 VECTOR)
-      (for ([i in-range 0 n])
-        (:= a (+ i 1) (proc i)))
+      (cond
+        [(js-function? proc) (for ([i in-range 0 n])
+                               (:= a (+ i 1) (proc i)))]
+        [(procedure? proc)   (var [lab (closure-label proc)])
+                             (for ([i in-range 0 n])
+                               (:= a (+ i 1) (closlabapp #f lab i)))]
+        [else (error (string->symbol "build-vector") "expected a procedure as first argument")])
       a)
-
     ;;;
     ;;; 4.12 Boxes
     ;;;
