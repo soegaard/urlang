@@ -131,6 +131,40 @@
 
 (define-urlang-macro define/export expand-define/export)
 
+;;; Closure related macros
+; SYNTAX (closure-label clos)
+;   get the "address" of the code to run
+(define (expand-closure-label stx)
+  (syntax-parse stx
+    [(_closure-label clos)
+     (syntax/loc stx
+       (ref clos 1))]))
+(define-urlang-macro closure-label expand-closure-label)
+
+; SYNTAX  (closapp tc clos arg ...)
+;   call the closure clos with arguments arg ...
+;   tc must indicate whether the call is a tail call
+(define (expand-closapp stx)
+  ; Note: args are duplicated so keep them simple
+  (syntax-parse stx
+    [(_expand-closapp tc clos arg ...)
+     (syntax/loc stx
+       ((ref clos 1) clos tc arg ...))]))
+(define-urlang-macro closapp    expand-closapp)
+
+; SYNTAX  (closlabapp tc lab arg ...)
+;   lab is the label of a closure clos.
+;   calls the closure clos with arguments arg ...
+;   tc must indicate whether the call is a tail call
+(define (expand-closlabapp stx)
+  ; Note: args are duplicated so keep them simple
+  (syntax-parse stx
+    [(_expand-closlabapp tc clos arg ...)
+     (syntax/loc stx
+       (lab clos tc arg ...))]))
+(define-urlang-macro closlabapp expand-closlabapp)
+
+
 (define (expand-tailapp stx)
   ; Note: args are duplicated so keep them simple
   (syntax-parse stx
@@ -149,16 +183,11 @@
            (proc arg ...)
            ((ref proc 1) proc #f arg ...)))]))
 
-(define (expand-closapp stx)
-  ; Note: args are duplicated so keep them simple
-  (syntax-parse stx
-    [(_expand-closapp tc clos arg ...)
-     (syntax/loc stx
-       ((ref clos 1) clos tc arg ...))]))
+
 
 (define-urlang-macro tailapp    expand-tailapp)
 (define-urlang-macro nontailapp expand-nontailapp)
-(define-urlang-macro closapp    expand-closapp)
+
 
 
 (display
@@ -812,9 +841,7 @@
     ; bytes->list       ; todo
     ; list->bytes       ; todo
     ; make-shared-bytes ; todo
-    ; shared-bytes      ; todo
-    
-    
+    ; shared-bytes      ; todo    
     (define/export (bytes? v)
       (and (array? v)
            (or (= (tag v) BYTES)
@@ -1067,8 +1094,9 @@
       (cond
         [(js-function? proc)  (for ([i in-range 0 n])
                                 (:= a i (proc i)))]
-        [(closure? proc)      (for ([i in-range 0 n])
-                                (:= a i (closapp #f proc i)  ))])
+        [(closure? proc)      (var [lab (closure-label proc)])
+                              (for ([i in-range 0 n])
+                                (:= a i (closlabapp #f lab i)))])
       (array->list a))
     (define/export (length xs)
       (var (n 0))
@@ -1117,110 +1145,110 @@
              (:= result (cons (car xs) result))
              (:= xs (cdr xs)))
       result)
-    (define/export alt-reverse reverse) ; version in #%kernel which might be jit-optimized    
+    (define/export alt-reverse reverse) ; version in #%kernel which might be jit-optimized
+    (define map-sym (string->symbol "map"))
     (define/export (map proc xs ys zs) ; optional (map proc xs ...+)
-      (case arguments.length
-        [(2) (cond
-               [(js-function? proc)  (for/list ([x in-list xs])
-                                       (proc x))]
-               [(closure? proc)      (var [lab (ref proc 1)])
-                                     (for/list ([x in-list xs])
-                                       (lab proc #f x))] ; #f means non-tail call
-               [#t                   ("ERROR - map")])]
-        [(3) (cond
-               [(js-function? proc)  (for/list ([x in-list xs] [y in-list ys])
-                                       (proc x y))]
-               [(closure? proc)      (var [lab (ref proc 1)])
-                                     (for/list ([x in-list xs] [y in-list ys])
-                                       (lab proc #f x y))]
-               [#t                   ("ERROR - map")])]
-        [(4) (cond
-               [(js-function? proc)  (for/list ([x in-list xs] [y in-list ys] [z in-list zs])
-                                       (proc x y z))]
-               [(closure? proc)      (var [lab (ref proc 1)])
-                                     (for/list ([x in-list xs] [y in-list ys] [z in-list zs])
-                                       (lab proc #f x y z))]
-               [#t                   ("ERROR - map")])]
-        [(0) (error "map" "expected at least two arguments")]
-        [else (/ 1 0)  ])) ; TODO
+      (var [n arguments.length])
+      (cond
+        [(js-function? proc)
+         (case n
+           [(2)  (for/list ([x in-list xs])                               (proc x))]
+           [(3)  (for/list ([x in-list xs] [y in-list ys])                (proc x y))]
+           [(4)  (for/list ([x in-list xs] [y in-list ys] [z in-list zs]) (proc x y z))]
+           [(0)  (error map-sym "expected at least two arguments")]
+           [else (error map-sym "TODO immplement map for more than 4 arguments")])]
+        [(closure? proc)
+         (var [lab (closure-label proc)])
+         (case n
+           [(2)  (for/list ([x in-list xs])                               (closlabapp #f lab x))]
+           [(3)  (for/list ([x in-list xs] [y in-list ys])                (closlabapp #f lab x y))]
+           [(4)  (for/list ([x in-list xs] [y in-list ys] [z in-list zs]) (closlabapp #f lab x y z))]
+           [(0)  (error map-sym "expected at least two arguments")]
+           [else (error map-sym "TODO immplement map for more than 4 arguments")])]
+        [else (error map-sym "expected a procedure as first argument")]))
     (define andmap-sym (string->symbol "andmap"))
-    (define/export (andmap proc xs ys zs) ; optional (andmap proc xs ...+)      
-      (case arguments.length
-        [(2) (cond
-               [(js-function? proc) (for/and ([x in-list xs]) (proc x))]
-               [(closure? proc)     (for/and ([x in-list xs]) (closapp #f proc x))]
-               [else                (raise-argument-error andmap-sym "procedure" 0)])]
-        [(3) (cond
-               [(js-function? proc) (for/and ([x in-list xs] [y in-list ys]) (proc x y))]
-               [(closure? proc)     (for/and ([x in-list xs] [y in-list ys]) (closapp #f proc x y))]
-               [else                (raise-argument-error andmap-sym "procedure" 0)])]
-        [(4) (cond
-               [(js-function? proc) (for/and ([x in-list xs][y in-list ys][z in-list zs])
-                                      (proc x y z))]
-               [(closure? proc)     (for/and ([x in-list xs][y in-list ys][z in-list zs])
-                                      (closapp #f proc x y z))]
-               [else                (raise-argument-error andmap-sym "procedure" 0)])]
-        [(0) (error "andmap" "expected at least two arguments")]
+    (define/export (andmap proc xs ys zs) ; optional (andmap proc xs ...+)
+      (cond
+        [(js-function? proc)
+         (case arguments.length
+           [(2) (for/and ([x in-list xs])                             (proc x))]
+           [(3) (for/and ([x in-list xs] [y in-list ys])              (proc x y))]
+           [(4) (for/and ([x in-list xs][y in-list ys][z in-list zs]) (proc x y z))]
+           [(0) (error "andmap" "expected at least two arguments")]
+           [else (error andmap-sym "TODO implement andmap with more than 3 argument lists")])]
+        [(closure? proc)
+         (var [lab (closure-label proc)])
+         (case arguments.length
+           [(2) (for/and ([x in-list xs])                             (closlabapp #f lab x))]
+           [(3) (for/and ([x in-list xs] [y in-list ys])              (closlabapp #f lab x y))]
+           [(4) (for/and ([x in-list xs][y in-list ys][z in-list zs]) (closlabapp #f lab x y z))]
+           [(0) (error "andmap" "expected at least two arguments")]
+           [else (error andmap-sym "TODO implement andmap with more than 3 argument lists")])]
         [else (error andmap-sym "TODO implement andmap with more than 3 argument lists")]))
     (define ormap-sym (string->symbol "ormap"))
     (define/export (ormap proc xs ys zs) ; optional (ormap proc xs ...+)
-      (case arguments.length
-        [(2) (cond
-               [(js-function? proc) (for/or ([x in-list xs]) (proc x))]
-               [(closure? proc)     (for/or ([x in-list xs]) (closapp #f proc x))]
-               [else                (raise-argument-error ormap-sym "procedure" 0)])]
-        [(3) (cond
-               [(js-function? proc) (for/or ([x in-list xs] [y in-list ys]) (proc x y))]
-               [(closure? proc)     (for/or ([x in-list xs] [y in-list ys]) (closapp #f proc x y))]
-               [else                (raise-argument-error ormap-sym "procedure" 0)])]
-        [(4) (cond
-               [(js-function? proc) (for/or ([x in-list xs][y in-list ys][z in-list zs])
-                                      (proc x y z))]
-               [(closure? proc)     (for/or ([x in-list xs][y in-list ys][z in-list zs])
-                                      (closapp #f proc x y z))]
-               [else                (raise-argument-error ormap-sym "procedure" 0)])]
-        [(0) (error "ormap" "expected at least two arguments")]
-        [else (error ormap-sym "TODO implement ormap with more than 3 argument lists")]))
+      (cond
+        [(js-function? proc)
+         (case arguments.length
+           [(2) (for/or ([x in-list xs])                             (proc x))]
+           [(3) (for/or ([x in-list xs] [y in-list ys])              (proc x y))]
+           [(4) (for/or ([x in-list xs][y in-list ys][z in-list zs]) (proc x y z))]
+           [(0) (error "ormap" "expected at least two arguments")]
+           [else (error ormap-sym "TODO implement ormap with more than 3 argument lists")])]
+        [(closure? proc)
+         (var [lab (closure-label proc)])
+         (case arguments.length
+           [(2) (for/or ([x in-list xs])                             (closlabapp #f lab x))]
+           [(3) (for/or ([x in-list xs] [y in-list ys])              (closlabapp #f lab x y))]
+           [(4) (for/or ([x in-list xs][y in-list ys][z in-list zs]) (closlabapp #f lab x y z))]
+           [(0) (error "ormap" "expected at least two arguments")]
+           [else (error ormap-sym "TODO implement ormap with more than 3 argument lists")])]
+        [else (error andmap-sym "TODO implement andmap with more than 3 argument lists")]))    
     (define for-each-sym (string->symbol "for-each"))
     (define/export (for-each proc xs ys zs) ; optional (for-each proc xs ...+)
-      (case arguments.length
-        [(2) (cond
-               [(js-function? proc) (for ([x in-list xs]) (proc x))]
-               [(closure? proc)     (for ([x in-list xs]) (closapp #f proc x))]
-               [else                (raise-argument-error for-each-sym "procedure" 0)])]
-        [(3) (cond
-               [(js-function? proc) (for ([x in-list xs] [y in-list ys]) (proc x y))]
-               [(closure? proc)     (for ([x in-list xs] [y in-list ys]) (closapp #f proc x y))]
-               [else                (raise-argument-error for-each-sym "procedure" 0)])]
-        [(4) (cond
-               [(js-function? proc) (for ([x in-list xs][y in-list ys][z in-list zs])
-                                      (proc x y z))]
-               [(closure? proc)     (for ([x in-list xs][y in-list ys][z in-list zs])
-                                      (closapp #f proc x y z))]
-               [else                (raise-argument-error for-each-sym "procedure" 0)])]
-        [(0) (error "for-each" "expected at least two arguments")]
-        [else (error for-each "TODO implement for-each with more than 3 argument lists")])
-      VOID)
+      (var [n arguments.length])
+      (cond
+        [(js-function? proc)
+         (case n
+           [(2)  (for ([x in-list xs])                               (proc x))]
+           [(3)  (for ([x in-list xs] [y in-list ys])                (proc x y))]
+           [(4)  (for ([x in-list xs] [y in-list ys] [z in-list zs]) (proc x y z))]
+           [(0)  (error for-each-sym "expected at least two arguments")]
+           [else (error for-each-sym "TODO immplement for-each for more than 4 arguments")])]
+        [(closure? proc)
+         (var [lab (closure-label proc)])
+         (case n
+           [(2)  (for ([x in-list xs])                               (closlabapp #f lab x))]
+           [(3)  (for ([x in-list xs] [y in-list ys])                (closlabapp #f lab x y))]
+           [(4)  (for ([x in-list xs] [y in-list ys] [z in-list zs]) (closlabapp #f lab x y z))]
+           [(0)  (error for-each-sym "expected at least two arguments")]
+           [else (error for-each-sym "TODO immplement for-each for more than 4 arguments")])]
+        [else (error for-each-sym "expected a procedure as first argument")])
+      VOID)    
     ; TODO
     ; foldl TODO
     ; foldr TODO
+    (define filter-sym (string->symbol "filter"))
     (define/export (filter pred xs)
       (var [n (length xs)]
            [a (Array n)]
            [i 0])
       ; fill in array with non-false values
-      (for ([x in-list xs])
-        (var [t (pred.call #f x)])
-        (swhen t
-               (:= a i x)
-               (+= i 1)))
+      (cond
+        [(js-function? pred) (for ([x in-list xs])
+                               (var [t (pred.call #f x)])
+                               (swhen t (:= a i x) (+= i 1)))]
+        [(closure? pred)     (var [lab (closure-label pred)])
+                             (for ([x in-list xs])
+                               (var [t (closlabapp #f lab x)])
+                               (swhen t (:= a i x) (+= i 1)))]
+        [else (error filter-sym "expected a procedure as first argument")])
       ; create list with elements in the array
-      (var [xs NULL])
+      (var [ys NULL])
       (while (> i 0)
              (-= i 1)
-             (:= xs (cons (ref a i) xs)))
-      xs)
-    
+             (:= ys (cons (ref a i) ys)))
+      ys)
     (define/export (list->array xs)
       ;; convert list to (non-tagged) JavaScript array
       ; allocate array
