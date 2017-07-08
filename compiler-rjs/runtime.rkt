@@ -27,12 +27,7 @@
 ;;; TODO
 ;;;
 
-;;  - make andmap, ormap etc work with closures
-;;    (copy approach used in map)
 ;;  - equal? : handle cyclic data
-;;  - bytes-length : currently a.length returns undefined
-;;                   does a.prototype.length work?
-;;                   should the Int8Array be created differently?
 ;;  - finish support for namespaces
 
 
@@ -165,6 +160,7 @@
 (define-urlang-macro closlabapp expand-closlabapp)
 
 
+#;(
 (define (expand-tailapp stx)
   ; Note: args are duplicated so keep them simple
   (syntax-parse stx
@@ -173,7 +169,6 @@
        (if (procedure? proc)
            (proc arg ...)
            ((ref proc 1) proc #t arg ...)))]))
-
 (define (expand-nontailapp stx)
   ; Note: args are duplicated so keep them simple
   (syntax-parse stx
@@ -182,12 +177,8 @@
        (if (procedure? proc)
            (proc arg ...)
            ((ref proc 1) proc #f arg ...)))]))
-
-
-
 (define-urlang-macro tailapp    expand-tailapp)
-(define-urlang-macro nontailapp expand-nontailapp)
-
+(define-urlang-macro nontailapp expand-nontailapp))
 
 
 (display
@@ -873,7 +864,7 @@
       ; make new mutable byte string
       (var [args arguments]
            [n    args.length]
-           [is   (Int8Array n)])
+           [is   (new Int8Array n)])
       (is.set args)
       (array MUTABLE-BYTES is))
     (define/export (bytes->immutable-bytes bs)
@@ -884,9 +875,7 @@
       (and (exact-integer? v)
            (<= 0 v 255)))
     (define/export (bytes-length bs)
-      (console.log "bytes-length:")
-      (console.log (ref bs 1))
-      (ref (ref bs 1) "length")) ; sigh todo this gives  undefined  on Node
+      (ref (ref bs 1) "length"))
     (define/export (bytes-ref bs k)
       (ref (ref bs 1) k))
     (define/export (bytes-set! bs k b)
@@ -1401,8 +1390,11 @@
     (define/export (box-cas! b old new) (if (eq? (ref b 1) old)
                                             (begin (:= b 1 new) #t)
                                             #f))
-    (define/export (immutable-box? v)  (and (array? v) (= (tag v) IMMUTABLE-BOX)))
-    
+    (define/export (immutable-box? v)  (and (array? v) (= (tag v) IMMUTABLE-BOX)))    
+    ;;;
+    ;;; 4.14 Sequences and Streams
+    ;;;
+
     ;;;
     ;;; 4.14.1 Sequences
     ;;;
@@ -1425,16 +1417,6 @@
         [(1)
          (if (list? xs) VOID (raise (string->symbol "in-list") "expected list as first argument"))]
         [else (raise (string->symbol "in-list") "expected 1 argument")]))
-
-    ;;;
-    ;;; 4.14 Sequences and Streams
-    ;;;
-
-    ;;; 4.14.1 Sequences
-
-    ; (define/export (in-list) (raise (error 'in-list "not implemented")))
-
-    
     ;;;
     ;;; 4.17 Procedures
     ;;;
@@ -1462,8 +1444,6 @@
               (:= a (+ i 1) (ref args i)))
             (lab.apply #f a))
           (f.apply #f args)))
-
-    
     ; The call to proc is a tail call, if the call to apply is a tail call.
     ; This means apply needs to know whether it is tail called or not.
     ; We therefore make  apply  a closure.
@@ -1863,7 +1843,6 @@
       ;       much simpler.
 
       ; We basically need to do the following:
-      ; 
       ;     (with-continuation-mark
       ;       exception-handler-key (lambda (e) (abort-current-continuation handler-prompt-key e))
       ;       (body-thunk))
@@ -1874,7 +1853,6 @@
             (sif tc
                  (set-continuation-mark       key val)
                  (new-continuation-mark-frame key val))
-            ;
             ;(console.log "call-handled-body-label:")
             ;(console.log body-thunk)
             ; call body-thunk
@@ -2094,7 +2072,6 @@
     (define (make-thread-cell v opt-preserved)
       ; TODO
       (array v))
-      
 
     ;;; 11.3.2 Parameters
     ; A parameter is a procedure. It is represented as a special type of closure.
@@ -2202,9 +2179,6 @@
     ; and ...
     ; The values should be stored in tread cells (since each thread has its own version of
     ; the parameter values.
-    
-    
-
     
     ;;;
     ;;; 13 INPUT AND OUTPUT
