@@ -1693,10 +1693,11 @@
       (displayln "global:")           (displayln (map syntax-e (globals)))
       (displayln "var introduced:")   (displayln (map syntax-e (vars)))
       (displayln "unbound variable:") (displayln x)
-      ; HACK - only in place until macros are introduced      
+      ; HACK - only in place until modules are introduced
       (define macro-introduced-identifiers
         '(select-handler/no-breaks ; from racket/private/more-scheme produced by with-handlers
-          call-handled-body))
+          call-handled-body
+          in-list))                ; from racket/private/for.rkt produced by for
       (if (memq (syntax-e x) macro-introduced-identifiers)
           x
           (raise-syntax-error 'α-rename "(urlang) unbound variable" x)))
@@ -1808,6 +1809,7 @@
     (global! #'unsafe-fx+)
     (global! #'unsafe-fx-)
     (global! #'unsafe-fx*)
+    (global! #'inlist)
     ; (global! #'select-handler/no-breaks) ; in expansion of with-handlers
     (global! ; select-handler/no-breaks
      (second (syntax->list
