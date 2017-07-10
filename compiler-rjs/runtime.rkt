@@ -577,7 +577,10 @@
       (% n m))
     (define/export (quotient/remainder n m)
       (values (quotient n m) (remainder n m)))
-    (define/export (modulo n m) ; TODO : throw exception unless n and m are finite
+    (define/export (modulo n m)
+      (var [who (λ() (string->symbol "modulo"))])
+      (unless (and (number? n) (not (infinite? n))) (raise-argument-error (who) "integer?" 1 n m))
+      (unless (and (number? m) (not (infinite? m))) (raise-argument-error (who) "integer?" 2 n m))
       (% (+ (% n m) m) m))
     (define/export (add1 z) (+ z 1))
     (define/export (sub1 z) (- z 1))
@@ -1760,7 +1763,7 @@
     (define/export (raise-argument-error name expected v-or-bad-pos opt-v*)
       (if (= opt-v* undefined)
           (raise-argument-error-3 name expected v-or-bad-pos)
-          (raise-argument-error-4 name expected v-or-bad-pos opt-v*)))
+          (raise-argument-error-4 name expected v-or-bad-pos arguments)))
     (define (raise-argument-error-3 name expected v)
       ; TODO: check input types
       (var [n (or name "raise-argument-error")]
@@ -1768,8 +1771,14 @@
                    "  expected: " (str expected display-mode) "\n"
                    "  given: "    (str v display-mode)        "\n")])
       (raise (exn:fail:contract msg (current-continuation-marks))))
-    (define (raise-argument-error-4 name expected bad-pos opt-v*)
-      (raise "raise-argument-error-4 - todo"))
+    (define (raise-argument-error-4 name expected bad-pos args)
+      ; note: bad-pos is non-negative, i.e. we count from 1 !
+      (var [n (or name "raise-argument-error")]
+           [msg (+ (str n) ": contract violation\n"
+                   "  expected: "          (str expected                 display-mode) "\n"
+                   "  given: "             (str (ref args (+ 2 bad-pos)) display-mode) "\n"
+                   "  argument position: " (str bad-pos                  display-mode) "\n")])
+      (raise (exn:fail:contract msg (current-continuation-marks))))
 
     (define/export (error a0 a1 a2 more)
       (var [args arguments] [n args.length])
