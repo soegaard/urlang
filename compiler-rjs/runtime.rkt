@@ -29,7 +29,8 @@
 
 ;;  - equal? : handle cyclic data
 ;;  - finish support for namespaces
-
+;;  - hash tables
+;;  - sequences
 
 (current-urlang-run?                           #t)
 (current-urlang-echo?                          #t)
@@ -180,7 +181,14 @@
 (define-urlang-macro tailapp    expand-tailapp)
 (define-urlang-macro nontailapp expand-nontailapp))
 
+;;;
+;;; RUNTIME WRITTEN IN URLANG
+;;;
 
+; Notes:
+;   ...
+
+(define (generate-runtime)
 (display
  (urlang
   (urmodule runtime
@@ -234,17 +242,15 @@
     ;;;
     ;;; GLOBAL VARIABLES
     ;;;
-    (define TOP-CMS                    (let ([ht (array)])
-                                         ; ht holds the initial marks
-                                         (:= ht parameterization-key
-                                             (array PARAMETERIZATION  ; tag
-                                                    (array (array)    ; empty ht
-                                                           #f)))
-                                         (:= ht break-enabled-key
-                                             (make-thread-cell #f))
-                                         
-                                         
-                                         (array ht #f)))
+    (define TOP-CMS (let ([ht (array)])
+                      ; ht holds the initial marks
+                      (:= ht parameterization-key
+                          (array PARAMETERIZATION  ; tag
+                                 (array (array)    ; empty ht
+                                        #f)))
+                      (:= ht break-enabled-key
+                          (make-thread-cell #f))
+                      (array ht #f)))
 
     ; note: no tag is needed here, see current-continuation-marks
     (define/export CMS TOP-CMS)   ; current continuation marks (see section 10.5 below)
@@ -429,22 +435,22 @@
     (define/export (PRIM_not x) (if x #f #t)) ; not is a predefined function
     (define/export (equal? v w) ; TODO: handle cyclic data structures
       (cond
-        [(and (boolean? v)          (boolean?        w))   (= v w)]
-        [(and (number?  v)          (number?         w))   (= v w)]
-        [(and (symbol?  v)          (symbol?         w))   (symbol=? v w)]
-        [(and (null?  v)            (null?           w))   #t]
-        [(and (pair? v)             (pair?           w)) (and (equal? (unsafe-car v) (unsafe-car w))
+        [(and (boolean? v)          (boolean?          w)) (= v w)]
+        [(and (number?  v)          (number?           w)) (= v w)]
+        [(and (symbol?  v)          (symbol?           w)) (symbol=? v w)]
+        [(and (null?  v)            (null?             w)) #t]
+        [(and (pair? v)             (pair?             w)) (and (equal? (unsafe-car v) (unsafe-car w))
                                                               (equal? (unsafe-cdr v) (unsafe-cdr w)))]
-        [(and (void?  v)            (void?           w))   #t]
-        [(and (char?  v)            (char?           w))   (char=? v w)]
+        [(and (void?  v)            (void?             w)) #t]
+        [(and (char?  v)            (char?             w)) (char=? v w)]
         [(and (immutable-string? v) (immutable-string? w)) (= v w)]
-        [(and (mutable-string?   v) (mutable-string? w))   (string=? v w)]
-        [(and (vector? v)           (vector? w))           (for/and ([x in-vector v]
+        [(and (mutable-string?   v) (mutable-string?   w)) (string=? v w)]
+        [(and (vector? v)           (vector?           w)) (for/and ([x in-vector v]
                                                                      [y in-vector w])
-                                                             (equal? x y))]
-        [(and (box? v)              (box? w))              (equal? (unbox v) (unbox w))]
-        [(and (bytes?  v)           (bytes?          w))   (bytes=? v w)]
-        [(and (keyword?  v)         (keyword?        w))   (keyword=? v w)]
+                                                           (equal? x y))]
+        [(and (box? v)              (box?              w)) (equal? (unbox v) (unbox w))]
+        [(and (bytes?  v)           (bytes?            w)) (bytes=?   v w)]
+        [(and (keyword?  v)         (keyword?          w)) (keyword=? v w)]
         [#t #f]))
     (define/export (eqv? v w)
       (cond
@@ -1793,7 +1799,17 @@
     ; raise-range-error
     ; raise-type-error
     ; raise-mismatch-error
-    ; raise-arity-error
+    (define raise-arity-error-sym (string->symbol "raise-arity-error"))
+    (define/export (raise-arity-error name arity-v argv*)
+      (unless (or (symbol? name) (procedure? name))
+        (raise-argument-error raise-arity-error-sym "(or/c symbol? procedure?)" 0 name))
+      (var [n   (if (symbol? name) (symbol->string name) (or (object-name name) ""))]
+           [msg
+            (+ name ": "
+               "arity mismatch\nthe expected number of arguments does not match the given number\n"
+               "expected: " arity-v "\n"
+               "given: " (- arguments.length 2))])
+      (raise (exn:fail:contract:arity msg (current-continuation-marks))))
     
     (define/export (raise-syntax-error name message opt-expr opt-sub-expr opt-extra-sources)
       ; Creates an exn:fail:syntax value and raises it as an exception.
@@ -1820,7 +1836,7 @@
       ; the argument to the handler is an instance of exn:break:hang-up.
       ; TODO: The following doesn't match the docs. Call the error-display-handler ...
       (console.log "uncaught exception")
-      (console.log e)
+      (console.log (exn-message e))
       (exit))
 
     (define/export uncaught-exception-handler (make-parameter default-exception-handler))
@@ -1899,78 +1915,7 @@
       (array STRUCT srcloc-struct-type-descriptor
              srcloc source line column position span))
       
-    ;; Representation:
-    ;;   A structure is represented as an array tagged with STRUCT
-    ;;       (array STRUCT <a-struct-type-descriptor> field0 field1 ...)
-    ;;   A struct-type-descriptor is:
-    ;;       (array STRUCT-TYPE-DESCRIPTOR name super-type total-field-count
-    ;;              init-field-indices auto-field-indices auto-field-values
-    ;;              properties inspector immutables guard constructor-name)
-
-    ; (struct exn (message continuation-marks))
-    (define exn-struct-type-descriptor
-        (array STRUCT-TYPE-DESCRIPTOR "exn" #f
-             2 (list 0 1) NULL NULL #f #f NULL #f "make-exn"))
-    (define/export (exn message continuation-marks)
-      (array STRUCT exn-struct-type-descriptor
-             message continuation-marks))
-    (define/export kernel:exn exn)    
-    ; (struct exn:fail exn ())
-    (define exn:fail-struct-type-descriptor
-      (array STRUCT-TYPE-DESCRIPTOR "exn:fail" exn-struct-type-descriptor
-             2 (list 0 1) NULL NULL #f #f NULL #f "make-exn:fail"))
-    (define/export (exn:fail message continuation-marks)
-      (array STRUCT exn:fail-struct-type-descriptor
-             message continuation-marks))
-    (define/export kernel:exn:fail exn:fail)
-    ; (struct exn:fail:contract exn:fail ())
-    (define exn:fail:contract-struct-type-descriptor
-      (array STRUCT-TYPE-DESCRIPTOR "exn:fail:contract" exn:fail-struct-type-descriptor
-             2 (list 0 1) NULL NULL #f #f NULL #f "make-exn:fail:contract"))
-    (define/export (exn:fail:contract message continuation-marks)
-      (array STRUCT exn:fail:contract-struct-type-descriptor
-             message continuation-marks))
-    (define/export kernel:exn:fail:contract exn:fail:contract)    
-    ; (struct exn:fail:contract:arity exn:fail:contract ())
-    (define exn:fail:contract:arity-struct-type-descriptor
-      (array STRUCT-TYPE-DESCRIPTOR "exn:fail:contract:arity" exn:fail:contract-struct-type-descriptor
-             2 (list 0 1) NULL NULL #f #f NULL #f "make-exn:fail:contract:arity"))
-    (define/export (exn:fail:contract:arity message continuation-marks)
-      (array STRUCT exn:fail:contract:arity-struct-type-descriptor
-             message continuation-marks))
-    (define/export kernel:exn:fail:contract:arity exn:fail:contract:arity)
-    ; (struct exn:fail:contract:divide-by-zero exn:fail:contract ())
-    (define exn:fail:contract:divide-by-zero-struct-type-descriptor
-      (array STRUCT-TYPE-DESCRIPTOR
-             "exn:fail:contract:divide-by-zero" exn:fail:contract-struct-type-descriptor
-             2 (list 0 1) NULL NULL #f #f NULL #f "make-exn:fail:contract:divide-by-zero"))
-    (define/export (exn:fail:contract:divide-by-zero message continuation-marks)
-      (array STRUCT exn:fail:contract:divide-by-zero-struct-type-descriptor
-             message continuation-marks))
-   (define/export kernel:exn:fail:contract:divide-by-zero exn:fail:contract:divide-by-zero)
-    ; TODO (struct exn:fail:contract:non-fixnum-result exn:fail:contract ())
-    ; TODO (struct exn:fail:contract:continuation exn:fail:contract ()
-    ; TODO (struct exn:fail:contract:variable exn:fail:contract (id))    
-    ; (struct exn:fail:syntax exn:fail (exprs) 
-    (define exn:fail:syntax-struct-type-descriptor
-      (array STRUCT-TYPE-DESCRIPTOR "exn:fail:syntax" exn:fail-struct-type-descriptor
-             3 (list 0 1 2) NULL NULL #f #f NULL #f "make-exn:fail:syntax"))
-    (define/export (exn:fail:syntax message continuation-marks exprs)
-      (array STRUCT exn:fail:syntax-struct-type-descriptor
-             message continuation-marks exprs))
-    ; (struct exn:fail:syntax:unbound exn:fail:syntax ())
-    (define exn:fail:syntax:unbound-struct-type-descriptor
-      (array STRUCT-TYPE-DESCRIPTOR "exn:fail:syntax:unbound" exn:fail:syntax-struct-type-descriptor
-             3 (list 0 1 2) NULL NULL #f #f NULL #f "make-exn:fail:syntax:unbound"))
-    (define/export (exn:fail:syntax:unbound message continuation-marks exprs)
-      (array STRUCT exn:fail:syntax:unbound-struct-type-descriptor
-             message continuation-marks exprs))
-    ; TODO more ...
-    
-    ;;       (array STRUCT-TYPE-DESCRIPTOR name super-type total-field-count
-    ;;              init-field-indices auto-field-indices auto-field-values
-    ;;              properties inspector immutables guard constructor-name)
-    
+    (generate-exception-structs)
     ;; Note: this is in #%kernel
     
     (define/export (kernel:srcloc source line column position span)
@@ -2425,6 +2370,11 @@
     
     (define/export (current-inspector)
       #f)
+
+    (define/export (object-name v)
+      ; TODO: store names of primitives in a hash table
+      #f)
+    
     
     ;;;
     ;;; 17 UNSAFE OPERATIONS
@@ -2678,4 +2628,147 @@
                       (bar-ref g 4)
                       (bar-ref g 5)))
            (str f))))
-    )))
+    ))))
+
+;;;
+;;; Exceptions
+;;;
+
+; Exceptions are represented as structures. In order to define the structures in the
+; runtime where the (struct ...) macro is unavailable, we need to generate the
+; the equivalent. It is too cumbersome to write the definitions by hand, so we
+; generate them from the "exceptions description" given below. The description
+; below is originally from the shell script "makeexn" (from the racket repo)
+; The result of that script is in racket/private/kernstruct.rkt.
+
+; <description> ::= (name [field-checker-proc
+;                          (field0 predicate "user explanation of expected value for field")
+;                          ...]
+;                         explanation-string
+;                         <description>
+;                         ...)
+
+; TODO : use checkers
+; TODO : use guards to check fields of constructors
+
+(define (declare-exception-handlers stx
+                                    info               ; exception hiearki description
+                                    [names       '()]  ; names of all super structs
+                                    [super-type   #f]  ; #f  or  name of parent super type
+                                    [field-descs '()]  ; list of field descriptions
+                                    [checkers    '()]) ; list of checkers
+  (match info
+    [(list name
+           [list checker-procedure (list field field-predicate field-description-string)...]
+           exception-description-string
+           description ...)
+     (define info-without-fields `(,name () , exception-description-string ,@description))
+     (define new-field-descs     (map list field field-predicate field-description-string))
+     (declare-exception-handlers stx
+                                 info-without-fields ; exception hiearki description
+                                 names   
+                                 super-type  
+                                 (append field-descs new-field-descs)
+                                 (append checkers    (list checker-procedure)))]
+    [(list name (list) exception-description-string description ...)
+     (let* ([names   (append names (list name))]
+            [name:   (string->symbol (string-append* (map ~a (add-between names ":"))))]
+            [descs   field-descs]
+            [fields  (map first  descs)]
+            [preds   (map second descs)]
+            [count   (length fields)]
+            [indices (build-list count values)])
+       (with-syntax ([Name:                        name:]
+                     [name:-struct-type-descriptor (format-id stx
+                                                     (~a name: "-struct-type-descriptor"))]
+                     [name:-str                    (~a name:)]
+                     [super-type                   super-type]
+                     [field-count                  count]
+                     [(index ...)                  indices]
+                     [make-name:                   (~a "make-" name:)]
+                     [(field-name ...)             fields]
+                     [(name:-field ...)            (for/list ([field fields])
+                                                     (format-id stx (~a name: "-" field)))]
+                     [(ref-index ...)              (map (λ(i) (+ i 2)) indices)]
+                     [kernel:name:                 (format-id stx (~a "kernel:" name:))])
+         #`(topblock
+            ; struct type descriptor
+            (define name:-struct-type-descriptor
+              (array STRUCT-TYPE-DESCRIPTOR name:-str super-type
+                     field-count (list index ...) NULL NULL #f #f NULL #f make-name:))
+            ; constructor
+            (define/export (Name: field-name ...)
+              (array STRUCT name:-struct-type-descriptor field-name ...))
+            ; accessors
+            (define/export (name:-field e)            (ref e ref-index)) ...
+            ; kernel structs        
+            (define/export kernel:name: Name:)
+            #,@(if (null? description)
+                   (list #'(topblock))
+                   (map (λ (d) (declare-exception-handlers stx d names name: field-descs checkers))
+                        description)))))]))
+
+(define exception-struct-descriptions
+  `(exn [exn-field-check
+         (message            immutable-string?      "error message")
+         (continuation-marks continuation-mark-set? "continuation mark set")]
+        "base exception"
+        (fail [] "exceptions that represent errors"
+              (contract [] "inappropriate run-time use of a function or syntactic form"
+                        (arity             [] "application with the wrong number of arguments")
+                        (divide-by-zero    [] "divide by zero")
+                        (non-fixnum-result [] "arithmetic produced a non-fixnum result")
+                        (continuation      [] "attempt to cross a continuation barrier")
+                        (variable          [variable-field-check
+                                            (id symbol? "the variable's identifier")]
+                                           "not-yet-defined global or module variable"))
+              (syntax [syntax-field-check
+                       (exprs immutable-list-of-syntax-bjects? "illegal expression(s)")
+                       #;{exn:source scheme_source_property |
+                                     scheme_make_prim(extract_syntax_locations)|}]
+                      "syntax error that is not a read error"
+                      (unbound [] "unbound module variable")
+                      (missing-module [module_path_field_check_3
+                                       (path "module path" "module path")
+                                       #;{exn:module-path scheme_module_path_property |
+                                                          scheme_make_prim(extract_module_path_3)|}]
+                                      "error resolving a module path"))
+              (read [read-field-check
+                     (srclocs immutable-list-of-srcloc? "source location(s) of error")
+                     #;{exn:source scheme_source_property|scheme_make_prim(extract_read_locations)|}]
+                    "read  parsing error"
+                    (eof      [] "unexpected end-of-file")
+                    (non-char [] "unexpected non-character"))
+              (filesystem [] "error manipulating a filesystem object"
+                          (exists  [] "attempt to create a file that exists already")
+                          (version [] "version mismatch loading an extension")
+                          (errno   [errno-field-check
+                                    (errno pair-of-symbol-and-number? "system error code")]
+                                   "error with system error code")
+                          (missing-module [module_path_field_check_2
+                                           (path "module path" "module path")
+                                           #;{exn:module-path
+                                              scheme_module_path_property
+                                              |scheme_make_prim(extract_module_path_2)|}]
+                                          "error resolving a module path"))
+              (network [] "TCP and UDP errors"
+                       (errno [errno-field-check
+                               (errno pair-of-symbol-and-number? "system error code")]
+                              "error with system error code"))
+              (out-of-memory [] "out of memory")
+              (unsupported   [] "unsupported feature")
+              (user          [] "for end users"))
+        
+        (break [break-field-check
+                (continuation escape-continuation? "resumes from the break")]
+               "asynchronous break signal"
+               (hang-up   [] "terminal disconnect")
+               (terminate [] "termination request"))))
+
+(define (expand-generate-exception-structs stx)
+  (declare-exception-handlers stx exception-struct-descriptions))
+
+(define-urlang-macro generate-exception-structs expand-generate-exception-structs)
+
+
+(generate-runtime)

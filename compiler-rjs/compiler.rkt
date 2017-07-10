@@ -1,6 +1,6 @@
 #lang racket
 (provide eval)   
-(provide (all-defined-out))
+(provide (all-defined-out)) 
 
 ;;; 
 ;;; TODO
@@ -27,9 +27,9 @@
 ; TODO       store source locations for each application, etc ...
 ; CLOSE  9. tco (trampoline)
 ; DONE  10. with-continuation-mark
-;       11. parameters
-;       12. exceptions
-;       13. error checking
+; DONE  11. parameters
+; CLOSE 12. exceptions
+; WIP   13. error checking
 ;             - applications of non-procedures
 ;             - arities  
 ;             - wrong number of return values
@@ -40,6 +40,7 @@
 ;       19. #%variable-reference
 ;       20. test suite
 ;       21. keywords
+;       22. promises
 
 ;;;
 ;;; NOTES
@@ -70,7 +71,7 @@
   (except-in syntax/parse str) ; the identifier str is used in the runtime 
   (rename-in racket/match [match Match])
   (only-in srfi/1 list-index)
-  '#%paramz) ; contains the identifier parameterization-key
+  '#%paramz) ; contains the identifier psarameterization-key
    
 ;;;
 ;;; EXPANSION
