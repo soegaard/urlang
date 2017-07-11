@@ -1,6 +1,6 @@
 #lang racket
 (require urlang urlang/extra urlang/for
-         syntax/parse syntax/stx)
+         syntax/parse syntax/stx racket/syntax)
 
 ;;; This file contains the runtime library for the
 ;;; Racket to JavaScript compiler in urlang/compiler-rjs.
@@ -27,14 +27,23 @@
 ;;; TODO
 ;;;
 
+;;  - guards     in structs
+;;  - properties in structs
+;;  - arity checking of primitives
+;;  - arity checking of closures
 ;;  - equal? : handle cyclic data
 ;;  - finish support for namespaces
 ;;  - hash tables
 ;;  - sequences
+;;  - make-placeholder (from shared)
 
 (current-urlang-run?                           #t)
 (current-urlang-echo?                          #t)
 (current-urlang-console.log-module-level-expr? #t)
+
+;;;
+;;; General Urlang Constructs
+;;;
 
 ;;; Add  in-list  to for and friends
 (define (handle-in-list clause)
@@ -95,7 +104,6 @@
              (let ([id (ref t1 i)] ... ...)
                statement ... body-expr)))))]))
 
-(require racket/syntax)
 
 (define (expand-define-values stx)
   (syntax-parse stx
@@ -111,19 +119,38 @@
 (define-urlang-macro let-values    expand-let-values)
 (define-urlang-macro define-values expand-define-values)
 
+
+;;;
+;;; Runtime Helpers
+;;;
+
+; SYNTAX
+; (define (name arg ...) statement ... expr)
+
 (define (expand-define/export stx)
   (syntax-parse stx
+    [(_define/export #:arity (name args ...) . body)
+     (with-syntax ([expected-arity (length (syntax->list #'(args ...)))]
+                   [name-str       (symbol->string (syntax-e #'name))])
+       (syntax/loc stx
+         (topblock
+          (export name)
+          (define (name args ...)
+            (unless (= arguments.length expected-arity)
+              (raise-arity-error (string->symbol name-str) expected-arity args ...))
+            . body))))]
     [(_define/export (name . formals) . body)
      (syntax/loc stx
        (topblock
         (export name)
-        (define (name . formals) . body)))]
+        (define (name . formals) . body)))]    
     [(_define/export name expr)
      (syntax/loc stx
        (topblock
         (export name)
         (define name expr)))]
     [_ (error 'define/export "bad syntax" stx)]))
+
 
 (define-urlang-macro define/export expand-define/export)
 
@@ -161,7 +188,7 @@
 (define-urlang-macro closlabapp expand-closlabapp)
 
 
-#;(
+#;( ; not in use for now
 (define (expand-tailapp stx)
   ; Note: args are duplicated so keep them simple
   (syntax-parse stx
@@ -223,7 +250,7 @@
     (define/export SYNTAX-OBJECT          (array "syntax-object"))
 
     (define/export CLOS                   "CLOS") ; easier in code generator
-    (define/export PARAMETER              (array "parameter"))
+    (define/export PARAMETER              (array "parameter")) ; parameters are closures
     
     (define/export VOID (array))    ; singleton
     (define/export NULL (array))    ; singleton
@@ -232,12 +259,12 @@
     ;;; PARAMZ
     ;;;
 
-    ; The will eventually be part of #%paramz
+    ; This will eventually be part of #%paramz
     (define/export parameterization-key  (array "parameterization-key"))
     (define/export exception-handler-key (array "exception-handler-key"))
-    ; Note: breaks aren't supported by this compiler, but we need to fake 
-    ;       support in order for exceptions to work.
     (define/export break-enabled-key     (array "break-enabled-key"))
+    ; Note: breaks aren't supported by this compiler, but we need to fake
+    ;       support in order for exceptions to work.
     
     ;;;
     ;;; GLOBAL VARIABLES
@@ -471,7 +498,7 @@
     ;;;
     ;;; 4.2 Numbers
     ;;;
-    (define/export (number? v)   (= (typeof v) "number"))
+    (define/export #:arity (number? v) (= (typeof v) "number"))
     (define/export (complex? v)  (number? v))
     (define/export (real? v)     (number? v)) ; +inf.0, -inf.0, +nan.0 are real numbers
     (define/export (rational? v) (and (number? v) (Number.isFinite v)))  
@@ -1560,8 +1587,8 @@
     ;; properties         = TODO
     ;; inspector          = TODO
     ;; mutables           = TODO
-    ;; guard              = TODO
-    ;; constructor-name     = string
+    ;; guard              = #f or procedure of n+1 arguments [see docs]
+    ;; constructor-name   = string
     
     ;;;
     ;;; 5.2 Creating Structure Types
@@ -1779,7 +1806,6 @@
                    "  given: "             (str (ref args (+ 2 bad-pos)) display-mode) "\n"
                    "  argument position: " (str bad-pos                  display-mode) "\n")])
       (raise (exn:fail:contract msg (current-continuation-marks))))
-
     (define/export (error a0 a1 a2 more)
       (var [args arguments] [n args.length])
       (cond
@@ -1839,15 +1865,25 @@
     ;  (void)))
 
     (define default-exception-handler (array "CLOS" default-exception-handler-label))
-    (define (default-exception-handler-label e) ; any -> any
+    (define (default-exception-handler-label free tc e) ; any -> any
       ; The default uncaught-exception handler prints an error message using
       ; the current error display handler (see error-display-handler), unless
       ; the argument to the handler is an instance of exn:break:hang-up.
-      ; TODO: The following doesn't match the docs. Call the error-display-handler ...
-      (console.log "uncaught exception")
-      (console.log (exn-message e))
-      (exit))
+      (var [error-display (closapp #f error-display-handler)])
+      (if (closure? error-display)
+          (closapp #f error-display "uncaught exception: " e)
+          (           error-display "uncaught exception: " e))
+      ; TODO: use error-escape-handler to exit
+      (process.exit 1))  ; process.exit works in node
 
+    (define/export error-display-handler (make-parameter default-error-display-handler))
+    (define (default-error-display-handler str v)
+      ; TODO: If v is an exn then use the continuation marks to print a stack trace
+      (displayln str)
+      (cond
+        [(exn? v) (displayln (exn-message v))]
+        [else     (displayln v)]))
+    
     (define/export uncaught-exception-handler (make-parameter default-exception-handler))
 
     ; The form  with-handlers  expand into uses of
@@ -2690,6 +2726,7 @@
        (with-syntax ([Name:                        name:]
                      [name:-struct-type-descriptor (format-id stx
                                                      (~a name: "-struct-type-descriptor"))]
+                     [name:?                       (format-id stx (~a name: "?"))]
                      [name:-str                    (~a name:)]
                      [super-type                   super-type]
                      [field-count                  count]
@@ -2706,8 +2743,11 @@
               (array STRUCT-TYPE-DESCRIPTOR name:-str super-type
                      field-count (list index ...) NULL NULL #f #f NULL #f make-name:))
             ; constructor
-            (define/export (Name: field-name ...)
+            (define/export (Name: field-name ...)              
               (array STRUCT name:-struct-type-descriptor field-name ...))
+            ; predicate
+            (define/export (name:? v)
+              (and (array? v) (>= v.length 2) (= (ref v 1) name:-struct-type-descriptor)))
             ; accessors
             (define/export (name:-field e)            (ref e ref-index)) ...
             ; kernel structs        

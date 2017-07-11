@@ -477,7 +477,8 @@
          [prims    (ur-urmodule-name->exports 'runtime)]
          [pr       (map (λ (prim) (datum->syntax #'runtime prim)) prims)]
          [pr-str   (map (λ (prim) (~a (ur-mangle prim))) pr)]
-         [RUNTIMES (map (λ (_) #'RUNTIME) prims)])
+         [RUNTIMES (map (λ (_) #'RUNTIME) prims)]
+         [e        #'e])
     (with-output-language (ur-Lur Module)
       `(urmodule amodulename
          (import ,#'console.log ,#'require ,#'Array.isArray
@@ -494,8 +495,13 @@
          (var [binding ,_tc '#f]) ; used by wcm (also top-level expressions aren't in tc)
          ;; The result of evaluating this module:
          (define ,result '0) ; todo: make it undefined
-         ,t))))
-
+         
+         (try {,t}        ; run the program              
+              (catch ,e   ; catch any uncaught exceptions
+                (var [binding ,#'ueh-label     (ref ,#'uncaught-exception-handler '1)])
+                (var [binding ,#'handler       (app ,#'ueh-label '#f ,#'uncaught-exception-handler)])
+                (var [binding ,#'handler-label (ref ,#'handler '1)])
+                (return (app ,#'handler-label '#f ,#'handler ,e))))))))
 
 (define (unparse-test stx)
   (unparse-LANF+closure
