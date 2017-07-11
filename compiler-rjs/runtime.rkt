@@ -1577,7 +1577,7 @@
     ;;       (array STRUCT-TYPE-DESCRIPTOR name super-type total-field-count
     ;;              init-field-indices auto-field-indices auto-field-values
     ;;              properties inspector immutables guard constructor-name)
-    
+
     ;; name               = string with name of struct
     ;; super-type         = #f or struct-type-descriptor
     ;; total-field-count  = number of init fields plus number of auto fields
@@ -1608,6 +1608,12 @@
     
     (define/export (struct-type-descriptor? v) (and (array? v) (= (ref v 0) STRUCT-TYPE-DESCRIPTOR)))
     (define/export (struct? v)                 (and (array? v) (= (ref v 0) STRUCT)))
+
+    (define (struct-type-is-a? a-std the-std)
+      ; is a-std a subtype 
+      (or (= a-std the-std)
+          (and the-std
+               (struct-type-is-a? (ref a-std 2) the-std))))
     
     (define/export (str-struct-type-descriptor s)
       (+ "(struct-type-descriptor "
@@ -1840,10 +1846,11 @@
         (raise-argument-error raise-arity-error-sym "(or/c symbol? procedure?)" 0 name))
       (var [n   (if (symbol? name) (symbol->string name) (or (object-name name) ""))]
            [msg
-            (+ name ": "
-               "arity mismatch\nthe expected number of arguments does not match the given number\n"
-               "expected: " arity-v "\n"
-               "given: " (- arguments.length 2))])
+            (+ (str name display-mode) 
+               ": arity mismatch\\n"
+               "the expected number of arguments does not match the given number\\n"
+               "expected: " arity-v                "\\n"
+               "given: "    (- arguments.length 1))])
       (raise (exn:fail:contract:arity msg (current-continuation-marks))))
     
     (define/export (raise-syntax-error name message opt-expr opt-sub-expr opt-extra-sources)
@@ -2508,6 +2515,7 @@
         [(continuation-mark-set? v)    (str-continuation-mark-set v)]
         [(parameterization? v)         (str-parameterization v)]
         [(parameter? v)                (str-parameter v)]
+        ; [(exception? v)                
         [#t                            (console.log v)
                                        "str - internal error"]))
 
@@ -2699,7 +2707,7 @@
 (define (declare-exception-handlers stx
                                     info               ; exception hiearki description
                                     [names       '()]  ; names of all super structs
-                                    [super-type   #f]  ; #f  or  name of parent super type
+                                    [super-type   #f]  ; #f  or  parent super type descriptor
                                     [field-descs '()]  ; list of field descriptions
                                     [checkers    '()]) ; list of checkers
   (match info
@@ -2746,15 +2754,18 @@
             (define/export (Name: field-name ...)              
               (array STRUCT name:-struct-type-descriptor field-name ...))
             ; predicate
+            ;    the index of the super-type-index is 2
             (define/export (name:? v)
-              (and (array? v) (>= v.length 2) (= (ref v 1) name:-struct-type-descriptor)))
+              (and (array? v) (>= v.length 3)
+                   (struct-type-is-a? (ref v 1) name:-struct-type-descriptor)))
             ; accessors
             (define/export (name:-field e)            (ref e ref-index)) ...
             ; kernel structs        
             (define/export kernel:name: Name:)
             #,@(if (null? description)
                    (list #'(topblock))
-                   (map (λ (d) (declare-exception-handlers stx d names name: field-descs checkers))
+                   (map (λ (d) (declare-exception-handlers stx d names #'name:-struct-type-descriptor
+                                                           field-descs checkers))
                         description)))))]))
 
 (define exception-struct-descriptions
