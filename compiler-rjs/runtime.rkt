@@ -224,10 +224,10 @@
     (import Array Int8Array Math Number String
             #;new #;typeof)
     ;;; Array
-    (define/export (array? v) ; todo : inline array?
+    (define/export #:arity (array? v) ; todo : inline array?
       (Array.isArray v))
     ;;; Tags
-    (define/export (tag a) (ref a 0))
+    (define/export #:arity (tag a) (ref a 0))
     (define/export PAIR                   (array "pair"))
     (define/export VECTOR                 (array "vector"))
     (define/export IMMUTABLE-VECTOR       (array "immutable-vector"))
@@ -455,12 +455,12 @@
     
     ;; Representation: #t and #f are represented as true and false respectively,
     ;; where true and false are JavaScript booleans.
-    (define/export (boolean? v)
+    (define/export #:arity  (boolean? v)
       (= (typeof v) "boolean"))
     ; Note: The identifier  not  is reserved in Urlang. Here we call it PRIM_not
     ;       and then in α-rename we rename not to PRIM_not.
-    (define/export (PRIM_not x) (if x #f #t)) ; not is a predefined function
-    (define/export (equal? v w) ; TODO: handle cyclic data structures
+    (define/export #:arity (PRIM_not x) (if x #f #t)) ; not is a predefined function
+    (define/export #:arity (equal? v w) ; TODO: handle cyclic data structures
       (cond
         [(and (boolean? v)          (boolean?          w)) (= v w)]
         [(and (number?  v)          (number?           w)) (= v w)]
@@ -479,15 +479,15 @@
         [(and (bytes?  v)           (bytes?            w)) (bytes=?   v w)]
         [(and (keyword?  v)         (keyword?          w)) (keyword=? v w)]
         [#t #f]))
-    (define/export (eqv? v w)
+    (define/export #:arity (eqv? v w)
       (cond
         [(and (number? v) (number? w)) (= v w)]
         [(and (char?   v) (char?   w)) (= (char->integer v) (char->integer w))]
         [#t                            (= v w)]))
-    (define/export (eq? v1 v2)      
+    (define/export #:arity (eq? v1 v2)      
       (= v1 v2))
     ; (define (equal/retur v1 v2) ...) TODO
-    (define/export (immutable? v)
+    (define/export #:arity (immutable? v)
       ; Note: This follows the spec. It is not a general
       ;       immutability predicate, so immutable pairs are not checked here.
       (or (immutable-string? v)
@@ -499,33 +499,33 @@
     ;;; 4.2 Numbers
     ;;;
     (define/export #:arity (number? v) (= (typeof v) "number"))
-    (define/export (complex? v)  (number? v))
-    (define/export (real? v)     (number? v)) ; +inf.0, -inf.0, +nan.0 are real numbers
-    (define/export (rational? v) (and (number? v) (Number.isFinite v)))  
-    (define/export (integer? v)  (Number.isInteger v))
-    (define/export (exact-integer? v)
+    (define/export #:arity (complex? v)  (number? v))
+    (define/export #:arity (real? v)     (number? v)) ; +inf.0, -inf.0, +nan.0 are real numbers
+    (define/export #:arity (rational? v) (and (number? v) (Number.isFinite v)))  
+    (define/export #:arity (integer? v)  (Number.isInteger v))
+    (define/export #:arity (exact-integer? v)
       ; http://stackoverflow.com/questions/3885817/how-to-check-that-a-number-is-float-or-integer
       (and (= (typeof v) "number")
            (= v (+ v))
            (= v (bit-or v 0))))
-    (define/export (exact-nonnegative-integer? v) (and (exact-integer? v) (>= v 0)))
-    (define/export (exact-positive-integer? v)    (and (exact-integer? v) (> v 0)))
-    (define/export (inexact-real? v)              (and (real? v) (inexact? v)))
-    (define/export (fixnum? v)                    (exact-integer? v))
-    (define/export (flonum? v)                    (and (number? v) (not (exact-integer? v))))
-    (define/export (double-flonum? v)             (flonum? v))
-    (define/export (single-flonum? v)             (flonum? v))
-    (define/export (zero? z)                      (= z 0))
-    (define/export (positive? x)                  (> x 0))
-    (define/export (negative? x)                  (< x 0))
-    (define/export (even? n)                      (= 0 (% n 2)))
-    (define/export (odd? n)                       (= 1 (% n 2)))
-    (define/export (exact? z)                     (exact-integer? z))
-    (define/export (inexact? z)                   (and (number? z) (not (exact? z))))
-    (define/export (inexact->exact z)      z) ; todo
-    (define/export (exact->inexact z)      z) ; todo
-    (define/export (real->single-flonum x) x) ; todo 
-    (define/export (real->double-flonum x) x) ; todo
+    (define/export #:arity (exact-nonnegative-integer? v) (and (exact-integer? v) (>= v 0)))
+    (define/export #:arity (exact-positive-integer? v)    (and (exact-integer? v) (> v 0)))
+    (define/export #:arity (inexact-real? v)              (and (real? v) (inexact? v)))
+    (define/export #:arity (fixnum? v)                    (exact-integer? v))
+    (define/export #:arity (flonum? v)                    (and (number? v) (not (exact-integer? v))))
+    (define/export #:arity (double-flonum? v)             (flonum? v))
+    (define/export #:arity (single-flonum? v)             (flonum? v))
+    (define/export #:arity (zero? z)                      (= z 0))
+    (define/export #:arity (positive? x)                  (> x 0))
+    (define/export #:arity (negative? x)                  (< x 0))
+    (define/export #:arity (even? n)                      (= 0 (% n 2)))
+    (define/export #:arity (odd? n)                       (= 1 (% n 2)))
+    (define/export #:arity (exact? z)                     (exact-integer? z))
+    (define/export #:arity (inexact? z)                   (and (number? z) (not (exact? z))))
+    (define/export #:arity (inexact->exact z)      z) ; todo
+    (define/export #:arity (exact->inexact z)      z) ; todo
+    (define/export #:arity (real->single-flonum x) x) ; todo 
+    (define/export #:arity (real->double-flonum x) x) ; todo
     ;;;
     ;;; 4.2.2 Generic Numbers
     ;;;
@@ -598,20 +598,20 @@
                         (+= i 1))
                  (:= res quot))))
       res)
-    (define/export (quotient n m) 
+    (define/export #:arity (quotient n m) 
       (Math.floor (/ n m)))
-    (define/export (remainder n m)
+    (define/export #:arity (remainder n m)
       (% n m))
-    (define/export (quotient/remainder n m)
+    (define/export #:arity (quotient/remainder n m)
       (values (quotient n m) (remainder n m)))
-    (define/export (modulo n m)
+    (define/export #:arity (modulo n m)
       (var [who (λ() (string->symbol "modulo"))])
       (unless (and (number? n) (not (infinite? n))) (raise-argument-error (who) "integer?" 1 n m))
       (unless (and (number? m) (not (infinite? m))) (raise-argument-error (who) "integer?" 2 n m))
       (% (+ (% n m) m) m))
-    (define/export (add1 z) (+ z 1))
-    (define/export (sub1 z) (- z 1))
-    (define/export (abs x)  (Math.abs x))
+    (define/export #:arity (add1 z) (+ z 1))
+    (define/export #:arity (sub1 z) (- z 1))
+    (define/export #:arity (abs x)  (Math.abs x))
     (define/export (max) ; (max x ...+) variadic
       (Math.max.apply #f arguments))
     (define/export (min) ; (min x ...+) variadic
@@ -627,7 +627,7 @@
               (for ([i in-range 1 l])
                 (:= g (gcd g (ref args i))))
               g]))
-    (define/export (gcd2 n m)
+    (define/export #:arity (gcd2 n m)
       (var a b)
       (swhen (< n 0)  (:= n (- n)))
       (swhen (< m 0)  (:= m (- m)))
@@ -642,30 +642,30 @@
                               [#t      (%= b a)])]))
       res)
     ; lcm todo
-    (define/export (round x) ; break ties in favor of nearest even number
+    (define/export #:arity (round x) ; break ties in favor of nearest even number
       (var [r (Math.round x)])
       (if (= (% (if (> x 0) x (- x)) 1) 0.5)
           (if (even? r) r (- r 1))
           r))
-    (define/export (floor x)    (Math.floor x))
-    (define/export (ceiling x)  (Math.ceil x))
-    (define/export (truncate x) (Math.trunc x))
+    (define/export #:arity (floor x)    (Math.floor x))
+    (define/export #:arity (ceiling x)  (Math.ceil x))
+    (define/export #:arity (truncate x) (Math.trunc x))
     ; (define (numerator q) ; q rational TODO
-    (define/export (sqrt x)     (Math.sqrt x))
-    (define/export (integer-sqrt n) ; n integer
+    (define/export #:arity (sqrt x)     (Math.sqrt x))
+    (define/export #:arity (integer-sqrt n) ; n integer
       (Math.floor (Math.sqrt n)))   ; TODO: handle negative x
-    (define/export (integer-sqrt/remainder n)
+    (define/export #:arity (integer-sqrt/remainder n)
       (var [s (Math.floor (Math.sqrt n))])
       (values s (- n (* s s))))
-    (define/export (expt z w)   (Math.pow z w))
-    (define/export (exp z)      (Math.exp z))
-    (define/export (log z)      (Math.log z))
-    (define/export (sin z)      (Math.sin z))
-    (define/export (cos z)      (Math.sin z))
-    (define/export (tan z)      (Math.tan z))
-    (define/export (asin z)     (Math.asin z))
-    (define/export (acos z)     (Math.acos z))
-    (define/export (atan y x)
+    (define/export #:arity (expt z w)   (Math.pow z w))
+    (define/export #:arity (exp z)      (Math.exp z))
+    (define/export #:arity (log z)      (Math.log z))
+    (define/export #:arity (sin z)      (Math.sin z))
+    (define/export #:arity (cos z)      (Math.sin z))
+    (define/export #:arity (tan z)      (Math.tan z))
+    (define/export #:arity (asin z)     (Math.asin z))
+    (define/export #:arity (acos z)     (Math.acos z))
+    (define/export (atan y x) ; todo: check arity
       (case arguments.length
         [(1) (Math.atan y)]
         [(2) (Math.atan y x)]
@@ -673,33 +673,33 @@
     ;; Complex numbers  (not supported)
     ; make-rectangular - todo
     ; make-polar       - todo
-    (define/export (real-part z)  z)  ; todo
-    (define/export (image-part z) 0)  ; works only for real numbers :-)
-    (define/export (magnitude z)  (Math.abs z))
-    (define/export (angle z)
+    (define/export #:arity (real-part z)  z)  ; todo
+    (define/export #:arity (image-part z) 0)  ; works only for real numbers :-)
+    (define/export #:arity (magnitude z)  (Math.abs z))
+    (define/export #:arity (angle z)
       (cond
         [(> z 0) 0]
         [(< z 0) Math.PI]
         [#t      (error "angle" "undefined for 0")]))
     ; integer-length  -  todo
-    (define/export (random k rand-gen)  ; TODO: don't ignore rand-gen
+    (define/export #:arity (random k rand-gen)  ; TODO: don't ignore rand-gen
       (Math.floor (* (Math.random) k)))
-    (define/export (random-seed k) (Void))            ; can't set the seed in JavaScript ?!?
-    (define/export (make-pseudo-random-generator) #f)
-    (define/export (pseudo-random-generator? v) (eq? v #f))
-    (define/export (current-pseudo-random-generator rand-gen) #f)
-    (define/export (pseudo-random-generator->vector rand-gen) (vector))
-    (define/export (vector->pseudo-random-generator vec) #f)
-    (define/export (vector->pseudo-random-generator! rand-gen vec) (Void))
-    (define/export (pseudo-random-generator-vector? v) (vector? v))
-    (define/export (number->string z radix)
+    (define/export #:arity (random-seed k) (Void))            ; can't set the seed in JavaScript ?!?
+    (define/export #:arity (make-pseudo-random-generator) #f)
+    (define/export #:arity (pseudo-random-generator? v) (eq? v #f))
+    (define/export #:arity (current-pseudo-random-generator rand-gen) #f)
+    (define/export #:arity (pseudo-random-generator->vector rand-gen) (vector))
+    (define/export #:arity (vector->pseudo-random-generator vec) #f)
+    (define/export #:arity (vector->pseudo-random-generator! rand-gen vec) (Void))
+    (define/export #:arity (pseudo-random-generator-vector? v) (vector? v))
+    (define/export #:arity (number->string z radix)
       (var [num (Number z)])
       (num.toString radix))
-    (define/export (string->number s radix) ; radix optional
+    (define/export (string->number s radix) ; radix optional 
       (case arguments.length
-        [(1) (parseFloat s)]
-        [(2) (parseFloat s radix)]
-        [else (error "string->number" "expected one or two arguments")]))
+        [(1)  (parseFloat s)]
+        [(2)  (parseFloat s radix)]
+        [else (raise-arity-error (string->symbol "string->number") (list 1 2) s radix)]))
     ; real-> decimal-string ; todo
     ; integer-bytes->integer ; todo
     ; integer->integer-bytes ; todo
@@ -1800,17 +1800,17 @@
     (define (raise-argument-error-3 name expected v)
       ; TODO: check input types
       (var [n (or name "raise-argument-error")]
-           [msg (+ (str n) ": contract violation\n"
-                   "  expected: " (str expected display-mode) "\n"
-                   "  given: "    (str v display-mode)        "\n")])
+           [msg (+ (str n) ": contract violation\\n"
+                   "  expected: " (str expected display-mode) "\\n"
+                   "  given: "    (str v display-mode)        "\\n")])
       (raise (exn:fail:contract msg (current-continuation-marks))))
     (define (raise-argument-error-4 name expected bad-pos args)
       ; note: bad-pos is non-negative, i.e. we count from 1 !
       (var [n (or name "raise-argument-error")]
-           [msg (+ (str n) ": contract violation\n"
-                   "  expected: "          (str expected                 display-mode) "\n"
-                   "  given: "             (str (ref args (+ 2 bad-pos)) display-mode) "\n"
-                   "  argument position: " (str bad-pos                  display-mode) "\n")])
+           [msg (+ (str n) ": contract violation\\n"
+                   "  expected: "          (str expected                 display-mode) "\\n"
+                   "  given: "             (str (ref args (+ 2 bad-pos)) display-mode) "\\n"
+                   "  argument position: " (str bad-pos                  display-mode) "\\n")])
       (raise (exn:fail:contract msg (current-continuation-marks))))
     (define/export (error a0 a1 a2 more)
       (var [args arguments] [n args.length])
@@ -1849,9 +1849,16 @@
             (+ (str name display-mode) 
                ": arity mismatch\\n"
                "the expected number of arguments does not match the given number\\n"
-               "expected: " arity-v                "\\n"
+               "expected: " (arity-value->string arity-v)                      "\\n"
                "given: "    (- arguments.length 1))])
       (raise (exn:fail:contract:arity msg (current-continuation-marks))))
+    (define (arity-value->string arity-v)
+      (var [res ""])
+      (cond [(number? arity-v) (number->string arity-v)]
+            [(list?   arity-v) (for ([n in-list arity-v])
+                                 (:= res (+ res n " ")))
+                               res]
+            [else              (error (string->symbol "arity-value->string"))]))
     
     (define/export (raise-syntax-error name message opt-expr opt-sub-expr opt-extra-sources)
       ; Creates an exn:fail:syntax value and raises it as an exception.
