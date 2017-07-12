@@ -1907,9 +1907,13 @@
       ; the current error display handler (see error-display-handler), unless
       ; the argument to the handler is an instance of exn:break:hang-up.
       (var [error-display (closapp #f error-display-handler)])
-      (if (closure? error-display)
-          (closapp #f error-display "uncaught exception: " e)
-          (           error-display "uncaught exception: " e))
+      (scond
+       [(exn? e) (if (closure? error-display)
+                     (closapp #f error-display (exn-message e) e)
+                     (           error-display (exn-message e) e))]
+       [else     (if (closure? error-display)
+                     (closapp #f error-display "uncaught exception: " e)
+                     (           error-display "uncaught exception: " e))])
       ; TODO: use error-escape-handler to exit
       (process.exit 1))  ; process.exit works in node
 
@@ -1918,7 +1922,7 @@
       ; TODO: If v is an exn then use the continuation marks to print a stack trace
       (displayln str)
       (cond
-        [(exn? v) (displayln (exn-message v))]
+        [(exn? v) VOID #;(displayln (exn-message v))]
         [else     (displayln v)]))
     
     (define/export uncaught-exception-handler (make-parameter default-exception-handler))
