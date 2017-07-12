@@ -14,7 +14,8 @@
 ;;; NOTES
 ;;;
 
-; Primitives are representation as javascript functions.
+; Most primitives are representation as javascript functions.
+; Primitives that need tail call information are represented as Racket closures.
 ; Closures are represented as arrays whose first element is a tag.
 ; See "4.17 Procedures" below for details on the representation of closures.
 
@@ -449,6 +450,8 @@
       ; Here we just store the source location informations in the form of a srcloc struct.
       (array STRUCT syntax-object-struct-type-descriptor
              source-location lexical-info datum))
+    (define (syntax-object-source-location v) (ref v 2))
+    (define (syntax-object-datum v)           (ref v 4))
     
     ;;;
     ;;; 4.1 Booleans and equality
@@ -467,8 +470,9 @@
         [(and (number?  v)          (number?           w)) (= v w)]
         [(and (symbol?  v)          (symbol?           w)) (symbol=? v w)]
         [(and (null?  v)            (null?             w)) #t]
-        [(and (pair? v)             (pair?             w)) (and (equal? (unsafe-car v) (unsafe-car w))
-                                                              (equal? (unsafe-cdr v) (unsafe-cdr w)))]
+        [(and (pair? v)             (pair?             w)) (and
+                                                            (equal? (unsafe-car v) (unsafe-car w))
+                                                            (equal? (unsafe-cdr v) (unsafe-cdr w)))]
         [(and (void?  v)            (void?             w)) #t]
         [(and (char?  v)            (char?             w)) (char=? v w)]
         [(and (immutable-string? v) (immutable-string? w)) (= v w)]
@@ -2210,6 +2214,18 @@
     ; and ...
     ; The values should be stored in tread cells (since each thread has its own version of
     ; the parameter values.
+
+    ;;;
+    ;;; 12 Macros
+    ;;;
+    ;;; 12.1 Pattern-Based Syntax Matching
+    ;;; 12.2 Syntax Object Content
+    
+    (define/export #:arity (syntax? v)       (and (array? v) (>= v.length 3)
+                                                  (= (ref v 1) syntax-object-struct-type-descriptor)))
+    (define/export #:arity (syntax-e v)      (ref v 4))
+    (define/export #:arity (identifier? v)   (and (syntax? v) (symbol? (syntax-e v))))
+
     
     ;;;
     ;;; 13 INPUT AND OUTPUT
@@ -2477,10 +2493,19 @@
     (define/export (unsafe-vector*-length v) (- v.length 1))
     
     ;;;
-    ;;; Higher Order
+    ;;; racket/match
     ;;;
-    
+
+    ;;; The following functions are part of the runtime support for match.
+    ;;; See racket/match/runtime.rkt in the racket repo.
+
+    (define/export (match:error x)    (error (string->symbol "match:error") x))
+    (define/export (syntax-srclocs x) (list (syntax-object-source-location x)))  ; todo see source
+
+    ;;;
     ;;; FORMAT
+    ;;;
+
     ;; The str functions convert values into strings.
     (define write-mode   0)
     (define display-mode 1)
@@ -2866,5 +2891,8 @@
 
 (define-urlang-macro generate-exception-structs expand-generate-exception-structs)
 
+;;;
+;;;
+;;;
 
 (generate-runtime)

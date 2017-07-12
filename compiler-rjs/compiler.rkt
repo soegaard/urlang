@@ -1,5 +1,5 @@
 #lang racket
-(provide eval)    
+(provide eval)      
 (provide (all-defined-out)) 
 
 ;;; 
@@ -83,10 +83,15 @@
 ;;;       and     (expand #'(let () (struct foo (bar)) (foo 42))
 ;;        Note that the (foo 42) doesn't match the constructor name in the begin snippet.
 
+(require (only-in racket/unsafe/ops unsafe-fx< unsafe-fx> unsafe-fx+ unsafe-fx- unsafe-fx*)
+         (only-in racket/base in-range))
+
 (define (topexpand top-level-form-stx)
   (parameterize ([current-namespace (make-base-namespace)]
                  [eval-jit-enabled  #f])  ; affects expansion
     ;                                     ; (reverse becomes alt-reverse unless disabled)
+    (namespace-require 'errortrace)
+    (namespace-require 'racket/match)
     (expand-syntax top-level-form-stx)
     #;(expand-syntax #`(let () #,top-level-form-stx))))
 
