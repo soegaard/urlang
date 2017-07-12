@@ -136,8 +136,9 @@
          (topblock
           (export name)
           (define (name args ...)
-            (unless (= arguments.length expected-arity)
-              (raise-arity-error (string->symbol name-str) expected-arity args ...))
+            (sif (= arguments.length expected-arity)
+                 VOID
+                 (raise-arity-error* (string->symbol name-str) expected-arity arguments))
             . body))))]
     [(_define/export (name . formals) . body)
      (syntax/loc stx
@@ -692,14 +693,17 @@
     (define/export #:arity (vector->pseudo-random-generator vec) #f)
     (define/export #:arity (vector->pseudo-random-generator! rand-gen vec) (Void))
     (define/export #:arity (pseudo-random-generator-vector? v) (vector? v))
-    (define/export #:arity (number->string z radix)
+    (define/export (number->string z opt-radix)
       (var [num (Number z)])
-      (num.toString radix))
+      (case arguments.length
+        [(1)  (num.toString 10)]
+        [(2)  (num.toString opt-radix)]
+        [else (raise-arity-error (string->symbol "number->string") (list 1 2))]))
     (define/export (string->number s radix) ; radix optional 
       (case arguments.length
         [(1)  (parseFloat s)]
         [(2)  (parseFloat s radix)]
-        [else (raise-arity-error (string->symbol "string->number") (list 1 2) s radix)]))
+        [else (raise-arity-error (string->symbol "string->number") (list 1 2))]))
     ; real-> decimal-string ; todo
     ; integer-bytes->integer ; todo
     ; integer->integer-bytes ; todo
@@ -737,7 +741,7 @@
         [(1) (make-string1 k)]
         [(2) (make-string2 k ch)]
         [else ; todo: pass arguments to raise-arity-error
-         (raise-arity-error (string->symbol "make-string" (list 1 2)))]))
+         (raise-arity-error (string->symbol "make-string") (list 1 2))]))
     (define/export #:arity (make-string1 k)
       (make-string2 k "\u0000"))
     (define/export #:arity (make-string2 k ch)
@@ -1019,7 +1023,7 @@
     
     (define symbol-table (array))
     
-    (define/export #:arity (string->symbol str)
+    (define/export (string->symbol str)
       ; returns interned symbol
       (var [t (typeof str)] r old)
       (:= old (ref symbol-table str))
@@ -1094,7 +1098,7 @@
     ;;   where d is a list.
     (define/export #:arity (pair? v)      (and (array? v) (= (tag v) PAIR)))
     (define/export #:arity (null? v) (= v NULL))
-    (define/export #:arity (cons a d)     (array PAIR (list? d) a d))
+    (define/export  (cons a d)     (array PAIR (list? d) a d))
     (define/export #:arity (unsafe-car p) (ref p 2))
     (define/export car unsafe-car)
     (define/export #:arity (unsafe-cdr p) (ref p 3))
@@ -1173,7 +1177,7 @@
              (:= xs (cdr xs)))
       result)
     (define/export alt-reverse reverse) ; version in #%kernel which might be jit-optimized
-    (define map-sym (string->symbol "map"))
+    (define (map-sym) (string->symbol "map"))
     (define/export (map proc xs ys zs) ; optional (map proc xs ...+)
       (var [n arguments.length])
       (cond
@@ -1182,18 +1186,18 @@
            [(2)  (for/list ([x in-list xs])                               (proc x))]
            [(3)  (for/list ([x in-list xs] [y in-list ys])                (proc x y))]
            [(4)  (for/list ([x in-list xs] [y in-list ys] [z in-list zs]) (proc x y z))]
-           [(0)  (error map-sym "expected at least two arguments")]
-           [else (error map-sym "TODO immplement map for more than 4 arguments")])]
+           [(0)  (error (map-sym) "expected at least two arguments")]
+           [else (error (map-sym) "TODO immplement map for more than 4 arguments")])]
         [(closure? proc)
          (var [lab (closure-label proc)])
          (case n
            [(2)  (for/list ([x in-list xs])                               (closlabapp #f lab x))]
            [(3)  (for/list ([x in-list xs] [y in-list ys])                (closlabapp #f lab x y))]
            [(4)  (for/list ([x in-list xs] [y in-list ys] [z in-list zs]) (closlabapp #f lab x y z))]
-           [(0)  (error map-sym "expected at least two arguments")]
-           [else (error map-sym "TODO immplement map for more than 4 arguments")])]
-        [else (error map-sym "expected a procedure as first argument")]))
-    (define andmap-sym (string->symbol "andmap"))
+           [(0)  (error (map-sym) "expected at least two arguments")]
+           [else (error (map-sym) "TODO immplement map for more than 4 arguments")])]
+        [else (error (map-sym) "expected a procedure as first argument")]))
+    (define (andmap-sym) (string->symbol "andmap"))
     (define/export (andmap proc xs ys zs) ; optional (andmap proc xs ...+)
       (cond
         [(js-function? proc)
@@ -1202,17 +1206,17 @@
            [(3) (for/and ([x in-list xs] [y in-list ys])              (proc x y))]
            [(4) (for/and ([x in-list xs][y in-list ys][z in-list zs]) (proc x y z))]
            [(0) (error "andmap" "expected at least two arguments")]
-           [else (error andmap-sym "TODO implement andmap with more than 3 argument lists")])]
+           [else (error (andmap-sym) "TODO implement andmap with more than 3 argument lists")])]
         [(closure? proc)
          (var [lab (closure-label proc)])
          (case arguments.length
            [(2) (for/and ([x in-list xs])                             (closlabapp #f lab x))]
            [(3) (for/and ([x in-list xs] [y in-list ys])              (closlabapp #f lab x y))]
            [(4) (for/and ([x in-list xs][y in-list ys][z in-list zs]) (closlabapp #f lab x y z))]
-           [(0) (error "andmap" "expected at least two arguments")]
-           [else (error andmap-sym "TODO implement andmap with more than 3 argument lists")])]
-        [else (error andmap-sym "TODO implement andmap with more than 3 argument lists")]))
-    (define ormap-sym (string->symbol "ormap"))
+           [(0) (error (andmap-sym) "expected at least two arguments")]
+           [else (error (andmap-sym) "TODO implement andmap with more than 3 argument lists")])]
+        [else (error (andmap-sym) "TODO implement andmap with more than 3 argument lists")]))
+    (define (ormap-sym) (string->symbol "ormap"))
     (define/export (ormap proc xs ys zs) ; optional (ormap proc xs ...+)
       (cond
         [(js-function? proc)
@@ -1220,18 +1224,18 @@
            [(2) (for/or ([x in-list xs])                             (proc x))]
            [(3) (for/or ([x in-list xs] [y in-list ys])              (proc x y))]
            [(4) (for/or ([x in-list xs][y in-list ys][z in-list zs]) (proc x y z))]
-           [(0) (error "ormap" "expected at least two arguments")]
-           [else (error ormap-sym "TODO implement ormap with more than 3 argument lists")])]
+           [(0) (error (ormap-sym) "expected at least two arguments")]
+           [else (error (ormap-sym) "TODO implement ormap with more than 3 argument lists")])]
         [(closure? proc)
          (var [lab (closure-label proc)])
          (case arguments.length
            [(2) (for/or ([x in-list xs])                             (closlabapp #f lab x))]
            [(3) (for/or ([x in-list xs] [y in-list ys])              (closlabapp #f lab x y))]
            [(4) (for/or ([x in-list xs][y in-list ys][z in-list zs]) (closlabapp #f lab x y z))]
-           [(0) (error "ormap" "expected at least two arguments")]
-           [else (error ormap-sym "TODO implement ormap with more than 3 argument lists")])]
-        [else (error andmap-sym "TODO implement andmap with more than 3 argument lists")]))    
-    (define for-each-sym (string->symbol "for-each"))
+           [(0) (error (ormap-sym) "expected at least two arguments")]
+           [else (error (ormap-sym) "TODO implement ormap with more than 3 argument lists")])]
+        [else (error (ormap-sym) "TODO implement andmap with more than 3 argument lists")]))    
+    (define (for-each-sym) (string->symbol "for-each"))
     (define/export (for-each proc xs ys zs) ; optional (for-each proc xs ...+)
       (var [n arguments.length])
       (cond
@@ -1240,22 +1244,22 @@
            [(2)  (for ([x in-list xs])                               (proc x))]
            [(3)  (for ([x in-list xs] [y in-list ys])                (proc x y))]
            [(4)  (for ([x in-list xs] [y in-list ys] [z in-list zs]) (proc x y z))]
-           [(0)  (error for-each-sym "expected at least two arguments")]
-           [else (error for-each-sym "TODO immplement for-each for more than 4 arguments")])]
+           [(0)  (error (for-each-sym) "expected at least two arguments")]
+           [else (error (for-each-sym) "TODO immplement for-each for more than 4 arguments")])]
         [(closure? proc)
          (var [lab (closure-label proc)])
          (case n
            [(2)  (for ([x in-list xs])                               (closlabapp #f lab x))]
            [(3)  (for ([x in-list xs] [y in-list ys])                (closlabapp #f lab x y))]
            [(4)  (for ([x in-list xs] [y in-list ys] [z in-list zs]) (closlabapp #f lab x y z))]
-           [(0)  (error for-each-sym "expected at least two arguments")]
-           [else (error for-each-sym "TODO immplement for-each for more than 4 arguments")])]
-        [else (error for-each-sym "expected a procedure as first argument")])
+           [(0)  (error (for-each-sym) "expected at least two arguments")]
+           [else (error (for-each-sym) "TODO immplement for-each for more than 4 arguments")])]
+        [else (error (for-each-sym) "expected a procedure as first argument")])
       VOID)    
     ; TODO
     ; foldl TODO
     ; foldr TODO
-    (define filter-sym (string->symbol "filter"))
+    (define (filter-sym) (string->symbol "filter"))
     (define/export #:arity (filter pred xs)
       (var [n (length xs)]
            [a (Array n)]
@@ -1269,7 +1273,7 @@
                              (for ([x in-list xs])
                                (var [t (closlabapp #f lab x)])
                                (swhen t (:= a i x) (+= i 1)))]
-        [else (error filter-sym "expected a procedure as first argument")])
+        [else (error (filter-sym) "expected a procedure as first argument")])
       ; create list with elements in the array
       (var [ys NULL])
       (while (> i 0)
@@ -1449,7 +1453,7 @@
                  VOID ("ERROR - in-range - expected number"))]
         [(3) (if (and (number? start) (number? end) (number? step))
                  VOID ("ERROR - in-range - expected number"))]
-        [else (raise-arity-error (string->symbol "in-range" (list 1 2 3)))]))
+        [else (raise-arity-error (string->symbol "in-range") (list 1 2 3))]))
     
     (define/export #:arity (in-list xs)
       (unless (list? xs)
@@ -1792,7 +1796,7 @@
     ;;; 10.2.2 Raising Exceptions
 
     (define (throw-it e) (throw e) VOID)
-    (define/export #:arity (raise v opt-barrier)
+    (define/export (raise v opt-barrier)
       ; v           = the exception being raised
       ; opt-barrier = optional predicate  TODO ignored
       (throw-it v))
@@ -1844,17 +1848,32 @@
     ; raise-range-error
     ; raise-type-error
     ; raise-mismatch-error
-    (define raise-arity-error-sym (string->symbol "raise-arity-error"))
-    (define/export (raise-arity-error name arity-v argv*)
+    (define (raise-arity-error-sym) (string->symbol "raise-arity-error"))
+    (define (raise-arity-error* name arity-v args-array)
       (unless (or (symbol? name) (procedure? name))
-        (raise-argument-error raise-arity-error-sym "(or/c symbol? procedure?)" 0 name))
+        (raise-argument-error (raise-arity-error-sym) "(or/c symbol? procedure?)" 0 name))
       (var [n   (if (symbol? name) (symbol->string name) (or (object-name name) ""))]
            [msg
             (+ (str name display-mode) 
                ": arity mismatch\\n"
                "the expected number of arguments does not match the given number\\n"
                "expected: " (arity-value->string arity-v)                      "\\n"
-               "given: "    (- arguments.length 1))])
+               "given: "    args-array.length)])
+      (raise (exn:fail:contract:arity msg (current-continuation-marks))))
+    (define/export (raise-arity-error name arity-v argv*)
+      (var [args arguments])
+      (console.log "raise-arity-error")
+      (console.log args)
+      ;(console.log (+ name " " arity-v))      
+      (unless (or (symbol? name) (procedure? name))
+        (raise-argument-error (raise-arity-error-sym) "(or/c symbol? procedure?)" 0 name))
+      (var [n   (if (symbol? name) (symbol->string name) (or (object-name name) ""))]
+           [msg
+            (+ (str name display-mode) 
+               ": arity mismatch\\n"
+               "the expected number of arguments does not match the given number\\n"
+               "expected: " (arity-value->string arity-v)                      "\\n"
+               "given: "    (- args.length 2))])
       (raise (exn:fail:contract:arity msg (current-continuation-marks))))
     (define (arity-value->string arity-v)
       (var [res ""])
@@ -2025,7 +2044,7 @@
       CMS)
     (define/export #:arity (remove-continuation-mark-frame)
       (:= CMS (ref CMS 1)))
-    (define/export #:arity (continuation-mark-set-first mark-set key-v none-v prompt-tag)
+    (define/export (continuation-mark-set-first mark-set key-v opt-none-v opt-prompt-tag)
       ; mark-set is either #f or is a continuation-mark-set
       ; none-v is optional, default is #f
       ; prompt-tag is optional, default is (default-continuation-prompt-tag)
@@ -2041,7 +2060,7 @@
                   (:= ms (ref ms 1))
                   (break)))
       (if (= val undefined)
-          (if (= none-v undefined) #f none-v)
+          (if (= opt-none-v undefined) #f opt-none-v)
           val))
     ;; Representation:
     ;;   A continuation mark set is a 
@@ -2049,7 +2068,7 @@
     ;;   where a continuation is a "linked list" of frames.
     (define/export #:arity (continuation-mark-set? v)
       (and (array? v) (= (tag v) CONTINUATION-MARK-SET)))
-    (define/export #:arity (current-continuation-marks prompt-tag)
+    (define/export (current-continuation-marks opt-prompt-tag)
       ;(console.log "continuation-marks:")
       ;(console.log CMS)
       ; TODO: prompt-tag is ignored here
