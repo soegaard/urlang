@@ -36,11 +36,11 @@
 ;;;
 ;;; TODO
 ;;;
+;;  CLOSE   arity checking of primitives
+;;  - arity checking of closures
 
 ;;  - guards     in structs
 ;;  - properties in structs
-;;  - arity checking of primitives
-;;  - arity checking of closures
 ;;  - equal? : handle cyclic data
 ;;  - finish support for namespaces
 ;;  - hash tables
@@ -198,6 +198,21 @@
        (lab clos tc arg ...))]))
 (define-urlang-macro closlabapp expand-closlabapp)
 
+; SYNTAX  (call tc f arg ...)
+;   call f (primitive or closure) with arguments arg ...
+(define (expand-call stx)
+  (syntax-parse stx
+    [(_call tc f:id arg ...)
+     (syntax/loc stx
+       (if (js-function? f)
+           (f arg ...)
+           (if (closure? f)
+               (closapp tc f arg ...)
+               (raise-application-error f (array arg ...)))))]
+    [_ (raise-syntax-error)]))
+(define-urlang-macro call expand-call)
+  
+  
 
 #;( ; not in use for now
 (define (expand-tailapp stx)
@@ -1900,6 +1915,13 @@
       ; Creates an exn:fail:syntax value and raises it as an exception.
       (raise (exn:fail:syntax message (current-continuation-marks))))
 
+    (define (raise-application-error f args-array)
+      (var [msg (+ "application: not a procedure\\n"
+                   " expected a procedure that can be applied to arguments\\n"
+                   "  given: " (str f display-mode)  " \\n"
+                   "  arguments...:\\n")])
+      (raise (exn:fail:contract msg (current-continuation-marks))))
+
     ;;; 10.2.3 Handling Exceptions
     ; TODO:
     ;  - call-with-exception-handler
@@ -1921,12 +1943,8 @@
       ; the argument to the handler is an instance of exn:break:hang-up.
       (var [error-display (closapp #f error-display-handler)])
       (scond
-       [(exn? e) (if (closure? error-display)
-                     (closapp #f error-display (exn-message e) e)
-                     (           error-display (exn-message e) e))]
-       [else     (if (closure? error-display)
-                     (closapp #f error-display "uncaught exception: " e)
-                     (           error-display "uncaught exception: " e))])
+       [(exn? e) (call #f error-display (exn-message e) e)]
+       [else     (call #f error-display "uncaught exception: " e)])
       ; TODO: use error-escape-handler to exit
       (process.exit 1))  ; process.exit works in node
 
@@ -1964,24 +1982,15 @@
       (var [key exception-handler-key]
            [val throw-it])               ; (abort-current-continuation-label handler-prompt-key e)
           
-      (try {; install new exception-handler
-            (sif tc
+      (try {(sif tc ; install new exception-handler
                  (set-continuation-mark       key val)
                  (new-continuation-mark-frame key val))
-            ;(console.log "call-handled-body-label:")
-            ;(console.log body-thunk)
-            ; call body-thunk
-            (return
-             (if (closure? body-thunk)
-                 ((ref body-thunk 1) body-thunk #t)
-                 (body-thunk)))}
+            (return (call #t body-thunk))}
            (catch e
-             (return ((ref handle-proc 1) handle-proc #t e)))
+             (return (call #t handle-proc e)))
            (finally
             ; remove the exception-handler
-            (sif tc
-                 (block)
-                 (remove-continuation-mark-frame))))
+            (sif tc (block) (remove-continuation-mark-frame))))
       VOID)
 
     (define/export #:arity (select-handler/no-breaks e bpz l)
@@ -1992,15 +2001,11 @@
       (if (null? l)
           (raise e)
           (if (begin
-                (:= p (car (car l)))    ; get predicate
-                (if (closure? p)        ; call predicate
-                    ((ref p 1) p #f e)
-                    (p e)))
+                (:= p (car (car l)))    ; get  predicate
+                (call #f p e))          ; call predicate
               (begin
-                (:= h (cdr (car l)))
-                (if (closure? h)
-                    ((ref h 1) h #t e) ; call handler (a closure)
-                    (h e)))
+                (:= h (cdr (car l)))    ; get  handler
+                (call #t h e))          ; call handler
               ; try the next handler:
               (select-handler/no-breaks e bpz (cdr l)))))
     ; Note: The form  with-handlers*  expands into a use of select-handler/breaks-as-is.
@@ -2414,7 +2419,7 @@
       ; use-mapping?, failure-thunk, and, namespace are optional
       (case arguments.length
         [(1) (var [dict (ref CURRENT-NAMESPACE 3)] [val (ref dict sym)])
-             (if (= val undefined)  ; todo: throw exception if undefined
+             (if (= val undefined)  ; todo: throw exception if undefined                 
                  ("ERROR - namespace-variable-value - no value found: ")
                  val)]
         [(2) (var [dict (ref CURRENT-NAMESPACE 3)] [val (ref dict sym)])
