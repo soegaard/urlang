@@ -507,6 +507,61 @@
 ;;; Global Variables 
 ;;;
 
+(require "../urlang/globals.rkt")
+
+(require (only-in racket/unsafe/ops unsafe-fx< unsafe-fx> unsafe-fx+ unsafe-fx- unsafe-fx*)
+         (only-in racket/base in-range))
+(require racket/list syntax/parse racket/match)
+
+; The alpha renaming phase signals an error when an unbound
+; identifier is found - unless - the identifier is present
+; in the list of identifiers held by the parameter global-variables.
+
+; The following variables are (seen from Urlang) unbound.
+; Most of them stem from macro expansions.
+; These global variables are only needed until support for modules is in place.
+
+(define (find-identifier-in-tree sym t)  
+  (define (loop t)
+    (syntax-parse t
+      [x:id #:when (eq? (syntax-e #'x) sym) #'x]
+      [(a . d)                              (or (loop #'a) (loop #'d))]
+      [other                                #f]))
+  (loop t))
+
+(macro-introduced-identifiers
+ '(select-handler/no-breaks ; from racket/private/more-scheme produced by with-handlers
+   call-handled-body
+   unsafe-fx<
+   unsafe-fx+
+   in-list))
+
+(let ([find find-identifier-in-tree])
+  (global-variables
+   ; These identifiers are not define in runtime.rkt.
+   ; If an identifier is in this list and in runtime.rkt, then the identifier
+   ; exported from runtime.rkt will be alpha-renamed.
+   (list (expand-syntax #'srcloc)                          ; expands to kernel:srcloc   
+         (expand-syntax #'apply)                           ; expands to new-apply-proc
+         (second (syntax->list (expand-syntax #'(apply)))) ; expands to apply
+         (find 'match:error                 (expand-syntax #'(match 1 [1 1])))
+         (find 'select-handler/no-breaks    (expand-syntax #'(with-handlers  ([f g]) b)))
+         (find 'select-handler/breaks-as-is (expand-syntax #'(with-handlers* ([f g]) b)))
+         (find 'call-handled-body           (expand-syntax #'(with-handlers  ([f g]) b)))
+         ; in-range
+         (find 'in-range                    (expand-syntax #'(in-range 10)))
+         ; Exceptions
+         (expand-syntax #'exn)                                 ; kernel:exn
+         (expand-syntax #'exn:fail)                            ; kernel:exn:fail
+         (expand-syntax #'exn:fail:contract)                   ; kernel:exn:contract
+         (expand-syntax #'exn:fail:contract:arity)             ; kernel:exn:contract:arity
+         (expand-syntax #'exn:fail:contract:divide-by-zero)    ; kernel:exn:contract:divide-by-zero
+       #'exit)))
+
+;;;
+;;;
+;;;
+
 (define (unparse-test stx)
   (unparse-LANF+closure
    (test stx)))
@@ -554,6 +609,13 @@
 (ur-current-urlang-echo?                          #t) ; print generated JavaScript?
 (ur-current-urlang-console.log-module-level-expr? #t) ; print top-level expression?
 (ur-current-urlang-delete-tmp-file?               #f)
+
+;;;
+;;;
+;;;
+
+
+
 
 (eval #'(displayln ((λ() 42))))
 

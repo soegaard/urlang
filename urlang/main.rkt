@@ -22,10 +22,12 @@
 ;;; IMPLEMENTATION
 ;;;
 
-;;; TEMPORARY: These requires and renamings are only neeed until modules are supported.
-;;;            See "hack" in α-rename.
+
+(require "globals.rkt") ; 
+
 (require (only-in racket/unsafe/ops unsafe-fx< unsafe-fx> unsafe-fx+ unsafe-fx- unsafe-fx*)
          (only-in racket/base in-range))
+
 
 (provide urlang)
 ;; Parameters
@@ -1693,12 +1695,7 @@
       (displayln "global:")           (displayln (map syntax-e (globals)))
       (displayln "var introduced:")   (displayln (map syntax-e (vars)))
       (displayln "unbound variable:") (displayln x)
-      ; HACK - only in place until modules are introduced
-      (define macro-introduced-identifiers
-        '(select-handler/no-breaks ; from racket/private/more-scheme produced by with-handlers
-          call-handled-body
-          in-list))                ; from racket/private/for.rkt produced by for
-      (if (memq (syntax-e x) macro-introduced-identifiers)
+      (if (memq (syntax-e x) (macro-introduced-identifiers)) ; todo remove when modules arrive
           x
           (raise-syntax-error 'α-rename "(urlang) unbound variable" x)))
     (define pre-body-ρ (make-parameter #f)))
@@ -1796,48 +1793,12 @@
                                   (let ([ab (AnnotatedBody ab ρ)])
                                     `(lambda (,x ...) ,ab)))])
   (let ()
-    ; TODO Fix this hack:
-    ; HACK BEGINS
-    ; The hack is related to the Racket-to-Urlang compiler.
-    ; Racket apply has a surprising expansion.    
-    (define kernel:srcloc (expand-syntax #'srcloc)) ; expands to kernel:srcloc
-    (global! kernel:srcloc)
-    (global! (expand-syntax #'apply))               ; expands to new-apply-proc
-    (global! (second (syntax->list (expand-syntax #'(apply))))) ; expands to apply
-    (global! #'unsafe-fx<)
-    (global! #'unsafe-fx>)
-    (global! #'unsafe-fx+)
-    (global! #'unsafe-fx-)
-    (global! #'unsafe-fx*)
-    (global! #'inlist)
-    ; (global! #'select-handler/no-breaks) ; in expansion of with-handlers
-    (global! ; select-handler/no-breaks
-     (second (syntax->list
-              (third (syntax->list
-                      (fourth (syntax->list
-                               (last (syntax->list
-                                      (last (syntax->list
-                                             (expand-syntax #'(with-handlers ([f g]) b)))))))))))))
-    (global! ; select-handler/breaks-as-is
-     (second (syntax->list
-              (third (syntax->list
-                      (fourth (syntax->list
-                               (last (syntax->list
-                                      (last (syntax->list
-                                             (expand-syntax #'(with-handlers* ([f g]) b)))))))))))))
-    (global! ; call-handled-body
-     (second (syntax->list
-              (last (syntax->list
-                     (last (syntax->list
-                            (expand-syntax #'(with-handlers ([f g]) b)))))))))
-    (map global! (list (expand-syntax #'exn)
-                       (expand-syntax #'exn:fail)
-                       (expand-syntax #'exn:fail:contract)
-                       (expand-syntax #'exn:fail:contract:arity)
-                       (expand-syntax #'exn:fail:contract:divide-by-zero)))                       
-    (global! (second (syntax->list (expand-syntax (datum->syntax #'here '(in-range 10))))))
-    (global! #'exit)
-    ; HACK ENDS
+    ; See explanation in "globals.rkt" and in compiler3.rkt
+    ; (displayln "alpha-rename (in urlang/main)")
+    ; (displayln (global-variables))
+    (for ([v (global-variables)])
+      (global! v))
+    ; (global! #'unsafe-fx<)
     ; Also we need `else` to be know for use in macros
     (Module U)))
 

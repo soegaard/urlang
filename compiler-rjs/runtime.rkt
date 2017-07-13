@@ -23,6 +23,15 @@
 ; Add a space to compiler.rkt then run both
 ; compiler.rkt and compiler2.rkt before running compiler3.rkt.
 
+;;;
+;;; Bugs
+;;;
+
+; Fix parameters defined in rumtime.rkt.
+; Problem: Parameters are represented as (a special kind) of closure.
+;          Defining them here with define/export causes the compiler
+;          to think that it is a standard primitive and thus the
+;          application of a name bound to a parameter is compiled incorrectly.
 
 ;;;
 ;;; TODO
@@ -1101,15 +1110,15 @@
     ;;      NULL or {array PAIR true a d}
     ;;   where d is a list.
     (define/export #:arity (pair? v)      (and (array? v) (= (tag v) PAIR)))
-    (define/export #:arity (null? v) (= v NULL))
-    (define/export  (cons a d)     (array PAIR (list? d) a d))
-    (define/export #:arity (unsafe-car p) (ref p 2))
-    (define/export car unsafe-car)
-    (define/export #:arity (unsafe-cdr p) (ref p 3))
-    (define/export cdr unsafe-cdr)
-    (define/export #:arity (cddr v) (cdr (cdr v)))
-    (define/export Null NULL)  ;; the name  null  is reserved in EcmaScript 6
+    (define/export #:arity (null? v)      (= v NULL))
+    (define/export #:arity (cons a d)     (array PAIR (list? d) a d))
+    (define/export #:arity (car p)        (ref p 2))
+    (define/export #:arity (cdr p)        (ref p 3))
+    (define/export         (unsafe-car p) (ref p 2))
+    (define/export         (unsafe-cdr p) (ref p 3))
+    (define/export #:arity (cddr v)       (cdr (cdr v)))
     (define/export #:arity (list? v)      (or (= v NULL) (and (array? v) (= (tag v) PAIR) (ref v 1))))
+    (define/export Null NULL)  ;; the name  null  is reserved in EcmaScript 6
     (define/export (list) ; (list v ...)
       ; Note:  [args arguments]  is needed
       (var [args arguments] [n args.length] [n-1 (- n 1)] [xs NULL])
@@ -1976,16 +1985,22 @@
       VOID)
 
     (define/export #:arity (select-handler/no-breaks e bpz l)
-      (var [h #f])
+      (var [h #f] [p #f])
       ; TODO: we ignore breaks (ok in the browser)
       ; l   is a list of (cons handler-predicate handler)
       ; bpz is the break-parameterization (ignored here)
       (if (null? l)
           (raise e)
-          (if ((car (car l)) e) ; call predicate
+          (if (begin
+                (:= p (car (car l)))    ; get predicate
+                (if (closure? p)        ; call predicate
+                    ((ref p 1) p #f e)
+                    (p e)))
               (begin
                 (:= h (cdr (car l)))
-                ((ref h 1) h #t e)) ; call handler (a closure)
+                (if (closure? h)
+                    ((ref h 1) h #t e) ; call handler (a closure)
+                    (h e)))
               ; try the next handler:
               (select-handler/no-breaks e bpz (cdr l)))))
     ; Note: The form  with-handlers*  expands into a use of select-handler/breaks-as-is.

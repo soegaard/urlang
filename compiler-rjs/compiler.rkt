@@ -83,6 +83,7 @@
 ;;;       and     (expand #'(let () (struct foo (bar)) (foo 42))
 ;;        Note that the (foo 42) doesn't match the constructor name in the begin snippet.
 
+;; Require these before the expander.
 (require (only-in racket/unsafe/ops unsafe-fx< unsafe-fx> unsafe-fx+ unsafe-fx- unsafe-fx*)
          (only-in racket/base in-range))
 
@@ -91,7 +92,8 @@
                  [eval-jit-enabled  #f])  ; affects expansion
     ;                                     ; (reverse becomes alt-reverse unless disabled)
     (namespace-require 'errortrace)
-    (namespace-require 'racket/match)
+    ; (namespace-require 'racket/match)
+    ; (namespace-require 'racket/unsafe/ops)
     (expand-syntax top-level-form-stx)
     #;(expand-syntax #`(let () #,top-level-form-stx))))
 
