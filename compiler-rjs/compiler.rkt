@@ -91,7 +91,7 @@
   (parameterize ([current-namespace (make-base-namespace)]
                  [eval-jit-enabled  #f])  ; affects expansion
     ;                                     ; (reverse becomes alt-reverse unless disabled)
-    (namespace-require 'errortrace)
+    (namespace-require 'errortrace) 
     ; (namespace-require 'racket/match)
     ; (namespace-require 'racket/unsafe/ops)
     (expand-syntax top-level-form-stx)

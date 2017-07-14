@@ -436,19 +436,32 @@
                ,e))])
   (ConvertedAbstraction : ConvertedAbstraction (cab) -> Expr ()
     [(λ ,s (formals (,x ...)) ,e)
-     (let* ([x (map Var x)] [σ (Expr e <value> <return>)])
+     (let* ([x (map Var x)] [σ (Expr e <value> <return>)] [ar (length x)])
+       (define-values (src line col pos span)
+         (values (~a (syntax-source s)) (syntax-line s) (syntax-column s)
+                 (syntax-position s) (syntax-span s)))
        `(lambda (,#'_free ,_tc ,x ...)
-          (body ,σ ,#'void)))] ; TODO TODO ...
+          (body (sif (app ,#'= ',(+ 2 ar) (ref ,#'arguments '"length")) ,#'VOID
+                     (app ,#'raise-clos-arity-error* (app ,#'list ',src ',line ',col ',pos ',span)
+                          ,#'_free ',ar ,#'arguments))
+                ,σ ,#'VOID)))]
     [(λ ,s (formals ,x) ,e)
      (let* ([x (Var x)] [σ (Expr e <value> <return>)])
        `(lambda (,#'_free ,_tc ,x)
-          (body (:= ,x (app ,#'cdr (app ,#'array->list ,#'arguments)))
-                ,σ ,#'void)))]
+          (body (:= ,x (app ,#'rest-args->list ,#'arguments '0))
+                ,σ ,#'VOID)))]
     [(λ ,s (formals (,x0 ,x1 ... . ,xd)) ,e)
-     (let* ([x0 (Var x0)] [x1 (map Var x1)] [xd (Var xd)] [σ (Expr e <value> <return>)])
+     (let* ([x0 (Var x0)] [x1 (map Var x1)] [xd (Var xd)] [σ (Expr e <value> <return>)]
+                          [ar (+ 1 (length x1))])
+       (define-values (src line col pos span)
+         (values (~a (syntax-source s)) (syntax-line s) (syntax-column s)
+                 (syntax-position s) (syntax-span s)))
        `(lambda (,#'_free ,_tc ,x0 ,x1 ... ,xd)
-          (body (:= ,xd (app ,#'array-end->list ,#'arguments ',(length (cons x0 x1))))
-                ,σ ,#'void)))])
+          (body (sif (app ,#'<= ',(+ 2 ar) (ref ,#'arguments '"length")) ,#'VOID
+                     (app ,#'raise-clos-arity-error* (app ,#'list ',src ',line ',col ',pos ',span)
+                          ,#'_free ',(- (+ ar 1)) ,#'arguments))
+                (:= ,xd (app ,#'rest-args->list ,#'arguments ',(length (cons x0 x1))))
+                ,σ ,#'VOID)))])
   (GeneralTopLevelForm : GeneralTopLevelForm (g dd) -> ModuleLevelForm ()
     [,e                           (Expr e dd <stat>)]
     [(#%require     ,s ,rrs ...)  `'"ignored #%require"]

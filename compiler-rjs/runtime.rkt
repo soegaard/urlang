@@ -211,8 +211,6 @@
                (raise-application-error f (array arg ...)))))]
     [_ (raise-syntax-error)]))
 (define-urlang-macro call expand-call)
-  
-  
 
 #;( ; not in use for now
 (define (expand-tailapp stx)
@@ -1126,7 +1124,7 @@
     ;;   where d is a list.
     (define/export #:arity (pair? v)      (and (array? v) (= (tag v) PAIR)))
     (define/export #:arity (null? v)      (= v NULL))
-    (define/export #:arity (cons a d)     (array PAIR (list? d) a d))
+    (define/export         (cons a d)     (array PAIR (list? d) a d))
     (define/export #:arity (car p)        (ref p 2))
     (define/export #:arity (cdr p)        (ref p 3))
     (define/export         (unsafe-car p) (ref p 2))
@@ -1322,6 +1320,12 @@
       (var [n axs.length] [n-1 (- n 1)] [xs NULL])
       (for ([i in-range 0 n])
         (:= xs (cons (ref axs (- n-1 i)) xs)))
+      xs)
+    (define/export #:arity (rest-args->list args-array but)
+      ;; the two first elements of args-array is the closure and tc
+      (var [n args-array.length] [n-1 (- n 1)] [xs NULL])
+      (for ([i in-range 0 (- n 2 but)])
+        (:= xs (cons (ref args-array (- n-1 i)) xs)))
       xs)
     (define/export #:arity (array-end->list axs from)
       ;; convert JavaScript array to Racket list
@@ -1877,7 +1881,7 @@
     ; raise-type-error
     ; raise-mismatch-error
     (define (raise-arity-error-sym) (string->symbol "raise-arity-error"))
-    (define (raise-arity-error* name arity-v args-array)
+    (define/export (raise-arity-error* name arity-v args-array)
       (unless (or (symbol? name) (procedure? name))
         (raise-argument-error (raise-arity-error-sym) "(or/c symbol? procedure?)" 0 name))
       (var [n   (if (symbol? name) (symbol->string name) (or (object-name name) ""))]
@@ -1887,6 +1891,18 @@
                "the expected number of arguments does not match the given number\\n"
                "expected: " (arity-value->string arity-v)                      "\\n"
                "given: "    args-array.length)])
+      (raise (exn:fail:contract:arity msg (current-continuation-marks))))
+    (define/export (raise-clos-arity-error* stx-srcloc name arity-v args-array)
+      (unless (or (symbol? name) (procedure? name))
+        (raise-argument-error (raise-arity-error-sym) "(or/c symbol? procedure?)" 0 name))
+      (var [n   (if (symbol? name) (symbol->string name) (or (object-name name) ""))]
+           [msg
+            (+ (str name display-mode) 
+               ": arity mismatch\\n"
+               "the expected number of arguments does not match the given number\\n"
+               "expected: "           (arity-value->string arity-v)            "\\n"
+               "given: "              (- args-array.length 2)                  "\\n"
+               "closure definition: " (str stx-srcloc display-mode))])
       (raise (exn:fail:contract:arity msg (current-continuation-marks))))
     (define/export (raise-arity-error name arity-v argv*)
       (var [args arguments])
@@ -1905,7 +1921,9 @@
       (raise (exn:fail:contract:arity msg (current-continuation-marks))))
     (define (arity-value->string arity-v)
       (var [res ""])
-      (cond [(number? arity-v) (number->string arity-v)]
+      (cond [(number? arity-v) (if (negative? arity-v)
+                                   (+ "at least " (number->string (- (- arity-v) 1)))
+                                   (number->string arity-v))]
             [(list?   arity-v) (for ([n in-list arity-v])
                                  (:= res (+ res n " ")))
                                res]

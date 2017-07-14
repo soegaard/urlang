@@ -724,10 +724,10 @@
       (list-index x? free))
     ; the converted abstractions are lifted to the top-level
     (define lifted-abstractions (make-hasheq))
-    (define (lift! label formals body)
+    (define (lift! s label formals body)
       (define cab
         (with-output-language (LANF+closure ConvertedAbstraction)
-          `(λ ,h ,formals ,body)))
+          `(λ ,s ,formals ,body)))
       (hash-set! lifted-abstractions label cab))    
     (define (case-lift! label formals* body)
       (define ccab
@@ -747,7 +747,7 @@
      (let ([xs (map AExpr (free-of AB))]
            [e  (parameterize ([current-free (free-of AB)])
                  (Expr e))])
-       (lift! l f e)
+       (lift! s l f e)
        `(closure ,h ,l ,xs ...))])
   (CaseAbstraction : CaseAbstraction (CAB) -> CaseClosureAllocation ()
     [(case-lambda ,s ,ab ...)
