@@ -135,11 +135,10 @@
 ;;;
 
 ; SYNTAX
-; (define (name arg ...) statement ... expr)
-
-(define (expand-define/export stx)
+; (define/export/arity (name arg ...) statement ... expr)
+(define (expand-define/export/arity stx)
   (syntax-parse stx
-    [(_define/export #:arity (name args ...) . body)
+    [(_define/export/arity (name args ...) . body)
      (with-syntax ([expected-arity (length (syntax->list #'(args ...)))]
                    [name-str       (symbol->string (syntax-e #'name))])
        (syntax/loc stx
@@ -149,7 +148,13 @@
             (sif (= arguments.length expected-arity)
                  VOID
                  (raise-arity-error* (string->symbol name-str) expected-arity arguments))
-            . body))))]
+            . body))))]))
+(define-urlang-macro define/export/arity expand-define/export/arity)
+
+; SYNTAX
+;   (define/export (name arg ...) statement ... expr)
+(define (expand-define/export stx)
+  (syntax-parse stx
     [(_define/export (name . formals) . body)
      (syntax/loc stx
        (topblock
@@ -161,8 +166,6 @@
         (export name)
         (define name expr)))]
     [_ (error 'define/export "bad syntax" stx)]))
-
-
 (define-urlang-macro define/export expand-define/export)
 
 ;;; Closure related macros
@@ -248,10 +251,10 @@
     (import Array Int8Array Math Number String
             #;new #;typeof)
     ;;; Array
-    (define/export #:arity (array? v) ; todo : inline array?
+    (define/export/arity (array? v) ; todo : inline array?
       (Array.isArray v))
     ;;; Tags
-    (define/export #:arity (tag a) (ref a 0))
+    (define/export/arity (tag a) (ref a 0))
     (define/export PAIR                   (array "pair"))
     (define/export VECTOR                 (array "vector"))
     (define/export IMMUTABLE-VECTOR       (array "immutable-vector"))
@@ -481,12 +484,12 @@
     
     ;; Representation: #t and #f are represented as true and false respectively,
     ;; where true and false are JavaScript booleans.
-    (define/export #:arity  (boolean? v)
+    (define/export/arity  (boolean? v)
       (= (typeof v) "boolean"))
     ; Note: The identifier  not  is reserved in Urlang. Here we call it PRIM_not
     ;       and then in α-rename we rename not to PRIM_not.
-    (define/export #:arity (PRIM_not x) (if x #f #t)) ; not is a predefined function
-    (define/export #:arity (equal? v w) ; TODO: handle cyclic data structures
+    (define/export/arity (PRIM_not x) (if x #f #t)) ; not is a predefined function
+    (define/export/arity (equal? v w) ; TODO: handle cyclic data structures
       (cond
         [(and (boolean? v)          (boolean?          w)) (= v w)]
         [(and (number?  v)          (number?           w)) (= v w)]
@@ -506,15 +509,15 @@
         [(and (bytes?  v)           (bytes?            w)) (bytes=?   v w)]
         [(and (keyword?  v)         (keyword?          w)) (keyword=? v w)]
         [#t #f]))
-    (define/export #:arity (eqv? v w)
+    (define/export/arity (eqv? v w)
       (cond
         [(and (number? v) (number? w)) (= v w)]
         [(and (char?   v) (char?   w)) (= (char->integer v) (char->integer w))]
         [#t                            (= v w)]))
-    (define/export #:arity (eq? v1 v2)      
+    (define/export/arity (eq? v1 v2)      
       (= v1 v2))
     ; (define (equal/retur v1 v2) ...) TODO
-    (define/export #:arity (immutable? v)
+    (define/export/arity (immutable? v)
       ; Note: This follows the spec. It is not a general
       ;       immutability predicate, so immutable pairs are not checked here.
       (or (immutable-string? v)
@@ -525,34 +528,34 @@
     ;;;
     ;;; 4.2 Numbers
     ;;;
-    (define/export #:arity (number? v) (= (typeof v) "number"))
-    (define/export #:arity (complex? v)  (number? v))
-    (define/export #:arity (real? v)     (number? v)) ; +inf.0, -inf.0, +nan.0 are real numbers
-    (define/export #:arity (rational? v) (and (number? v) (Number.isFinite v)))  
-    (define/export #:arity (integer? v)  (Number.isInteger v))
-    (define/export #:arity (exact-integer? v)
+    (define/export/arity (number? v) (= (typeof v) "number"))
+    (define/export/arity (complex? v)  (number? v))
+    (define/export/arity (real? v)     (number? v)) ; +inf.0, -inf.0, +nan.0 are real numbers
+    (define/export/arity (rational? v) (and (number? v) (Number.isFinite v)))  
+    (define/export/arity (integer? v)  (Number.isInteger v))
+    (define/export/arity (exact-integer? v)
       ; http://stackoverflow.com/questions/3885817/how-to-check-that-a-number-is-float-or-integer
       (and (= (typeof v) "number")
            (= v (+ v))
            (= v (bit-or v 0))))
-    (define/export #:arity (exact-nonnegative-integer? v) (and (exact-integer? v) (>= v 0)))
-    (define/export #:arity (exact-positive-integer? v)    (and (exact-integer? v) (> v 0)))
-    (define/export #:arity (inexact-real? v)              (and (real? v) (inexact? v)))
-    (define/export #:arity (fixnum? v)                    (exact-integer? v))
-    (define/export #:arity (flonum? v)                    (and (number? v) (not (exact-integer? v))))
-    (define/export #:arity (double-flonum? v)             (flonum? v))
-    (define/export #:arity (single-flonum? v)             (flonum? v))
-    (define/export #:arity (zero? z)                      (= z 0))
-    (define/export #:arity (positive? x)                  (> x 0))
-    (define/export #:arity (negative? x)                  (< x 0))
-    (define/export #:arity (even? n)                      (= 0 (% n 2)))
-    (define/export #:arity (odd? n)                       (= 1 (% n 2)))
-    (define/export #:arity (exact? z)                     (exact-integer? z))
-    (define/export #:arity (inexact? z)                   (and (number? z) (not (exact? z))))
-    (define/export #:arity (inexact->exact z)      z) ; todo
-    (define/export #:arity (exact->inexact z)      z) ; todo
-    (define/export #:arity (real->single-flonum x) x) ; todo 
-    (define/export #:arity (real->double-flonum x) x) ; todo
+    (define/export/arity (exact-nonnegative-integer? v) (and (exact-integer? v) (>= v 0)))
+    (define/export/arity (exact-positive-integer? v)    (and (exact-integer? v) (> v 0)))
+    (define/export/arity (inexact-real? v)              (and (real? v) (inexact? v)))
+    (define/export/arity (fixnum? v)                    (exact-integer? v))
+    (define/export/arity (flonum? v)                    (and (number? v) (not (exact-integer? v))))
+    (define/export/arity (double-flonum? v)             (flonum? v))
+    (define/export/arity (single-flonum? v)             (flonum? v))
+    (define/export/arity (zero? z)                      (= z 0))
+    (define/export/arity (positive? x)                  (> x 0))
+    (define/export/arity (negative? x)                  (< x 0))
+    (define/export/arity (even? n)                      (= 0 (% n 2)))
+    (define/export/arity (odd? n)                       (= 1 (% n 2)))
+    (define/export/arity (exact? z)                     (exact-integer? z))
+    (define/export/arity (inexact? z)                   (and (number? z) (not (exact? z))))
+    (define/export/arity (inexact->exact z)      z) ; todo
+    (define/export/arity (exact->inexact z)      z) ; todo
+    (define/export/arity (real->single-flonum x) x) ; todo 
+    (define/export/arity (real->double-flonum x) x) ; todo
     ;;;
     ;;; 4.2.2 Generic Numbers
     ;;;
@@ -625,20 +628,20 @@
                         (+= i 1))
                  (:= res quot))))
       res)
-    (define/export #:arity (quotient n m) 
+    (define/export/arity (quotient n m) 
       (Math.floor (/ n m)))
-    (define/export #:arity (remainder n m)
+    (define/export/arity (remainder n m)
       (% n m))
-    (define/export #:arity (quotient/remainder n m)
+    (define/export/arity (quotient/remainder n m)
       (values (quotient n m) (remainder n m)))
-    (define/export #:arity (modulo n m)
+    (define/export/arity (modulo n m)
       (var [who (λ() (string->symbol "modulo"))])
       (unless (and (number? n) (not (infinite? n))) (raise-argument-error (who) "integer?" 1 n m))
       (unless (and (number? m) (not (infinite? m))) (raise-argument-error (who) "integer?" 2 n m))
       (% (+ (% n m) m) m))
-    (define/export #:arity (add1 z) (+ z 1))
-    (define/export #:arity (sub1 z) (- z 1))
-    (define/export #:arity (abs x)  (Math.abs x))
+    (define/export/arity (add1 z) (+ z 1))
+    (define/export/arity (sub1 z) (- z 1))
+    (define/export/arity (abs x)  (Math.abs x))
     (define/export (max) ; (max x ...+) variadic
       (Math.max.apply #f arguments))
     (define/export (min) ; (min x ...+) variadic
@@ -654,7 +657,7 @@
               (for ([i in-range 1 l])
                 (:= g (gcd g (ref args i))))
               g]))
-    (define/export #:arity (gcd2 n m)
+    (define/export/arity (gcd2 n m)
       (var a b)
       (swhen (< n 0)  (:= n (- n)))
       (swhen (< m 0)  (:= m (- m)))
@@ -669,29 +672,29 @@
                               [#t      (%= b a)])]))
       res)
     ; lcm todo
-    (define/export #:arity (round x) ; break ties in favor of nearest even number
+    (define/export/arity (round x) ; break ties in favor of nearest even number
       (var [r (Math.round x)])
       (if (= (% (if (> x 0) x (- x)) 1) 0.5)
           (if (even? r) r (- r 1))
           r))
-    (define/export #:arity (floor x)    (Math.floor x))
-    (define/export #:arity (ceiling x)  (Math.ceil x))
-    (define/export #:arity (truncate x) (Math.trunc x))
+    (define/export/arity (floor x)    (Math.floor x))
+    (define/export/arity (ceiling x)  (Math.ceil x))
+    (define/export/arity (truncate x) (Math.trunc x))
     ; (define (numerator q) ; q rational TODO
-    (define/export #:arity (sqrt x)     (Math.sqrt x))
-    (define/export #:arity (integer-sqrt n) ; n integer
+    (define/export/arity (sqrt x)     (Math.sqrt x))
+    (define/export/arity (integer-sqrt n) ; n integer
       (Math.floor (Math.sqrt n)))   ; TODO: handle negative x
-    (define/export #:arity (integer-sqrt/remainder n)
+    (define/export/arity (integer-sqrt/remainder n)
       (var [s (Math.floor (Math.sqrt n))])
       (values s (- n (* s s))))
-    (define/export #:arity (expt z w)   (Math.pow z w))
-    (define/export #:arity (exp z)      (Math.exp z))
-    (define/export #:arity (log z)      (Math.log z))
-    (define/export #:arity (sin z)      (Math.sin z))
-    (define/export #:arity (cos z)      (Math.sin z))
-    (define/export #:arity (tan z)      (Math.tan z))
-    (define/export #:arity (asin z)     (Math.asin z))
-    (define/export #:arity (acos z)     (Math.acos z))
+    (define/export/arity (expt z w)   (Math.pow z w))
+    (define/export/arity (exp z)      (Math.exp z))
+    (define/export/arity (log z)      (Math.log z))
+    (define/export/arity (sin z)      (Math.sin z))
+    (define/export/arity (cos z)      (Math.sin z))
+    (define/export/arity (tan z)      (Math.tan z))
+    (define/export/arity (asin z)     (Math.asin z))
+    (define/export/arity (acos z)     (Math.acos z))
     (define/export (atan y x) ; todo: check arity
       (case arguments.length
         [(1) (Math.atan y)]
@@ -700,25 +703,25 @@
     ;; Complex numbers  (not supported)
     ; make-rectangular - todo
     ; make-polar       - todo
-    (define/export #:arity (real-part z)  z)  ; todo
-    (define/export #:arity (image-part z) 0)  ; works only for real numbers :-)
-    (define/export #:arity (magnitude z)  (Math.abs z))
-    (define/export #:arity (angle z)
+    (define/export/arity (real-part z)  z)  ; todo
+    (define/export/arity (image-part z) 0)  ; works only for real numbers :-)
+    (define/export/arity (magnitude z)  (Math.abs z))
+    (define/export/arity (angle z)
       (cond
         [(> z 0) 0]
         [(< z 0) Math.PI]
         [#t      (error "angle" "undefined for 0")]))
     ; integer-length  -  todo
-    (define/export #:arity (random k rand-gen)  ; TODO: don't ignore rand-gen
+    (define/export/arity (random k rand-gen)  ; TODO: don't ignore rand-gen
       (Math.floor (* (Math.random) k)))
-    (define/export #:arity (random-seed k) (Void))            ; can't set the seed in JavaScript ?!?
-    (define/export #:arity (make-pseudo-random-generator) #f)
-    (define/export #:arity (pseudo-random-generator? v) (eq? v #f))
-    (define/export #:arity (current-pseudo-random-generator rand-gen) #f)
-    (define/export #:arity (pseudo-random-generator->vector rand-gen) (vector))
-    (define/export #:arity (vector->pseudo-random-generator vec) #f)
-    (define/export #:arity (vector->pseudo-random-generator! rand-gen vec) (Void))
-    (define/export #:arity (pseudo-random-generator-vector? v) (vector? v))
+    (define/export/arity (random-seed k) (Void))            ; can't set the seed in JavaScript ?!?
+    (define/export/arity (make-pseudo-random-generator) #f)
+    (define/export/arity (pseudo-random-generator? v) (eq? v #f))
+    (define/export/arity (current-pseudo-random-generator rand-gen) #f)
+    (define/export/arity (pseudo-random-generator->vector rand-gen) (vector))
+    (define/export/arity (vector->pseudo-random-generator vec) #f)
+    (define/export/arity (vector->pseudo-random-generator! rand-gen vec) (Void))
+    (define/export/arity (pseudo-random-generator-vector? v) (vector? v))
     (define/export (number->string z opt-radix)
       (var [num (Number z)])
       (case arguments.length
@@ -739,8 +742,8 @@
     
     ;;; from racket/math
     (define/export pi Math.PI)
-    (define/export #:arity (nan? x)      (= x +nan.0))
-    (define/export #:arity (infinite? x) (or (= x +inf.0) (= x -inf.0)))
+    (define/export/arity (nan? x)      (= x +nan.0))
+    (define/export/arity (infinite? x) (or (= x +inf.0) (= x -inf.0)))
     
     ;;;  
     ;;; 4.3 Strings
@@ -757,27 +760,27 @@
     ;;   - mutable Racket string are represented as a tagged array:
     ;;       {array MUTABLE-STRING "char0" "char1" ...}
     ;;     where char0 is a javascript string with length 1.
-    (define/export #:arity (string? v)
+    (define/export/arity (string? v)
       (or (= (typeof v) "string")
           (and (array? v) (= (tag v) MUTABLE-STRING))))
-    (define/export #:arity (immutable-string? v) (= (typeof v) "string"))
-    (define/export #:arity (mutable-string? v) (and (array? v) (= (tag v) MUTABLE-STRING)))
+    (define/export/arity (immutable-string? v) (= (typeof v) "string"))
+    (define/export/arity (mutable-string? v) (and (array? v) (= (tag v) MUTABLE-STRING)))
     (define/export (make-string k ch) ; ch optional
       (case arguments.length
         [(1) (make-string1 k)]
         [(2) (make-string2 k ch)]
         [else ; todo: pass arguments to raise-arity-error
          (raise-arity-error (string->symbol "make-string") (list 1 2))]))
-    (define/export #:arity (make-string1 k)
+    (define/export/arity (make-string1 k)
       (make-string2 k "\u0000"))
-    (define/export #:arity (make-string2 k ch)
+    (define/export/arity (make-string2 k ch)
       ; make-string produces a mutable string
       (var [a (Array (+ k 1))])
       (:= a 0 MUTABLE-STRING)
       (for ([i in-range 1 (+ k 1)])
         (:= a i (ref ch 1)))
       a)      
-    (define/export #:arity (make-primitive-string n c) ; make primitive js string of length n
+    (define/export/arity (make-primitive-string n c) ; make primitive js string of length n
       ; http://stackoverflow.com/questions/202605/repeat-string-javascript?rq=1
       (var [s ""])
       (while #t
@@ -785,14 +788,14 @@
              (>>= n 1)
              (sif (= n 0) (break) (+= c c)))
       s)
-    (define/export #:arity (string->immutable-string s)
+    (define/export/arity (string->immutable-string s)
       (cond
         [(= (typeof s) "string") s]
         [#t (var [n+1 s.length] [n (- n+1 1)] [a (Array n)])
             (for ([i in-range 0 n])
               (:= a i (ref s (+ i 1))))
             (String (a.join ""))]))
-    (define/export #:arity (immutable-string->string str)
+    (define/export/arity (immutable-string->string str)
       (var [n str.length] [a (Array (+ n 1))])
       (:= a 0 MUTABLE-STRING)
       (for ([i in-range 0 n])
@@ -805,15 +808,15 @@
       (for ([i in-range 0 n])
         (:= a (+ i 1) (ref (ref args i) 1)))
       a)
-    (define/export #:arity (string-length s)
+    (define/export/arity (string-length s)
       (if (= (typeof s) "string")
           s.length
           (- s.length 1)))
-    (define/export #:arity (string-ref s i)
+    (define/export/arity (string-ref s i)
       (if (= (typeof s) "string")
           (array CHAR (ref s    i))
           (array CHAR (ref s (+ i 1)))))
-    (define/export #:arity (string-set! s i c)
+    (define/export/arity (string-set! s i c)
       ; (unless (mutable-string? s) (raise ...))
       ; (unless (char? c)           (raise ...))
       (:= s (+ i 1) (ref c 1)))
@@ -828,7 +831,7 @@
         [(3) (substring3 (ref args 0) (ref args 1) (ref args 2))]
         [else (raise-arity-error (string->symbol "substring")
                                  (list 2 3))])) ; todo: pass args
-    (define/export #:arity (string=? str1 str2)
+    (define/export/arity (string=? str1 str2)
       (if (immutable-string? str1)
           (if (immutable-string? str2)
               (= str1 str2)
@@ -836,7 +839,7 @@
           (if (immutable-string? str2)
               (= (string->immutable-string str1) str2)
               (= (string->immutable-string str1) (string->immutable-string str2)))))
-    (define/export #:arity (string<? str1 str2)
+    (define/export/arity (string<? str1 str2)
       (if (immutable-string? str1)
           (if (immutable-string? str2)
               (< str1 str2)
@@ -844,7 +847,7 @@
           (if (immutable-string? str2)
               (< (string->immutable-string str1) str2)
               (< (string->immutable-string str1) (string->immutable-string str2)))))
-    (define/export #:arity (string>? str1 str2)
+    (define/export/arity (string>? str1 str2)
       (if (immutable-string? str1)
           (if (immutable-string? str2)
               (> str1 str2)
@@ -852,7 +855,7 @@
           (if (immutable-string? str2)
               (> (string->immutable-string str1) str2)
               (> (string->immutable-string str1) (string->immutable-string str2)))))
-    (define/export #:arity (string<=? str1 str2)
+    (define/export/arity (string<=? str1 str2)
       (if (immutable-string? str1)
           (if (immutable-string? str2)
               (<= str1 str2)
@@ -860,7 +863,7 @@
           (if (immutable-string? str2)
               (<= (string->immutable-string str1) str2)
               (<= (string->immutable-string str1) (string->immutable-string str2)))))
-    (define/export #:arity (string>=? str1 str2)
+    (define/export/arity (string>=? str1 str2)
       (if (immutable-string? str1)
           (if (immutable-string? str2)
               (>= str1 str2)
@@ -868,7 +871,7 @@
           (if (immutable-string? str2)
               (>= (string->immutable-string str1) str2)
               (>= (string->immutable-string str1) (string->immutable-string str2)))))
-    (define/export #:arity (string-upcase str) ; creates mutable string
+    (define/export/arity (string-upcase str) ; creates mutable string
       (if (immutable-string? str)
           (immutable-string->string (String (str.toUpperCase)))
           (string-upcase (string->immutable-string str))))
@@ -876,7 +879,7 @@
       (if (immutable-string? str)
           (immutable-string->string (String (str.toLowerCase)))
           (string-downcase (string->immutable-string str))))         
-    (define/export #:arity (string->list s) (for/list ([c in-racket-string s]) c))
+    (define/export/arity (string->list s) (for/list ([c in-racket-string s]) c))
     (define/export (string-append2 str1 str2) (str1.concat str2))
     (define/export (string-append) ; variadic
       (var [args arguments])
@@ -901,13 +904,13 @@
     ; list->bytes       ; todo
     ; make-shared-bytes ; todo
     ; shared-bytes      ; todo    
-    (define/export #:arity (bytes? v)
+    (define/export/arity (bytes? v)
       (and (array? v)
            (or (= (tag v) BYTES)
                (= (tag v) MUTABLE-BYTES))))
-    (define/export #:arity (immutable-bytes? v) (and (array? v) (= (tag v) BYTES)))
-    (define/export #:arity (mutable-bytes?   v) (and (array? v) (= (tag v) MUTABLE-BYTES)))
-    (define/export #:arity (bytes->Int8Array bs)
+    (define/export/arity (immutable-bytes? v) (and (array? v) (= (tag v) BYTES)))
+    (define/export/arity (mutable-bytes?   v) (and (array? v) (= (tag v) MUTABLE-BYTES)))
+    (define/export/arity (bytes->Int8Array bs)
       (ref bs 1))
     (define/export (make-bytes k b) ; b optional
       (case arguments.length
@@ -935,18 +938,18 @@
            [is   (new Int8Array n)])
       (is.set args)
       (array MUTABLE-BYTES is))
-    (define/export #:arity (bytes->immutable-bytes bs)
+    (define/export/arity (bytes->immutable-bytes bs)
       (array BYTES         (Int8Array.from (ref bs 1))))
-    (define/export #:arity (immutable-bytes->bytes bs)
+    (define/export/arity (immutable-bytes->bytes bs)
       (array MUTABLE-BYTES (Int8Array.from (ref bs 1))))
-    (define/export #:arity (byte? v)
+    (define/export/arity (byte? v)
       (and (exact-integer? v)
            (<= 0 v 255)))
-    (define/export #:arity (bytes-length bs)
+    (define/export/arity (bytes-length bs)
       (ref (ref bs 1) "length"))
-    (define/export #:arity (bytes-ref bs k)
+    (define/export/arity (bytes-ref bs k)
       (ref (ref bs 1) k))
-    (define/export #:arity (bytes-set! bs k b)
+    (define/export/arity (bytes-set! bs k b)
       (var [is (ref bs 1)])
       (:= is k b))
     (define/export (subbytes bs start end) ; end is optional
@@ -970,11 +973,11 @@
         (:= t i (ref is i)))
       (array MUTABLE-BYTES is))
     
-    (define/export #:arity (bytes-copy bs)
+    (define/export/arity (bytes-copy bs)
       (subbytes2 bs 0))
     
     ;;; 4.4.2 Byte String Comparisons
-    (define/export #:arity (bytes=? bs1 bs2)
+    (define/export/arity (bytes=? bs1 bs2)
       (var [n1 (bytes-length bs1)]
            [n2 (bytes-length bs2)]
            [is1 (ref bs1 1)]
@@ -995,11 +998,11 @@
     
     ;; Representation:
     ;;      {array CHAR primtive-javascript-string-of-length-1}
-    (define/export #:arity (char? v)               (and (array? v) (= (tag v) CHAR)))
-    (define/export #:arity (make-char prim-js-str) (array CHAR prim-js-str))             ; internal
-    (define/export #:arity (char->integer c)       (var [s (ref c 1)]) (s.charCodeAt 0))
-    (define/export #:arity (integer->char i)       (String (String.fromCharCode i)))
-    (define/export #:arity (char=? c1 c2)          (= (ref c1 1) (ref c2 1))) ; todo: variadic
+    (define/export/arity (char? v)               (and (array? v) (= (tag v) CHAR)))
+    (define/export/arity (make-char prim-js-str) (array CHAR prim-js-str))             ; internal
+    (define/export/arity (char->integer c)       (var [s (ref c 1)]) (s.charCodeAt 0))
+    (define/export/arity (integer->char i)       (String (String.fromCharCode i)))
+    (define/export/arity (char=? c1 c2)          (= (ref c1 1) (ref c2 1))) ; todo: variadic
     ; (define (char-alphabetic? c)    TODO
     
     ;;;
@@ -1023,18 +1026,18 @@
     
     ; string->unreadable-symbol  ; TODO
     
-    (define/export #:arity (symbol? v)
+    (define/export/arity (symbol? v)
       (and (array? v) (= (tag v) SYMBOL)))
-    (define/export #:arity (symbol-interned? sym) ; symbol? -> boolean?
+    (define/export/arity (symbol-interned? sym) ; symbol? -> boolean?
       (= (typeof (ref sym 1)) "string"))   ; note : an uninterned strings has type "object"
-    (define/export #:arity (symbol=? sym1 sym2)
+    (define/export/arity (symbol=? sym1 sym2)
       (or (and (symbol-interned? sym1)
                (symbol-interned? sym2)
                (= (ref sym1 1) (ref sym2 1)))
           ; uninterned symbols are only equal to themselves
           (= sym1 sym2)))
     
-    (define/export #:arity (symbol->string sym)
+    (define/export/arity (symbol->string sym)
       ; returns freshly allocated mutable string
       (var [js-str (ref sym 1)]
            [n      js-str.length]
@@ -1043,7 +1046,7 @@
       (for ([i in-range 0 n])
         (:= a (+ i 1) (ref js-str i)))
       a)
-    (define/export #:arity (symbol->immutable-string sym)
+    (define/export/arity (symbol->immutable-string sym)
       ; String returns a primitive (interned by js) string
       (String (ref sym 1)))
     
@@ -1064,7 +1067,7 @@
                         (:= symbol-table str r)]   ; intern it
        [#t (error "string->symbol" "expected a string")])      
       r)
-    (define/export #:arity (string->uninterned-symbol str)
+    (define/export/arity (string->uninterned-symbol str)
       ; (new String ...) returns a non-primitive string
       (array SYMBOL (new String str)))
     (define/export gensym-counter 0)
@@ -1083,7 +1086,7 @@
       (+= gensym-counter 1)
       (array SYMBOL (new String (+ base gensym-counter))))
     
-    (define/export #:arity (symbol<? a-sym b-sym)
+    (define/export/arity (symbol<? a-sym b-sym)
       (string<? (symbol->string a-sym) (symbol->string b-sym)))
     
     ;;;
@@ -1098,16 +1101,16 @@
     ;; Representation:
     ;;   {array KEYWORD primitive-js-str}
     ;; Note: The representation assumes primitive JavaScript strings are interned.
-    (define/export #:arity (keyword? v)
+    (define/export/arity (keyword? v)
       (and (array? v) (= (tag v) KEYWORD)))
-    (define/export #:arity (keyword->string key) ; returns mutable string
+    (define/export/arity (keyword->string key) ; returns mutable string
       (immutable-string->string (ref key 1)))
-    (define/export #:arity (string->keyword str)
+    (define/export/arity (string->keyword str)
       (var [istr (string->immutable-string str)])
       (array KEYWORD istr))
-    (define/export #:arity (keyword<? key1 key2)
+    (define/export/arity (keyword<? key1 key2)
       (< (ref key1 1) (ref key1 2)))
-    (define/export #:arity (keyword=? key1 key2)
+    (define/export/arity (keyword=? key1 key2)
       (= (ref key1 1) (ref key2 1)))
     
     ;;;
@@ -1122,15 +1125,15 @@
     ;;   That is, a list is either:
     ;;      NULL or {array PAIR true a d}
     ;;   where d is a list.
-    (define/export #:arity (pair? v)      (and (array? v) (= (tag v) PAIR)))
-    (define/export #:arity (null? v)      (= v NULL))
+    (define/export/arity (pair? v)      (and (array? v) (= (tag v) PAIR)))
+    (define/export/arity (null? v)      (= v NULL))
     (define/export         (cons a d)     (array PAIR (list? d) a d))
-    (define/export #:arity (car p)        (ref p 2))
-    (define/export #:arity (cdr p)        (ref p 3))
+    (define/export/arity (car p)        (ref p 2))
+    (define/export/arity (cdr p)        (ref p 3))
     (define/export         (unsafe-car p) (ref p 2))
     (define/export         (unsafe-cdr p) (ref p 3))
-    (define/export #:arity (cddr v)       (cdr (cdr v)))
-    (define/export #:arity (list? v)      (or (= v NULL) (and (array? v) (= (tag v) PAIR) (ref v 1))))
+    (define/export/arity (cddr v)       (cdr (cdr v)))
+    (define/export/arity (list? v)      (or (= v NULL) (and (array? v) (= (tag v) PAIR) (ref v 1))))
     (define/export Null NULL)  ;; the name  null  is reserved in EcmaScript 6
     (define/export (list) ; (list v ...)
       ; Note:  [args arguments]  is needed
@@ -1146,7 +1149,7 @@
                  (for ([i in-range 0 (- n 1)])
                    (:= xs (cons (ref args (- n-2 i)) xs)))
                  xs]))
-    (define/export #:arity (build-list n proc)
+    (define/export/arity (build-list n proc)
       (var [a (Array n)])
       (cond
         [(js-function? proc)  (for ([i in-range 0 n])
@@ -1155,11 +1158,11 @@
                               (for ([i in-range 0 n])
                                 (:= a i (closlabapp #f lab i)))])
       (array->list a))
-    (define/export #:arity (length xs)
+    (define/export/arity (length xs)
       (var (n 0))
       (while (pair? xs) (+= n 1) (:= xs (cdr xs)))
       n)
-    (define/export #:arity (list-ref xs i)
+    (define/export/arity (list-ref xs i)
       ;; Return the i'th index of xs.
       ;; Use fast path for i=0 and i=1.
       (var ret)
@@ -1169,7 +1172,7 @@
                         (:= xs (cdr xs)))
                       (:= ret (car xs))])
       ret)
-    (define/export #:arity (list-tail xs pos)
+    (define/export/arity (list-tail xs pos)
       (while (not (= pos 0))
              ; TODO ; (swhen (null? xs) (return (error "list-tail" " --- exn:fail:contract ---")))
              (:= xs (cdr xs))
@@ -1195,7 +1198,7 @@
                (for ([i in-range 0 n])
                  (:= ret (cons (ref axs (- n-1 i)) ret))))
       ret)
-    (define/export #:arity (reverse xs)
+    (define/export/arity (reverse xs)
       ; Note: for/list uses reverse, so reverse can't use for/list
       (var [result NULL])
       (while (not (null? xs))
@@ -1286,7 +1289,7 @@
     ; foldl TODO
     ; foldr TODO
     (define (filter-sym) (string->symbol "filter"))
-    (define/export #:arity (filter pred xs)
+    (define/export/arity (filter pred xs)
       (var [n (length xs)]
            [a (Array n)]
            [i 0])
@@ -1306,7 +1309,7 @@
              (-= i 1)
              (:= ys (cons (ref a i) ys)))
       ys)
-    (define/export #:arity (list->array xs)
+    (define/export/arity (list->array xs)
       ;; convert list to (non-tagged) JavaScript array
       ; allocate array
       (var a [n (length xs)])
@@ -1315,19 +1318,19 @@
       (for ([x i in-list xs])
         (:= a i x))
       a)
-    (define/export #:arity (array->list axs)
+    (define/export/arity (array->list axs)
       ;; convert JavaScript array to Racket list
       (var [n axs.length] [n-1 (- n 1)] [xs NULL])
       (for ([i in-range 0 n])
         (:= xs (cons (ref axs (- n-1 i)) xs)))
       xs)
-    (define/export #:arity (rest-args->list args-array but)
+    (define/export/arity (rest-args->list args-array but)
       ;; the two first elements of args-array is the closure and tc
       (var [n args-array.length] [n-1 (- n 1)] [xs NULL])
       (for ([i in-range 0 (- n 2 but)])
         (:= xs (cons (ref args-array (- n-1 i)) xs)))
       xs)
-    (define/export #:arity (array-end->list axs from)
+    (define/export/arity (array-end->list axs from)
       ;; convert JavaScript array to Racket list
       (var [n axs.length] [n-1 (- n 1)] [xs NULL])
       (for ([i in-range 0 (- n-1 from)])
@@ -1337,23 +1340,23 @@
     ;;; racket/list
     ;;;
     (define/export empty NULL)
-    (define/export #:arity (cons? v)      (pair? v))
-    (define/export #:arity (empty? v)     (null? v))
-    (define/export #:arity (first xs)     (car xs))
-    (define/export #:arity (rest xs)      (cdr xs))
-    (define/export #:arity (second xs)    (car (cdr xs)))
-    (define/export #:arity (third xs)     (car (cdr (cdr xs))))
-    (define/export #:arity (fourth xs)    (car (cdr (cdr (cdr xs)))))
-    (define/export #:arity (fifth xs)     (car (cdr (cdr (cdr (cdr xs))))))
-    (define/export #:arity (sixth xs)     (car (cdr (cdr (cdr (cdr (cdr xs)))))))
-    (define/export #:arity (seventh xs)   (car (cdr (cdr (cdr (cdr (cdr (cdr xs))))))))
-    (define/export #:arity (eighth xs)    (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr xs)))))))))
-    (define/export #:arity (ninth xs)     (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr xs))))))))))
-    (define/export #:arity (tenth xs)     (car
+    (define/export/arity (cons? v)      (pair? v))
+    (define/export/arity (empty? v)     (null? v))
+    (define/export/arity (first xs)     (car xs))
+    (define/export/arity (rest xs)      (cdr xs))
+    (define/export/arity (second xs)    (car (cdr xs)))
+    (define/export/arity (third xs)     (car (cdr (cdr xs))))
+    (define/export/arity (fourth xs)    (car (cdr (cdr (cdr xs)))))
+    (define/export/arity (fifth xs)     (car (cdr (cdr (cdr (cdr xs))))))
+    (define/export/arity (sixth xs)     (car (cdr (cdr (cdr (cdr (cdr xs)))))))
+    (define/export/arity (seventh xs)   (car (cdr (cdr (cdr (cdr (cdr (cdr xs))))))))
+    (define/export/arity (eighth xs)    (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr xs)))))))))
+    (define/export/arity (ninth xs)     (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr xs))))))))))
+    (define/export/arity (tenth xs)     (car
                                            (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr xs)))))))))))
-    (define/export #:arity (last-pair xs) (while (not (null? (cdr xs))) (:= xs (cdr xs))) xs)
-    (define/export #:arity (last xs)      (car (last-pair xs)))
-    (define/export #:arity (make-list k v)
+    (define/export/arity (last-pair xs) (while (not (null? (cdr xs))) (:= xs (cdr xs))) xs)
+    (define/export/arity (last xs)      (car (last-pair xs)))
+    (define/export/arity (make-list k v)
       ; Returns a newly constructed list of length k, holding v in all positions.
       (for/list ([i in-range 0 k]) v))
     
@@ -1368,12 +1371,12 @@
     ;;   (array VECTOR           elm0 elm1 ...)  ; mutable vector
     ;;   (array IMMUTABLE-VECTOR elm0 elm1 ...)  ; immutable vector
     
-    (define/export #:arity (vector? v)
+    (define/export/arity (vector? v)
       (and (array? v)
            (or (= (tag v) VECTOR)
                (= (tag v) IMMUTABLE-VECTOR))))
-    (define/export #:arity (immutable-vector? v) (and (array? v) (= (tag v) IMMUTABLE-VECTOR)))
-    (define/export #:arity (mutable-vector? v)   (and (array? v) (= (tag v) VECTOR)))
+    (define/export/arity (immutable-vector? v) (and (array? v) (= (tag v) IMMUTABLE-VECTOR)))
+    (define/export/arity (mutable-vector? v)   (and (array? v) (= (tag v) VECTOR)))
     (define/export (make-vector size v) ; v optional
       (case arguments.length
         [(1) (make-vector2 size 0)]
@@ -1397,15 +1400,15 @@
       (for ([j in-range 0 n])
         (:= a (+ j 1) (ref args j)))
       a)
-    (define/export #:arity (vector-length v)     (- v.length 1)) ; disregard tag
-    (define/export #:arity (vector-ref v i)      (ref v (+ i 1)))
-    (define/export #:arity (vector-set! vec i v) (:= vec (+ i 1) v))
-    (define/export #:arity (vector->list vec)
+    (define/export/arity (vector-length v)     (- v.length 1)) ; disregard tag
+    (define/export/arity (vector-ref v i)      (ref v (+ i 1)))
+    (define/export/arity (vector-set! vec i v) (:= vec (+ i 1) v))
+    (define/export/arity (vector->list vec)
       (var [n vec.length] [xs NULL])
       (for ([i in-range 1 n])
         (:= xs (cons (ref vec (- n i)) xs)))
       xs)
-    (define/export #:arity (list->vector vs)
+    (define/export/arity (list->vector vs)
       (var [n   (length vs)]
            [vec (Array (+ n 1))]
            [i 1])
@@ -1415,13 +1418,13 @@
              (+= i 1)
              (:= vs (cdr vs)))
       vec)
-    (define/export #:arity (vector->immutable-vector vec)
+    (define/export/arity (vector->immutable-vector vec)
       (var [n vec.length] [a (Array n)])
       (:= a 0 IMMUTABLE-VECTOR)
       (for ([j in-range 1 n])
         (:= a j (ref vec j)))
       vec)
-    (define/export #:arity (vector-fill! vec v)
+    (define/export/arity (vector-fill! vec v)
       (var [n vec.length])
       (for ([i in-range 1 n])
         (:= vec i v))
@@ -1437,7 +1440,7 @@
             [j in-range     src-start src-end])
         (:= dest i (ref src j)))
       VOID)
-    (define/export #:arity (build-vector n proc)
+    (define/export/arity (build-vector n proc)
       (var [a (Array (+ n 1))])
       (:= a 0 VECTOR)
       (cond
@@ -1455,17 +1458,17 @@
     ;; Representation:
     ;;   (array BOX value )
     
-    (define/export #:arity (box? v)             (and (array? v)
+    (define/export/arity (box? v)             (and (array? v)
                                                      (or (= (tag v) BOX)
                                                          (= (tag v) IMMUTABLE-BOX))))
-    (define/export #:arity (box v)              (array BOX v))
-    (define/export #:arity (box-immutable v)    (array IMMUTABLE-BOX v))
-    (define/export #:arity (unbox b)            (ref b 1))
-    (define/export #:arity (set-box! b v)       (:= b 1 v))
-    (define/export #:arity (box-cas! b old new) (if (eq? (ref b 1) old)
+    (define/export/arity (box v)              (array BOX v))
+    (define/export/arity (box-immutable v)    (array IMMUTABLE-BOX v))
+    (define/export/arity (unbox b)            (ref b 1))
+    (define/export/arity (set-box! b v)       (:= b 1 v))
+    (define/export/arity (box-cas! b old new) (if (eq? (ref b 1) old)
                                                     (begin (:= b 1 new) #t)
                                                     #f))
-    (define/export #:arity (immutable-box? v)  (and (array? v) (= (tag v) IMMUTABLE-BOX)))
+    (define/export/arity (immutable-box? v)  (and (array? v) (= (tag v) IMMUTABLE-BOX)))
     ;;;
     ;;; 4.14 Sequences and Streams
     ;;;
@@ -1487,7 +1490,7 @@
                  VOID ("ERROR - in-range - expected number"))]
         [else (raise-arity-error (string->symbol "in-range") (list 1 2 3))]))
     
-    (define/export #:arity (in-list xs)
+    (define/export/arity (in-list xs)
       (unless (list? xs)
         (error (string->symbol "in-list") "expected list as first argument"))
       VOID)
@@ -1601,8 +1604,8 @@
     ;; Note: The name  void  is reserved in EcmaScript 6,
     ;;       so we use the name Void.
     
-    (define/export #:arity (void? v) (= v VOID))
-    (define/export #:arity (Void) VOID) ; variadic
+    (define/export/arity (void? v) (= v VOID))
+    (define/export/arity (Void) VOID) ; variadic
     
     ;;;
     ;;; 5 Structures
@@ -1632,21 +1635,21 @@
     ;;; 5.2 Creating Structure Types
     ;;;
     
-    (define/export #:arity (struct-type-descriptor-name  std)              (ref std 1))
-    (define/export #:arity (struct-type-descriptor-super std)              (ref std 2))
-    (define/export #:arity (struct-type-descriptor-total-field-count  std) (ref std 3))
-    (define/export #:arity (struct-type-descriptor-init-field-indices std) (ref std 4))
-    (define/export #:arity (struct-type-descriptor-auto-field-indices std) (ref std 5))
-    (define/export #:arity (struct-type-descriptor-auto-field-values  std) (ref std 6))
-    (define/export #:arity (struct-type-descriptor-properties         std) (ref std 7))
-    (define/export #:arity (struct-type-descriptor-inspector          std) (ref std 8))
-    (define/export #:arity (struct-type-descriptor-immutables         std) (ref std 9))
-    (define/export #:arity (struct-type-descriptor-guard              std) (ref std 10))
-    (define/export #:arity (struct-type-descriptor-constructor-name   std) (ref std 11))
+    (define/export/arity (struct-type-descriptor-name  std)              (ref std 1))
+    (define/export/arity (struct-type-descriptor-super std)              (ref std 2))
+    (define/export/arity (struct-type-descriptor-total-field-count  std) (ref std 3))
+    (define/export/arity (struct-type-descriptor-init-field-indices std) (ref std 4))
+    (define/export/arity (struct-type-descriptor-auto-field-indices std) (ref std 5))
+    (define/export/arity (struct-type-descriptor-auto-field-values  std) (ref std 6))
+    (define/export/arity (struct-type-descriptor-properties         std) (ref std 7))
+    (define/export/arity (struct-type-descriptor-inspector          std) (ref std 8))
+    (define/export/arity (struct-type-descriptor-immutables         std) (ref std 9))
+    (define/export/arity (struct-type-descriptor-guard              std) (ref std 10))
+    (define/export/arity (struct-type-descriptor-constructor-name   std) (ref std 11))
     
-    (define/export #:arity (struct-type-descriptor? v)
+    (define/export/arity (struct-type-descriptor? v)
       (and (array? v) (= (ref v 0) STRUCT-TYPE-DESCRIPTOR)))
-    (define/export #:arity (struct? v)
+    (define/export/arity (struct? v)
       (and (array? v) (= (ref v 0) STRUCT)))
 
     (define (struct-type-is-a? a-std the-std)
@@ -1655,7 +1658,7 @@
           (and the-std
                (struct-type-is-a? (ref a-std 2) the-std))))
     
-    (define/export #:arity (str-struct-type-descriptor s)
+    (define/export/arity (str-struct-type-descriptor s)
       (+ "(struct-type-descriptor "
          (str (ref s 1)) " " (str (ref s 2))  " " (str (ref s 3)) " " (str (ref s 4)) " "
          (str (ref s 5)) " " (str (ref s 6))  " " (str (ref s 7)) " " (str (ref s 8)) " "
@@ -1812,7 +1815,7 @@
             (for ([j in-range 0 n])
               (:= a (+ j 1) (ref args j)))))
       a)
-    (define/export #:arity (call-with-values generator receiver)
+    (define/export/arity (call-with-values generator receiver)
       ; generator : (-> any)
       ; receiver  : procedure?
       (var [vals (generator.call #f)])
@@ -2011,7 +2014,7 @@
             (sif tc (block) (remove-continuation-mark-frame))))
       VOID)
 
-    (define/export #:arity (select-handler/no-breaks e bpz l)
+    (define/export/arity (select-handler/no-breaks e bpz l)
       (var [h #f] [p #f])
       ; TODO: we ignore breaks (ok in the browser)
       ; l   is a list of (cons handler-predicate handler)
@@ -2039,21 +2042,21 @@
     (define srcloc-struct-type-descriptor
         (array STRUCT-TYPE-DESCRIPTOR "srcloc" #f
              5 (list 0 1 2 3 4) NULL NULL #f #f NULL #f "make-srcloc"))
-    (define/export #:arity (srcloc source line column position span)
+    (define/export/arity (srcloc source line column position span)
       (array STRUCT srcloc-struct-type-descriptor
              srcloc source line column position span))
       
     (generate-exception-structs)
     ;; Note: this is in #%kernel
     
-    (define/export #:arity (kernel:srcloc source line column position span)
+    (define/export/arity (kernel:srcloc source line column position span)
       (array STRUCT
              (array STRUCT-TYPE-DESCRIPTOR
                     "srcloc" #f 5 (list 0 1 2 3 4) NULL NULL
                     #f #f NULL #f "make-srcloc")
              source line column position span))
     
-    (define/export #:arity (srcloc->string sl)
+    (define/export/arity (srcloc->string sl)
       (var [source   (ref sl 2)]
            [line     (ref sl 3)]
            [column   (ref sl 4)]
@@ -2080,15 +2083,15 @@
     ;   continuation-mark-set->context
     (define the-empty-continuation-mark-set (array)) ; see section 10.5 on continuation marks
     (define (empty-continuation-mark-set? v) (= v the-empty-continuation-mark-set))
-    (define/export #:arity (new-continuation-mark-frame key val)
+    (define/export/arity (new-continuation-mark-frame key val)
       (var [frame (object)])
       (:= frame key val)
       (:= CMS (array frame CMS)))
-    (define/export #:arity (set-continuation-mark key val)
+    (define/export/arity (set-continuation-mark key val)
       (var [frame (ref CMS 0)])
       (:= frame key val)
       CMS)
-    (define/export #:arity (remove-continuation-mark-frame)
+    (define/export/arity (remove-continuation-mark-frame)
       (:= CMS (ref CMS 1)))
     (define/export (continuation-mark-set-first mark-set key-v opt-none-v opt-prompt-tag)
       ; mark-set is either #f or is a continuation-mark-set
@@ -2112,14 +2115,14 @@
     ;;   A continuation mark set is a 
     ;;      NULL or {array CONTINUATION-MARK-SET continuation}
     ;;   where a continuation is a "linked list" of frames.
-    (define/export #:arity (continuation-mark-set? v)
+    (define/export/arity (continuation-mark-set? v)
       (and (array? v) (= (tag v) CONTINUATION-MARK-SET)))
     (define/export (current-continuation-marks opt-prompt-tag)
       ;(console.log "continuation-marks:")
       ;(console.log CMS)
       ; TODO: prompt-tag is ignored here
       (array CONTINUATION-MARK-SET CMS))
-    (define/export #:arity (continuation-mark-set->list mark-set key-v prompt-tag)
+    (define/export/arity (continuation-mark-set->list mark-set key-v prompt-tag)
       ;(console.log "continuation-mark-set->list:")
       ;(console.log mark-set)
       ; prompt-tag is opptional
@@ -2195,17 +2198,17 @@
                           VOID])])))
       (array CLOS lab PARAMETER key guard))
 
-    (define/export #:arity (parameter? v)
+    (define/export/arity (parameter? v)
       (and (closure? v) (= (ref v 2) PARAMETER)))
 
     (define (get-current-parameterization)
       (var [p (continuation-mark-set-first #f parameterization-key #f)])
       p)
 
-    (define/export #:arity (parameterization? v)
+    (define/export/arity (parameterization? v)
       (and (array? v) (= (ref v 0) PARAMETERIZATION)))
     
-    (define/export #:arity (current-parameterization)
+    (define/export/arity (current-parameterization)
       (var [p (continuation-mark-set-first #f parameterization-key #f)])
       {array PARAMETERIZATION p})      
     ; An untagged parameterization is either
@@ -2259,10 +2262,10 @@
     ;;; 12.1 Pattern-Based Syntax Matching
     ;;; 12.2 Syntax Object Content
     
-    (define/export #:arity (syntax? v)       (and (array? v) (>= v.length 3)
+    (define/export/arity (syntax? v)       (and (array? v) (>= v.length 3)
                                                   (= (ref v 1) syntax-object-struct-type-descriptor)))
-    (define/export #:arity (syntax-e v)      (ref v 4))
-    (define/export #:arity (identifier? v)   (and (syntax? v) (symbol? (syntax-e v))))
+    (define/export/arity (syntax-e v)      (ref v 4))
+    (define/export/arity (identifier? v)   (and (syntax? v) (symbol? (syntax-e v))))
 
     
     ;;;
@@ -2275,7 +2278,7 @@
 
     (define/export eof EOF-OBJECT)
     
-    (define/export #:arity (eof-object? v)
+    (define/export/arity (eof-object? v)
       (= v EOF-OBJECT))
     
     ;;;
@@ -2308,13 +2311,13 @@
     ;; Note: the index idx and the location position may be different,
     ;;       since the #\return#\newline combination counts as a single position.
     
-    (define/export #:arity (string-port? p) ; p is a port
+    (define/export/arity (string-port? p) ; p is a port
       (and (array? p) (= (tag p) STRING-PORT)))
     (define (make-initial-location)
       ; (location 1 0 1)
       (array 1 0 1))
     ;; port-count-lines! : port -> void
-    (define/export #:arity (port-count-lines! port)
+    (define/export/arity (port-count-lines! port)
       ; TODO : for now: location tracking is always on
       VOID)
     ;; port-next-location : port -> (values (U exact-positive-integer? #f)
@@ -2322,7 +2325,7 @@
     ;;                                      (U exact-postive-integer? #f))
     ; returns three values:
     ;    line number, column number and position
-    (define/export #:arity (port-next-location p)
+    (define/export/arity (port-next-location p)
       (var [loc (ref p 5)]
            [line (ref loc 0)]
            [col  (ref loc 1)]
@@ -2366,19 +2369,19 @@
     ;;; 13.5 Writing
     ;;;
     
-    (define/export #:arity (displayln v)
+    (define/export/arity (displayln v)
       (console.log (str v display-mode)))
     
-    (define/export #:arity (newline)
+    (define/export/arity (newline)
       (console.log ""))
     
-    (define/export #:arity (display v)
+    (define/export/arity (display v)
       (process.stdout.write (str v display-mode)))
     
-    (define/export #:arity (write v)
+    (define/export/arity (write v)
       (process.stdout.write (str v write-mode)))
     
-    (define/export #:arity (console-log str)
+    (define/export/arity (console-log str)
       (console.log str))
     
     
@@ -2410,9 +2413,9 @@
     ;;     base-phase  = integer : corresponds to phase used by eval and dynamic-require
     ;;     dict0       =     
     ;; For now just phase 0 is stored in the namespace.
-    (define/export #:arity (namespace? v)
+    (define/export/arity (namespace? v)
       (and (array? v) (= (tag v) NAMESPACE)))
-    (define/export #:arity (make-empty-namespace)
+    (define/export/arity (make-empty-namespace)
       ; empty namespace, no mappings in registry
       (array NAMESPACE (array) 0 (array)))
     ; TODO make-base-empty-namespace
@@ -2490,7 +2493,7 @@
     ; TODO namespace-attach-module
     ; TODO namespace-attach-module-declaration
     ; TODO namespace-unprotect-module
-    (define/export #:arity (namespace-module-registry ns)
+    (define/export/arity (namespace-module-registry ns)
       (ref ns 1))
     ; TODO module->namespace
     ; TODO namespace-syntax-introduce
@@ -2513,7 +2516,7 @@
     (define/export (current-inspector)
       #f)
 
-    (define/export #:arity (object-name v)
+    (define/export/arity (object-name v)
       ; TODO: store names of primitives in a hash table
       #f)
     
