@@ -81,8 +81,27 @@
         ([x (ref xs (+ i 1))])   ; let bindings (needs to bind x)
         ((+= i 1)))]))
 
+(define-syntax in-assocs 42)
+(define (handle-in-assocs clause)
+  (syntax-parse clause
+    #:literals (in-assocs)
+    [[k v in-list assocs-expr]
+     #'(([kvs assocs-expr])           ; list of var clauses to create initial state
+        (not (null? kvs))             ; termination condition
+        ; todo: use caar and cdr
+        ([k (car (car kvs))] [v (cdr (car kvs))]) ; let bindings (needs to bind x)
+        ((:= kvs (cdr kvs))))]        ; statements to step state forward
+    ; version with i as index
+    [[k v i in-assocs accocs-expr]
+     #'(([kvs assocs-expr] [i 0])     ; list of var clauses to create initial state
+        (not (null? kvs))             ; termination condition
+        ([k (caar xs)] [v (cadr xs)]) ; let bindings (needs to bind x)
+        ((:= kvs (cdr kvs))           ; statements to step state forward
+         (+= i 1)))]))
+
 (add-clause-handler! 'in-list   handle-in-list)
 (add-clause-handler! 'in-vector handle-in-vector)
+(add-clause-handler! 'in-assocs handle-in-assocs)
 
 ;;; for/list
 
@@ -163,7 +182,8 @@
        (topblock
         (export name)
         (define name expr)))]
-    [_ (error 'define/export "bad syntax" stx)]))
+    [_ (displayln stx)
+       (error 'define/export "bad syntax" stx)]))
 (define-urlang-macro define/export expand-define/export)
 
 ;;; Closure related macros
@@ -1476,8 +1496,14 @@
     ;;; Mutable Eq Hash Tables
 
     (define/export (make-hasheq opt-assocs)
-      ; TODO: handle keys and values in opt-assocs
-      (array HASHEQ (array)))
+      (var [assocs (if (= opt-assocs undefined) #f opt-assocs)]
+           [a      (array)])
+      (sif assocs
+           (for ([k v in-assocs assocs])
+             (:= a k v))
+           (block))
+      (array HASHEQ a))
+
     (define/export (hash-ref hash key opt-failure-result)
       (var [ht (ref hash 1)]
            [r  (ref ht key)])
@@ -1486,7 +1512,8 @@
               #f
               (call #f opt-failure-result))
           r))
-    (define/export #:arity (hash-set! ht key v)
+
+    (define/export/arity (hash-set! ht key v) 
       (var [a (ref ht 1)])
       (:= a key v)
       VOID)
