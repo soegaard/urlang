@@ -1988,7 +1988,7 @@
       ; Creates an exn:fail:syntax value and raises it as an exception.
       (raise (exn:fail:syntax message (current-continuation-marks))))
 
-    (define (raise-application-error f args-array)
+    (define/export (raise-application-error f args-array)
       (var [msg (+ "application: not a procedure\\n"
                    " expected a procedure that can be applied to arguments\\n"
                    "  given: " (str f display-mode)  " \\n"

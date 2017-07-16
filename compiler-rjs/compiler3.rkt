@@ -309,7 +309,9 @@
             [tc   (eq? cd '<return>)]
             [work `(if (app ,#'closure? ,f)
                        (app ,(~clos-label f) ,f ',tc ,(AExpr* ae1) ...)
-                       (app ,f ,(AExpr* ae1) ...))])
+                       (if (app ,#'= (app ,#'typeof ,f) '"function")
+                           (app ,f ,(AExpr* ae1) ...)
+                           (app ,#'raise-application-error ,f (array ,(AExpr* ae1) ...))))])
        (match dd
          ['<effect> (match cd
                       ['<expr>   `(begin (:= ,f ,(AExpr ae)) ,work)]

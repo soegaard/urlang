@@ -1,5 +1,5 @@
 #lang racket
-(provide eval)       
+(provide eval)        
 (provide (all-defined-out)) 
 
 ;;; 
@@ -25,13 +25,13 @@
 ; CLOSE  8. source locations
 ; DONE       srcloc, srcloc->string
 ; TODO       store source locations for each application, etc ...
-; CLOSE  9. tco (trampoline)
+; DONE   9. tco 
 ; DONE  10. with-continuation-mark
 ; DONE  11. parameters
-; CLOSE 12. exceptions
+; DONE  12. exceptions
 ; WIP   13. error checking
-;             - applications of non-procedures
-;             - arities  
+; DONE        - applications of non-procedures
+; DONE        - arities
 ;             - wrong number of return values
 ;       14. top-level-namespaces
 ;       15. modules
