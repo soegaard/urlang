@@ -27,7 +27,7 @@
 ;;; Bugs
 ;;;
 
-; Fix parameters defined in rumtime.rkt.
+; Fix parameters defined in runtime.rkt.
 ; Problem: Parameters are represented as (a special kind) of closure.
 ;          Defining them here with define/export causes the compiler
 ;          to think that it is a standard primitive and thus the
@@ -36,8 +36,6 @@
 ;;;
 ;;; TODO
 ;;;
-;;  CLOSE   arity checking of primitives
-;;  - arity checking of closures
 
 ;;  - guards     in structs
 ;;  - properties in structs
@@ -275,6 +273,7 @@
     (define/export CONTINUATION-MARK-SET  (array "continuation-mark-set"))
     (define/export PARAMETERIZATION       (array "parameterization"))
     (define/export SYNTAX-OBJECT          (array "syntax-object"))
+    (define/export HASHEQ                 (array "hasheq"))
 
     (define/export CLOS                   "CLOS") ; easier in code generator
     (define/export PARAMETER              (array "parameter")) ; parameters are closures
@@ -1469,6 +1468,30 @@
                                                     (begin (:= b 1 new) #t)
                                                     #f))
     (define/export/arity (immutable-box? v)  (and (array? v) (= (tag v) IMMUTABLE-BOX)))
+
+    ;;;
+    ;;; 4.13 Hash Tables
+    ;;;
+
+    ;;; Mutable Eq Hash Tables
+
+    (define/export (make-hasheq opt-assocs)
+      ; TODO: handle keys and values in opt-assocs
+      (array HASHEQ (array)))
+    (define/export (hash-ref hash key opt-failure-result)
+      (var [ht (ref hash 1)]
+           [r  (ref ht key)])
+      (if (= r undefined)
+          (if (= opt-failure-result undefined)
+              #f
+              (call #f opt-failure-result))
+          r))
+    (define/export #:arity (hash-set! ht key v)
+      (var [a (ref ht 1)])
+      (:= a key v)
+      VOID)
+
+    
     ;;;
     ;;; 4.14 Sequences and Streams
     ;;;
