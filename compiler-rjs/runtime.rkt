@@ -88,8 +88,7 @@
     [[k v in-list assocs-expr]
      #'(([kvs assocs-expr])           ; list of var clauses to create initial state
         (not (null? kvs))             ; termination condition
-        ; todo: use caar and cdr
-        ([k (car (car kvs))] [v (cdr (car kvs))]) ; let bindings (needs to bind x)
+        ([k (caar kvs)] [v (cdar kvs)]) ; let bindings (needs to bind x)
         ((:= kvs (cdr kvs))))]        ; statements to step state forward
     ; version with i as index
     [[k v i in-assocs accocs-expr]
@@ -1146,11 +1145,14 @@
     ;;   where d is a list.
     (define/export/arity (pair? v)      (and (array? v) (= (tag v) PAIR)))
     (define/export/arity (null? v)      (= v NULL))
-    (define/export         (cons a d)     (array PAIR (list? d) a d))
+    (define/export       (cons a d)     (array PAIR (list? d) a d))
     (define/export/arity (car p)        (ref p 2))
     (define/export/arity (cdr p)        (ref p 3))
-    (define/export         (unsafe-car p) (ref p 2))
-    (define/export         (unsafe-cdr p) (ref p 3))
+    (define/export       (unsafe-car p) (ref p 2))
+    (define/export       (unsafe-cdr p) (ref p 3))
+    (define/export/arity (caar v)       (car (car v)))
+    (define/export/arity (cadr v)       (car (cdr v)))
+    (define/export/arity (cdar v)       (cdr (car v)))
     (define/export/arity (cddr v)       (cdr (cdr v)))
     (define/export/arity (list? v)      (or (= v NULL) (and (array? v) (= (tag v) PAIR) (ref v 1))))
     (define/export Null NULL)  ;; the name  null  is reserved in EcmaScript 6
