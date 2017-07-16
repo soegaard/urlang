@@ -40,7 +40,9 @@
 ;       19. #%variable-reference
 ;       20. test suite
 ;       21. keywords
-;       22. promises
+;       22. prompts
+;       23. promises
+;       24. no stack errors from non-tail calls
 
 ;;;
 ;;; NOTES
@@ -211,9 +213,9 @@
 (define-syntax (define-runtime-primitives stx)
   (syntax-parse stx
     [(_define-runtime-primitives)
-     (with-syntax ([(pr ...)
-                    (for/list ([p (urmodule-name->exports 'runtime)])
-                      (datum->syntax stx p))])
+     (define all-exports (for/list ([p (urmodule-name->exports 'runtime)])
+                           (datum->syntax stx p)))
+     (with-syntax ([(pr ...) all-exports])
        (syntax/loc stx
          (define-primitives pr ...)))]))
 
@@ -247,12 +249,23 @@
 
 ; A few primitives need access to _tc and are therefore wrapped in a closure.
 ; This means that applications of these are (app ...) and not (primapp ...).
+; In particular all parameters are implemented as closures.
+; Names that start with "current-" are associated with parameters -  the exception
+; being  current-parameterization  which aren't associated with a parameter.
+; Also, some parameters are named with a -handler postfix.
+(require (only-in urlang urmodule-name->exports))
 (define (special-primitive? x)
+  (define (handler-name?   id)      (regexp-match "-handler$" (~a id)))
+  (define (parameter-name? id) (and (regexp-match "^current-" (~a id))
+                                    (not (equal? id "current-parameterization"))))
+  (define all-exports    (urmodule-name->exports 'runtime))
+  (define all-parameters (filter (λ (id) (or (parameter-name? id) (handler-name? id))) all-exports))
+
   (cond [(syntax? x)   (special-primitive? (syntax-e x))]
         [(variable? x) (special-primitive? (variable-id x))]
-        [else          (or (memq x '(apply
-                                     call-handled-body
-                                     uncaught-exception-handler)))]))
+        [else          (or (memq x (list* 'apply
+                                          'call-handled-body
+                                          all-parameters)))]))
 
 (define (unparse-primitive pr)
   (unparse-variable pr))

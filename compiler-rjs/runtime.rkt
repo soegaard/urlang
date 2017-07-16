@@ -24,16 +24,6 @@
 ; compiler.rkt and compiler2.rkt before running compiler3.rkt.
 
 ;;;
-;;; Bugs
-;;;
-
-; Fix parameters defined in runtime.rkt.
-; Problem: Parameters are represented as (a special kind) of closure.
-;          Defining them here with define/export causes the compiler
-;          to think that it is a standard primitive and thus the
-;          application of a name bound to a parameter is compiled incorrectly.
-
-;;;
 ;;; TODO
 ;;;
 
