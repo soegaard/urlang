@@ -1714,11 +1714,12 @@
                     name super-type init-field-count auto-field-count
                     ; optionals: (handled by make-struct-type)
                     auto-field-value props inspector proc-spec immutables
-                    guard constructor-name
+                    opt-guard constructor-name
                     )
       (var [ifc   init-field-count]
            [afc   auto-field-count]
-           [stfc  (if super-type (struct-type-descriptor-total-field-count super-type) 0)])
+           [stfc  (if super-type (struct-type-descriptor-total-field-count super-type) 0)]
+           [guard (if (= opt-guard undefined) #f opt-guard)])
       (if super-type
           ;; super-case present (the hard case)
           (let ([total-field-count      (+ ifc afc stfc)]
@@ -1730,11 +1731,11 @@
              (append (struct-type-descriptor-init-field-indices super-type) new-init-field-indices)
              (append (struct-type-descriptor-auto-field-indices super-type) new-auto-field-indices)
              (append (struct-type-descriptor-auto-field-values  super-type) new-auto-field-values)
-             NULL ; properties
-             #f   ; inspector
-             NULL ; immutables
-             #f   ; guard
-             #f   ; constructor name
+             NULL  ; properties
+             #f    ; inspector
+             NULL  ; immutables
+             guard ; guard
+             #f    ; constructor name
              ))
           ;; no super-case (the simple case)
           (let ([total-field-count  (+ ifc afc)]
@@ -1743,11 +1744,11 @@
                 [auto-field-values  (for/list ([i in-range 0 afc]) auto-field-value)])
             (array STRUCT-TYPE-DESCRIPTOR name #f total-field-count
                    init-field-indices auto-field-indices auto-field-values
-                   NULL ; properties
-                   #f   ; inspector
-                   NULL ; immutables
-                   #f   ; guard
-                   #f   ; constructor name
+                   NULL  ; properties
+                   #f    ; inspector
+                   NULL  ; immutables
+                   guard ; guard
+                   #f    ; constructor name
                    ))))
     
     (define/export (make-struct-type name super-type init-field-count auto-field-count
@@ -1795,7 +1796,7 @@
                (:= a (+ j 2) v))
              a)
            ;; struct-predicate-procedure
-           (λ (v)             (= v std))
+           (λ (v)             (or (= v std) (struct-type-is-a? v std)))
            ;; struct-accessor-procedure
            (λ (s index)       (ref s (+ super-field-count index 2)))
            ;; struct-mutator-procedure
@@ -2637,6 +2638,7 @@
     (define (str-continuation-mark-set v) "#<continuation-mark-set>")
     (define (str-parameterization v)      "#<parameterization>")
     (define (str-parameter v)             (console.log v) "#<parameter>")
+    (define (str-closure v)               "#<closure>")
     (define/export (str v opt-mode)
       (var [mode (if (= opt-mode undefined) write-mode opt-mode)])
       (cond
@@ -2659,6 +2661,7 @@
         [(continuation-mark-set? v)    (str-continuation-mark-set v)]
         [(parameterization? v)         (str-parameterization v)]
         [(parameter? v)                (str-parameter v)]
+        [(closure? v)                  (str-closure v)]
         ; [(exception? v)                
         [#t                            (console.log v)
                                        "str - internal error"]))
