@@ -1,5 +1,5 @@
 #lang racket
-(provide eval)        
+(provide eval)          
 (provide (all-defined-out)) 
 
 ;;; 
@@ -239,7 +239,9 @@
   ; these are not primitives in Racket, but are reserved names in Urlang
   not)
 
-(define macro-introduced '(call-handled-body))
+; This list of macro introduced identifiers goes away when module support arrives.
+; set these in compiler3.rkt instead.
+; (define macro-introduced '(call-handled-body check-struct-type))
 
 (define (primitive? v)
   (and (or (and (syntax? v)   (primitive? (syntax-e v)))

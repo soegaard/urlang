@@ -1688,8 +1688,13 @@
     (define/export/arity (struct-type-descriptor-immutables         std) (ref std 9))
     (define/export/arity (struct-type-descriptor-guard              std) (ref std 10))
     (define/export/arity (struct-type-descriptor-constructor-name   std) (ref std 11))
-    
-    (define/export/arity (struct-type-descriptor? v)
+
+    (define/export/arity (check-struct-type name what)
+      (swhen what
+        (sunless (struct-type? what)
+          (raise-argument-error name "(or/c struct-type? #f)" what)))
+      what)
+    (define/export/arity (struct-type? v)
       (and (array? v) (= (ref v 0) STRUCT-TYPE-DESCRIPTOR)))
     (define/export/arity (struct? v)
       (and (array? v) (= (ref v 0) STRUCT)))
@@ -1698,7 +1703,9 @@
       ; is a-std a subtype 
       (or (= a-std the-std)
           (and the-std
-               (struct-type-is-a? (ref a-std 2) the-std))))
+               (and (array? a-std)
+                    (>= a-std.length 3)
+                    (struct-type-is-a? (ref a-std 2) the-std)))))
     
     (define/export/arity (str-struct-type-descriptor s)
       (+ "(struct-type-descriptor "
@@ -1796,7 +1803,7 @@
                (:= a (+ j 2) v))
              a)
            ;; struct-predicate-procedure
-           (λ (v)             (or (= v std) (struct-type-is-a? v std)))
+           (λ (v)             (and (array? v) (>= v.length 3) (struct-type-is-a? (ref v 1) std)))
            ;; struct-accessor-procedure
            (λ (s index)       (ref s (+ super-field-count index 2)))
            ;; struct-mutator-procedure
@@ -1821,7 +1828,7 @@
              ;; done
              a)
            ;; struct-predicate-procedure
-           (λ (v)             (= v std))
+           (λ (v)             (and (array? v) (>= v.length 3) (struct-type-is-a? (ref v 1) std)))
            ;; struct-accessor-procedure
            (λ (s index)       (ref s (+ index 2)))
            ;; struct-mutator-procedure
@@ -2655,7 +2662,7 @@
         [(immutable-box? v)            (str-box-immutable          v mode)]
         [(box? v)                      (str-box                    v mode)]        
         [(char? v)                     (str-char                   v mode)]
-        [(struct-type-descriptor? v)   (str-struct-type-descriptor v)]
+        [(struct-type? v)              (str-struct-type-descriptor v)]
         [(struct? v)                   (str-struct                 v mode)]
         [(= v undefined)               (str-undefined)]
         [(continuation-mark-set? v)    (str-continuation-mark-set v)]

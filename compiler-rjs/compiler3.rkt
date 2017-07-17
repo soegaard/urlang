@@ -546,6 +546,7 @@
 
 (macro-introduced-identifiers
  '(select-handler/no-breaks ; from racket/private/more-scheme produced by with-handlers
+   check-struct-type        ; from racket/racket/collects/racket/private/define-struct.rkt
    call-handled-body
    unsafe-fx<
    unsafe-fx+
