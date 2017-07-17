@@ -1814,7 +1814,7 @@
                         (:= v 1 #f)                          ; tc = non-tail call
                         (for ([i in-range 0 field-count])    ; n fields
                           (:= v (+ i 2) (ref a (+ i 2))))
-                        (:= v (+ field-count 2) "name")      ; todo
+                        (:= v (+ field-count 2) name)
                         (:= l (closure-label v))
                         (:= r (l.apply #f v)))
                       ; js-function
@@ -1822,7 +1822,7 @@
                         (:= v (new Array (+ field-count 1))) ; (n+1) fields
                         (for ([i in-range 0 field-count])    ; n fields
                           (:= v i (ref a (+ i 2))))
-                        (:= v field-count "name")            ; todo
+                        (:= v field-count name)
                         (:= r (guard.apply #f v))))
                  (for ([i in-range 0 field-count])
                    (:= a (+ i 2) (ref r (+ i 1))))
@@ -1878,7 +1878,7 @@
                        (:= v 1 #f)                          ; tc = non-tail call
                        (for ([i in-range 0 field-count])    ; n fields
                          (:= v (+ i 2) (ref a (+ i 2))))
-                       (:= v (+ field-count 2) "name")      ; todo                       
+                       (:= v (+ field-count 2) name)
                        (:= l (closure-label guard))
                        (:= r (l.apply #f v)))
                       ; js-function
@@ -1886,7 +1886,7 @@
                         (:= v (new Array (+ field-count 1))) ; (n+1) fields
                         (for ([i in-range 0 field-count])    ; n fields
                           (:= v i (ref a (+ i 2))))
-                        (:= v field-count "name")            ; todo
+                        (:= v field-count name)
                         (:= r (guard.apply #f v))))
                  (for ([i in-range 0 field-count])
                    (:= a (+ i 2) (ref r (+ i 1))))
