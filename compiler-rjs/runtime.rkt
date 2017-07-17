@@ -1721,8 +1721,7 @@
                     name super-type init-field-count auto-field-count
                     ; optionals: (handled by make-struct-type)
                     auto-field-value props inspector proc-spec immutables
-                    opt-guard constructor-name
-                    )
+                    opt-guard constructor-name)
       (var [ifc   init-field-count]
            [afc   auto-field-count]
            [stfc  (if super-type (struct-type-descriptor-total-field-count super-type) 0)]
@@ -1775,7 +1774,8 @@
     
     (define/export (do-make-struct-type name super-type init-field-count auto-field-count
                                         auto-field-value ; one values is used in all auto-fields
-                                        props inspector proc-spec immutables guard constructor-name)
+                                        props inspector proc-spec immutables
+                                        guard constructor-name)
       (var [super-field-count (if super-type (struct-type-descriptor-total-field-count super-type) 0)]
            [field-count       (+ init-field-count auto-field-count super-field-count)]
            [std               (make-struct-type-descriptor
@@ -1788,20 +1788,60 @@
            ;; struct-type
            std
            ;; struct-constructor-procedure
-           (λ () (var [args arguments]
-                      [n    arguments.length]      ; todo: check that n = field-count
-                      [a    (new Array (+ field-count 2))]) ; (+2 is tag and type descriptor)
-             (:= a 0 STRUCT)
-             (:= a 1 std)
-             ;; fill init-fields
-             (for ([i in-list (struct-type-descriptor-init-field-indices std)]
-                   [j in-range 0 n])
-               (:= a (+ i 2) (ref args j)))
-             ;; fill auto-fields
-             (for ([j in-list (struct-type-descriptor-auto-field-indices std)]
-                   [v in-list (struct-type-descriptor-auto-field-values  std)])
-               (:= a (+ j 2) v))
-             a)
+           (if guard
+               ;; Super and Guard
+               (λ () (var [args arguments]
+                          [n    arguments.length]      ; todo: check that n = field-count
+                          [a    (new Array (+ field-count 2))] ; (+2 is tag and type descriptor)
+                          [v    #f]  ; holds arguments for call to guard
+                          [l    #f]  ; label of guard
+                          [r    #f]) ; result of guard
+                 (:= a 0 STRUCT)
+                 (:= a 1 std)
+                 ;; fill init-fields
+                 (for ([i in-list (struct-type-descriptor-init-field-indices std)]
+                       [j in-range 0 n])
+                   (:= a (+ i 2) (ref args j)))
+                 ;; fill auto-fields
+                 (for ([j in-list (struct-type-descriptor-auto-field-indices std)]
+                       [v in-list (struct-type-descriptor-auto-field-values  std)])
+                   (:= a (+ j 2) v))
+                 ;; call guard
+                 (sif (closure? guard)
+                      (block
+                        (:= v (new Array (+ field-count 3))) ; clos + tc + (n+1) fields
+                        (:= v 0 guard)                       ; clos
+                        (:= v 1 #f)                          ; tc = non-tail call
+                        (for ([i in-range 0 field-count])    ; n fields
+                          (:= v (+ i 2) (ref a (+ i 2))))
+                        (:= v (+ field-count 2) "name")      ; todo
+                        (:= l (closure-label v))
+                        (:= r (l.apply #f v)))
+                      ; js-function
+                      (block
+                        (:= v (new Array (+ field-count 1))) ; (n+1) fields
+                        (for ([i in-range 0 field-count])    ; n fields
+                          (:= v i (ref a (+ i 2))))
+                        (:= v field-count "name")            ; todo
+                        (:= r (guard.apply #f v))))
+                 (for ([i in-range 0 field-count])
+                   (:= a (+ i 2) (ref r (+ i 1))))
+                 a)
+               ;; Super, No guard
+               (λ () (var [args arguments]
+                          [n    arguments.length]      ; todo: check that n = field-count
+                          [a    (new Array (+ field-count 2))])  ; (+2 is tag and type descriptor)
+                 (:= a 0 STRUCT)
+                 (:= a 1 std)
+                 ;; fill init-fields
+                 (for ([i in-list (struct-type-descriptor-init-field-indices std)]
+                       [j in-range 0 n])
+                   (:= a (+ i 2) (ref args j)))
+                 ;; fill auto-fields
+                 (for ([j in-list (struct-type-descriptor-auto-field-indices std)]
+                       [v in-list (struct-type-descriptor-auto-field-values  std)])
+                   (:= a (+ j 2) v))             
+                 a))
            ;; struct-predicate-procedure
            (λ (v)             (and (array? v) (>= v.length 3) (struct-type-is-a? (ref v 1) std)))
            ;; struct-accessor-procedure
@@ -1814,19 +1854,58 @@
            ;; struct-type
            std
            ;; struct-constructor-procedure
-           (λ () (var [args arguments]
-                      [n    arguments.length]      ; todo: check that n = field-count
-                      [a    (new Array (+ n 2))])
-             (:= a 0 STRUCT)
-             (:= a 1 std)
-             ;; fill init-fields
-             (for ([i in-range 0 n])
-               (:= a (+ i 2) (ref args i)))
-             ;; fill auto-fields
-             (for ([j in-range n (+ n auto-field-count)])
-               (:= a (+ j 2) auto-field-value))
-             ;; done
-             a)
+           (if guard
+               ;; No super, Guard
+               (λ () (var [args arguments]
+                          [n    arguments.length]      ; todo: check that n = field-count
+                          [a    (new Array (+ n 2))]
+                          [v    #f]  ; holds arguments for call to guard
+                          [l    #f]  ; label of guard
+                          [r    #f]) ; result of guard
+                 (:= a 0 STRUCT)
+                 (:= a 1 std)
+                 ;; fill init-fields
+                 (for ([i in-range 0 n])
+                   (:= a (+ i 2) (ref args i)))
+                 ;; fill auto-fields
+                 (for ([j in-range n (+ n auto-field-count)])
+                   (:= a (+ j 2) auto-field-value))
+                 ;; call guard
+                 (sif (closure? guard)
+                      (block
+                       (:= v (new Array (+ field-count 3))) ; clos + tc + (n+1) fields
+                       (:= v 0 guard)
+                       (:= v 1 #f)                          ; tc = non-tail call
+                       (for ([i in-range 0 field-count])    ; n fields
+                         (:= v (+ i 2) (ref a (+ i 2))))
+                       (:= v (+ field-count 2) "name")      ; todo                       
+                       (:= l (closure-label guard))
+                       (:= r (l.apply #f v)))
+                      ; js-function
+                      (block
+                        (:= v (new Array (+ field-count 1))) ; (n+1) fields
+                        (for ([i in-range 0 field-count])    ; n fields
+                          (:= v i (ref a (+ i 2))))
+                        (:= v field-count "name")            ; todo
+                        (:= r (guard.apply #f v))))
+                 (for ([i in-range 0 field-count])
+                   (:= a (+ i 2) (ref r (+ i 1))))
+                 ;; done
+                 a)
+               ;; No super, no guard
+               (λ () (var [args arguments]
+                          [n    arguments.length]      ; todo: check that n = field-count
+                          [a    (new Array (+ n 2))])
+                 (:= a 0 STRUCT)
+                 (:= a 1 std)
+                 ;; fill init-fields
+                 (for ([i in-range 0 n])
+                   (:= a (+ i 2) (ref args i)))
+                 ;; fill auto-fields
+                 (for ([j in-range n (+ n auto-field-count)])
+                   (:= a (+ j 2) auto-field-value))
+                 ;; done
+                 a))
            ;; struct-predicate-procedure
            (λ (v)             (and (array? v) (>= v.length 3) (struct-type-is-a? (ref v 1) std)))
            ;; struct-accessor-procedure
