@@ -28,6 +28,7 @@
 ;;;
 
 ;;  - guards     in structs
+;;      guards in supers needs to be called
 ;;  - properties in structs
 ;;  - equal? : handle cyclic data
 ;;  - finish support for namespaces
@@ -1183,11 +1184,17 @@
                         (:= xs (cdr xs)))
                       (:= ret (car xs))])
       ret)
-    (define/export/arity (list-tail xs pos)
+    (define/export/arity (list-tail org-xs org-pos)
+      (var [xs org-xs] [pos org-pos])
       (while (not (= pos 0))
-             ; TODO ; (swhen (null? xs) (return (error "list-tail" " --- exn:fail:contract ---")))
-             (:= xs (cdr xs))
-             (-= pos 1))
+        (sunless (pair? xs)
+          (raise (exn:fail:contract
+                  (+ "list-tail: index too large for list\\n"
+                     "  index: " org-pos "\\n"
+                     "  in: "    (str org-xs write-mode) "\\n")
+                  (current-continuation-marks))))                                   
+        (:= xs (cdr xs))
+        (-= pos 1))
       xs)
     (define/export (append) ; variadic (append xs ...)
       (var [args arguments] [n args.length])
@@ -1806,7 +1813,7 @@
                  (for ([j in-list (struct-type-descriptor-auto-field-indices std)]
                        [v in-list (struct-type-descriptor-auto-field-values  std)])
                    (:= a (+ j 2) v))
-                 ;; call guard
+                 ;; call guard                 
                  (sif (closure? guard)
                       (block
                         (:= v (new Array (+ field-count 3))) ; clos + tc + (n+1) fields
@@ -1815,7 +1822,7 @@
                         (for ([i in-range 0 field-count])    ; n fields
                           (:= v (+ i 2) (ref a (+ i 2))))
                         (:= v (+ field-count 2) name)
-                        (:= l (closure-label v))
+                        (:= l (closure-label guard))
                         (:= r (l.apply #f v)))
                       ; js-function
                       (block
