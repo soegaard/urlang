@@ -138,7 +138,6 @@
 (define <effect> '<effect>)
 (define <value>  '<value>)
 ; Control destinations
-(define <test>   '<test>)
 (define <return> '<return>)
 (define <expr>   '<expr>)
 (define <stat>   '<stat>)
@@ -254,7 +253,7 @@
                                              [_                 `,(AExpr2 ae dd)])]
                                [x          `(:= ,x ,(AExpr2 ae x))])]
 
-    [(if ,s ,ae0 ,e1 ,e2)    `(sif ,(AExpr2 ae0 <test>) ,(Expr e1 dd cd) ,(Expr e2 dd cd))]
+    [(if ,s ,ae0 ,e1 ,e2)    `(sif ,(AExpr2 ae0 <expr>) ,(Expr e1 dd cd) ,(Expr e2 dd cd))]
 
     [(set! ,s ,x ,ae)        (match dd
                                ['<effect>  `(:= ,(Var x) ,(AExpr2 ae dd))]
@@ -345,7 +344,8 @@
           (match dd
             [(or '<effect> '<value>)  (match cd
                                         ['<return> `(return ,work)]
-                                        ['<expr>             work])]
+                                        ['<expr>             work]
+                                        ['<stat>             work])]
             [y                        `(:= ,y ,work)])]))]
     [(wcm ,s ,ae0 ,ae1 ,e)
      ;(displayln (list 'wcm 'dd dd 'cd cd s))
@@ -401,7 +401,7 @@
                                        `(:= ,x (ref ,x0 ',i)))
                                      ...)]
            ; no values are expected
-           ['() (CExpr ce <effect> '<statement>)]))) ; todo: signal error if values are produced
+           ['() (CExpr ce <effect> '<stat>)]))) ; todo: signal error if values are produced
      (let* ([xs         (map Var (append* x**))]
             [undefined* (map (λ(_) #'undefined) xs)]
             [e          (Expr e dd cd)])
