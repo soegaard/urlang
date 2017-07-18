@@ -243,7 +243,7 @@
            ',#f ; use-mapping? TODO: this should be #t but that isn't implemented yet in runtime
            )]
     [(quote-syntax ,s ,d)
-     (raise-syntax-error 'geneerate-ur "quote-syntax gone at this point")])
+     (raise-syntax-error 'generate-ur "quote-syntax gone at this point")])
 
   (CExpr2 : CExpr (ce dd cd) -> Statement ()
     ;; All Complex Expressions are translated to statements    
@@ -343,7 +343,9 @@
                        ,(ClosureAllocation ca dd) ; use dest as temporary
                        (app ,(Label l) ,dd ',tc ,ae2 ...))])]))
           (match dd
-            [(or '<effect> '<value>)  `,work]
+            [(or '<effect> '<value>)  (match cd
+                                        ['<return> `(return ,work)]
+                                        ['<expr>             work])]
             [y                        `(:= ,y ,work)])]))]
     [(wcm ,s ,ae0 ,ae1 ,e)
      ;(displayln (list 'wcm 'dd dd 'cd cd s))
@@ -546,10 +548,13 @@
 
 (macro-introduced-identifiers
  '(select-handler/no-breaks ; from racket/private/more-scheme produced by with-handlers
-   check-struct-type        ; from racket/racket/collects/racket/private/define-struct.rkt
    call-handled-body
+   check-struct-type        ; from racket/racket/collects/racket/private/define-struct.rkt   
+   syntax-srclocs           ; from racket/match/runtime.rkt
+   unsafe-vector-length
+   unsafe-vector-ref
    unsafe-fx<
-   unsafe-fx+
+   unsafe-fx+   
    in-list))
 
 (let ([find find-identifier-in-tree])
@@ -561,6 +566,8 @@
          (expand-syntax #'apply)                           ; expands to new-apply-proc
          (second (syntax->list (expand-syntax #'(apply)))) ; expands to apply
          (find 'match:error                 (expand-syntax #'(match 1 [1 1])))
+         (find 'syntax-srclocs              (expand-syntax #'(match 1 [a a])))
+         ; (find 'unsafe-vector-ref           (expand-syntax #'(match 1 [(vector a) a])))
          (find 'select-handler/no-breaks    (expand-syntax #'(with-handlers  ([f g]) b)))
          (find 'select-handler/breaks-as-is (expand-syntax #'(with-handlers* ([f g]) b)))
          (find 'call-handled-body           (expand-syntax #'(with-handlers  ([f g]) b)))
