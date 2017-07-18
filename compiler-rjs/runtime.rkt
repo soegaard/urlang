@@ -27,6 +27,10 @@
 ;;; TODO
 ;;;
 
+;;  - struct type properties
+;;  - procedure-arity-includes?
+
+
 ;;  - guards     in structs
 ;;      guards in supers needs to be called
 ;;  - properties in structs
@@ -1121,6 +1125,10 @@
       (< (ref key1 1) (ref key1 2)))
     (define/export/arity (keyword=? key1 key2)
       (= (ref key1 1) (ref key2 1)))
+
+    ; The following function goes away when module support arrives.
+    (define/export (struct:keyword-procedure/arity-error) #f) ; todo
+    (define/export prop:named-keyword-procedure #f)           ; todo
     
     ;;;
     ;;; 4.9-10 Lists
@@ -1952,15 +1960,17 @@
               (:= a (+ j 1) (ref args j)))))
       a)
     (define/export/arity (call-with-values generator receiver)
+      ; todo: make call-with-values a closure in order to call receiver in tail pos.
       ; generator : (-> any)
       ; receiver  : procedure?
-      (var [vals (generator.call #f)])
+      (var [vals (call #f generator)])
       (cond
         ;; multiple values
-        [(values? vals) (vals.shift) ; removes tag
-                        (receiver.apply #f vals)]
+        [(values? vals) (vals.shift) ; removes VALUES tag
+                        ; todo: not effecient to convert to list
+                        (call #f apply receiver (array->list vals))]
         ;; generator produced one value
-        [#t             (receiver.apply #f vals)]))
+        [#t             (call #f receiver vals)]))
     
     ;;; 10.2 Exceptions
 
