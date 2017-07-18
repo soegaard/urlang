@@ -1,6 +1,6 @@
 #lang racket
-(provide eval)          
-(provide (all-defined-out)) 
+(provide eval)           
+(provide (all-defined-out))  
 
 ;;; 
 ;;; TODO
@@ -94,8 +94,8 @@
                  [eval-jit-enabled  #f])  ; affects expansion
     ;                                     ; (reverse becomes alt-reverse unless disabled)
     (namespace-require 'errortrace) 
-    ; (namespace-require 'racket/match)
-    ; (namespace-require 'racket/unsafe/ops)
+    (namespace-require 'racket/match)
+    (namespace-require 'racket/unsafe/ops) ; used by match
     (expand-syntax top-level-form-stx)
     #;(expand-syntax #`(let () #,top-level-form-stx))))
 
@@ -532,7 +532,7 @@
             [sp    (Expr `(quote ,s ,(datum s (syntax-span s))))]
             [false (Expr `(quote ,s ,(datum s #f)))]
             [v     (Expr `(quote ,s ,d))])
-       (displayln (list 'generate-ur: 'quote-syntax s d (list src l c p sp)))
+       ; (displayln (list 'generate-ur: 'quote-syntax s d (list src l c p sp)))
        ; srcloc(source,line,column,position,span)
        ; make_syntax_object(source_location,lexical_info,datum)       
        `(app ,s ,(var:make-syntax-object)

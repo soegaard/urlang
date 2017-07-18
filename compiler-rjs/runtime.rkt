@@ -1191,7 +1191,7 @@
           (raise (exn:fail:contract
                   (+ "list-tail: index too large for list\\n"
                      "  index: " org-pos "\\n"
-                     "  in: "    (str org-xs write-mode) "\\n")
+                     "  in: "    (str org-xs write-mode))
                   (current-continuation-marks))))                                   
         (:= xs (cdr xs))
         (-= pos 1))
@@ -1920,8 +1920,8 @@
            ;; struct-mutator-procedure
            (λ (s index value) (:= s (+ index 2) value) VOID))))
     
-    (define/export (make-struct-field-accessor accessor-proc field-pos
-                                               field-name) ; field-name optional
+    (define/export (make-struct-field-accessor accessor-proc field-pos opt-field-name)
+      (var [field-name (if (= opt-field-name undefined) #f opt-field-name)])
       ; Returns a field accessor that is equivalent to (lambda (s) (accessor-proc s field-pos)).
       ; The accessor-proc must be an accessor returned by make-struct-type.
       ; The name of the resulting procedure for debugging purposes is derived from field-name
@@ -2660,6 +2660,8 @@
     ;;;
     ;;; 17 UNSAFE OPERATIONS
     ;;;
+
+    ;; racket/unsafe/ops
     
     (define/export (unsafe-fx< x y) (< x y))
     (define/export (unsafe-fx> x y) (> x y))
@@ -2667,7 +2669,20 @@
     (define/export (unsafe-fx- x y) (- x y))
     (define/export (unsafe-fx* x y) (* x y))
 
-    (define/export (unsafe-vector*-length v) (- v.length 1))
+    (define/export (unsafe-vector-length  v)     (- v.length 1))
+    (define/export (unsafe-vector*-length v)     (- v.length 1))
+    (define/export (unsafe-vector-ref     v k)   (ref v (+ k 1)))
+    (define/export (unsafe-vector*-ref    v k)   (ref v (+ k 1)))
+    (define/export (unsafe-vector-set!    v k w) (:=  v (+ k 1) w))
+    (define/export (unsafe-vector*-set!   v k w) (:=  v (+ k 1) w))
+
+    ; (array STRUCT <a-struct-type-descriptor> field0 field1 ...)
+    (define/export (unsafe-struct-ref   s k)   (ref s (+ k 2)))
+    (define/export (unsafe-struct-ref*  s k)   (ref s (+ k 2)))
+    (define/export (unsafe-struct-set!  s k v) (:= s (+ k 2) v))
+    (define/export (unsafe-struct-set!* s k v) (:= s (+ k 2) v))
+    
+    
     
     ;;;
     ;;; racket/match
