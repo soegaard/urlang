@@ -27,7 +27,7 @@
 ;;; TODO
 ;;;
 
-;;  - struct type properties
+;;  - add struct type properties to str
 ;;  - procedure-arity-includes?
 
 
@@ -39,6 +39,8 @@
 ;;  - hash tables
 ;;  - sequences
 ;;  - make-placeholder (from shared)
+;;  - improve speed of call-with-values
+
 
 (current-urlang-run?                           #t)
 (current-urlang-echo?                          #t)
@@ -80,7 +82,7 @@
 (define (handle-in-assocs clause)
   (syntax-parse clause
     #:literals (in-assocs)
-    [[k v in-list assocs-expr]
+    [[k v in-assocs assocs-expr]
      #'(([kvs assocs-expr])           ; list of var clauses to create initial state
         (not (null? kvs))             ; termination condition
         ([k (caar kvs)] [v (cdar kvs)]) ; let bindings (needs to bind x)
@@ -267,27 +269,28 @@
       (Array.isArray v))
     ;;; Tags
     (define/export/arity (tag a) (ref a 0))
-    (define/export PAIR                   (array "pair"))
-    (define/export VECTOR                 (array "vector"))
-    (define/export IMMUTABLE-VECTOR       (array "immutable-vector"))
-    (define/export BOX                    (array "box"))
-    (define/export IMMUTABLE-BOX          (array "immutable-box"))
-    (define/export CHAR                   (array "char"))
-    (define/export MUTABLE-STRING         (array "mutable-string"))
-    (define/export BYTES                  (array "bytes"))
-    (define/export MUTABLE-BYTES          (array "mutable-bytes"))
-    (define/export SYMBOL                 (array "symbol"))
-    (define/export KEYWORD                (array "keyword"))
-    (define/export VALUES                 (array "values"))
-    (define/export STRUCT-TYPE-DESCRIPTOR (array "struct-type-descriptor"))
-    (define/export STRUCT                 (array "struct"))
-    (define/export NAMESPACE              (array "namespace"))
-    (define/export STRING-PORT            (array "string-port"))
-    (define/export EOF-OBJECT             (array "eof-object"))
-    (define/export CONTINUATION-MARK-SET  (array "continuation-mark-set"))
-    (define/export PARAMETERIZATION       (array "parameterization"))
-    (define/export SYNTAX-OBJECT          (array "syntax-object"))
-    (define/export HASHEQ                 (array "hasheq"))
+    (define/export PAIR                            (array "pair"))
+    (define/export VECTOR                          (array "vector"))
+    (define/export IMMUTABLE-VECTOR                (array "immutable-vector"))
+    (define/export BOX                             (array "box"))
+    (define/export IMMUTABLE-BOX                   (array "immutable-box"))
+    (define/export CHAR                            (array "char"))
+    (define/export MUTABLE-STRING                  (array "mutable-string"))
+    (define/export BYTES                           (array "bytes"))
+    (define/export MUTABLE-BYTES                   (array "mutable-bytes"))
+    (define/export SYMBOL                          (array "symbol"))
+    (define/export KEYWORD                         (array "keyword"))
+    (define/export VALUES                          (array "values"))
+    (define/export STRUCT-TYPE-DESCRIPTOR          (array "struct-type-descriptor"))
+    (define/export STRUCT-TYPE-PROPERTY-DESCRIPTOR (array "struct-type-property-descriptor"))
+    (define/export STRUCT                          (array "struct"))
+    (define/export NAMESPACE                       (array "namespace"))
+    (define/export STRING-PORT                     (array "string-port"))
+    (define/export EOF-OBJECT                      (array "eof-object"))
+    (define/export CONTINUATION-MARK-SET           (array "continuation-mark-set"))
+    (define/export PARAMETERIZATION                (array "parameterization"))
+    (define/export SYNTAX-OBJECT                   (array "syntax-object"))
+    (define/export HASHEQ                          (array "hasheq"))
 
     (define/export CLOS                   "CLOS") ; easier in code generator
     (define/export PARAMETER              (array "parameter")) ; parameters are closures
@@ -1027,7 +1030,7 @@
     ; All symbols produced by the default reader (see Reading Symbols) are interned.
     
     ;; Representation:
-    ;;   A interned symbol
+    ;;   An interned symbol
     ;;      {array SYMBOL primtive-javascript-string}
     ;;   Non-interned symbol:
     ;;      {array SYMBOL javascript-string-object}
@@ -1094,7 +1097,6 @@
       (+= gensym-counter 1)
       (array SYMBOL (new String (+ "g" gensym-counter))))
     (define (gensym1 base)
-      (console.log (+ "gensym1: " base))
       ; returns new uninterned symbol with automatically generated name
       (+= gensym-counter 1)
       (array SYMBOL (new String (+ base gensym-counter))))
@@ -1671,18 +1673,21 @@
     ;; Representation:
     ;;   A structure is represented as an array tagged with STRUCT
     ;;       (array STRUCT <a-struct-type-descriptor> field0 field1 ...)
+
+    (define (struct-struct-type-descriptor s) (ref s 1))
+    
     ;;   A struct-type-descriptor is:
     ;;       (array STRUCT-TYPE-DESCRIPTOR name super-type total-field-count
     ;;              init-field-indices auto-field-indices auto-field-values
     ;;              properties inspector immutables guard constructor-name)
-
+    
     ;; name               = string with name of struct
     ;; super-type         = #f or struct-type-descriptor
     ;; total-field-count  = number of init fields plus number of auto fields
     ;; init-field-indices = racket list: indices of slots filled with values given to the constructor
     ;; auto-field-indices = racket list: indices of slots that are automatically filled
     ;; auto-field-values  = racket list: values to fill into auto-field slots
-    ;; properties         = TODO
+    ;; properties         = array  (used as a hash table)
     ;; inspector          = TODO
     ;; mutables           = TODO
     ;; guard              = #f or procedure of n+1 arguments [see docs]
@@ -1731,16 +1736,32 @@
       (var [mode (if (= opt-mode undefined) write-mode opt-mode)]
            [n s.length] [fields (for/array ([i in-range 2 n]) (str (ref s i) mode))])
       (+ "#(struct " (str (ref s 1) mode) " " (fields.join " ") ")"))
+
+    (define (assoc->array ass)
+      (var [ar (new Array)])
+      (for ([k v in-assocs ass])
+        (:= ar k v))
+      ar)
     
+    (define (property-assoc->array ass)
+      (var [ar (new Array)])
+      (for ([stp v in-assocs ass])
+        (:= ar (struct-type-property-unique stp) v))
+      ar)
+
     (define/export (make-struct-type-descriptor
                     name super-type init-field-count auto-field-count
                     ; optionals: (handled by make-struct-type)
-                    auto-field-value props inspector proc-spec immutables
+                    auto-field-value opt-props inspector proc-spec immutables
                     opt-guard constructor-name)
       (var [ifc   init-field-count]
            [afc   auto-field-count]
            [stfc  (if super-type (struct-type-descriptor-total-field-count super-type) 0)]
-           [guard (if (= opt-guard undefined) #f opt-guard)])
+           [guard (if (= opt-guard undefined) #f opt-guard)]
+           ; note opt-props must be an assocation list from struct-type-property to values
+           [props (if (= opt-props undefined) (array)
+                      (if (array? opt-props) opt-props
+                          (property-assoc->array opt-props)))])
       (if super-type
           ;; super-case present (the hard case)
           (let ([total-field-count      (+ ifc afc stfc)]
@@ -1752,7 +1773,7 @@
              (append (struct-type-descriptor-init-field-indices super-type) new-init-field-indices)
              (append (struct-type-descriptor-auto-field-indices super-type) new-auto-field-indices)
              (append (struct-type-descriptor-auto-field-values  super-type) new-auto-field-values)
-             NULL  ; properties
+             props ; properties
              #f    ; inspector
              NULL  ; immutables
              guard ; guard
@@ -1765,32 +1786,31 @@
                 [auto-field-values  (for/list ([i in-range 0 afc]) auto-field-value)])
             (array STRUCT-TYPE-DESCRIPTOR name #f total-field-count
                    init-field-indices auto-field-indices auto-field-values
-                   NULL  ; properties
+                   props  ; properties
                    #f    ; inspector
                    NULL  ; immutables
                    guard ; guard
                    #f    ; constructor name
                    ))))
-    
     (define/export (make-struct-type name super-type init-field-count auto-field-count
                                      ; optionals: see docs for default value
                                      auto-value props inspector proc-spec immutables
                                      guard constructor-name)
-      ; handle optional arguments, then call do-make-struct-type
+      ; handle optional arguments, then call do-make-struct-type      
       (do-make-struct-type name super-type init-field-count auto-field-count
-                           (if (= auto-value       undefined) #f   auto-value)
-                           (if (= props            undefined) NULL props)
+                           (if (= auto-value     undefined) #f      auto-value)
+                           (if (= props          undefined) (array) (property-assoc->array props))
                            ; TODO use current-inpector
-                           (if (= inspector        undefined) #f   inspector) 
-                           (if (= proc-spec        undefined) #f   proc-spec)
-                           (if (= immutables       undefined) NULL immutables)
-                           (if (= guard            undefined) #f   guard)
-                           (if (= constructor-name undefined) #f   constructor-name)))
+                           (if (= inspector      undefined) #f      inspector) 
+                           (if (= proc-spec      undefined) #f      proc-spec)
+                           (if (= immutables     undefined) NULL    immutables)
+                           (if (= guard          undefined) #f      guard)
+                           (if (= constructor-name undefined) #f      constructor-name)))
     
-    (define/export (do-make-struct-type name super-type init-field-count auto-field-count
-                                        auto-field-value ; one values is used in all auto-fields
-                                        props inspector proc-spec immutables
-                                        guard constructor-name)
+    (define (do-make-struct-type name super-type init-field-count auto-field-count
+                                 auto-field-value ; one values is used in all auto-fields
+                                 props inspector proc-spec immutables
+                                 guard constructor-name)
       (var [super-field-count (if super-type (struct-type-descriptor-total-field-count super-type) 0)]
            [field-count       (+ init-field-count auto-field-count super-field-count)]
            [std               (make-struct-type-descriptor
@@ -1935,6 +1955,59 @@
       ; The name of the resulting procedure for debugging purposes is derived from field-name
       ; and the name of accessor-proc’s structure type if field-name is a symbol.
       (λ (s) (accessor-proc s field-pos))) ; todo add debug info (i.e. infered names)
+
+    ;;; 5.3 Struct Type Properties
+
+    ;;   A struct-type-property-descriptor is:
+    ;;       (array STRUCT-TYPE-PROPERTY-DESCRIPTOR name unique guard)
+    ;;   name  = symbol
+    ;;   guard = #f or guard procedure
+
+    (define/export/arity (struct-type-property? v)
+      (and (array? v) (>= v.length 1) (= (tag v) STRUCT-TYPE-PROPERTY-DESCRIPTOR )))
+
+    (define (struct-type-property-name  v)  (ref v 1))
+    (define (struct-type-property-unique v) (ref v 2))
+    (define (struct-type-property-guard v)  (ref v 3))
+
+    (define/export/arity (struct-type-property-accessor-procedure? v) (procedure? v))  ; TODO
+
+    ; Struct type properties allow per-type information associated with a structure type.
+    (define/export (make-struct-type-property name opt-guard opt-supers opt-can-impersonate?)
+      ; todo: handle supers
+      ;       add property guards to make-struct-type
+      (var [unique           (array name)]
+           [guard            (if (= undefined opt-guard)            #f   opt-guard)]
+           [supers           (if (= undefined opt-supers)           NULL opt-supers)]
+           [can-impersonate? (if (= undefined opt-can-impersonate?) #f   opt-can-impersonate?)]
+           [stpd (array STRUCT-TYPE-PROPERTY-DESCRIPTOR
+                        name                                ; symbol
+                        unique
+                        (if (procedure? guard) guard #f))]  ; called by make-struct-type
+           [predicate #f]
+           [accessor  #f])
+      (:= predicate
+          (λ (v) ; todo: are supers handled correctly?
+            (var props)
+            (cond [(struct? v)       (predicate (struct-struct-type-descriptor v))]
+                  [(struct-type? v)  (:= props (struct-type-descriptor-properties v))
+                                     (if (ref props unique) #t #f)]
+                  [#t                #f])))
+      (:= accessor
+          (λ (v opt-failure-procedure)
+            (var props val)
+            (cond [(struct? v)      (accessor (struct-struct-type-descriptor v))]
+                  [(struct-type? v) (:= props (struct-type-descriptor-properties v))
+                                    (:= val (ref props unique))
+                                    (if val val
+                                        (if (= opt-failure-procedure undefined)
+                                            (raise
+                                             (exn:fail:contract "huh" (current-continuation-marks)))
+                                            (if (procedure? opt-failure-procedure)
+                                                (call #t opt-failure-procedure)
+                                                opt-failure-procedure)))]
+                  [#t                #f])))
+      (values stpd predicate accessor))
     
     ;;;
     ;;; 10. Control Flow
@@ -2587,12 +2660,13 @@
       (case arguments.length
         [(1) (var [dict (ref CURRENT-NAMESPACE 3)] [val (ref dict sym)])
              (if (= val undefined)  ; todo: throw exception if undefined                 
-                 ("ERROR - namespace-variable-value - no value found: ")
+                 ((+ "ERROR - namespace-variable-value - no value found: " (str sym)))
                  val)]
         [(2) (var [dict (ref CURRENT-NAMESPACE 3)] [val (ref dict sym)])
              (when use-mapping? ("ERROR - namespace-variable-value - TODO map?"))
              (if (= val undefined) ; todo: throw exception if undefined
-                 ("ERROR - namespace-variable-value - no value found: ")
+                 (raise (exn:fail (+ "ERROR - namespace-variable-value - no value found: " (str sym))
+                                  (current-continuation-marks)))
                  val)]
         [(3) (var [dict (ref CURRENT-NAMESPACE 3)] [val (ref dict sym)])
              (when use-mapping? ("ERROR - namespace-variable-value - TODO map?"))
