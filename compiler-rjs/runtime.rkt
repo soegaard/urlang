@@ -1553,18 +1553,21 @@
       (unless (list? xs)
         (error (string->symbol "in-list") "expected list as first argument"))
       VOID)
+
     ;;;
     ;;; 4.17 Procedures
     ;;;
-    
-    ;;; Closures:    
-    ;;;     Representation:
-    ;;;        {array CLOS label value0 ... }
-    ;;;     Tagged array.
-    ;;;     label       is the (JavaScript) function to call, when the closure is invoked.
-    ;;;                 The first  argument of label is the closure.
-    ;;;                 The second argument of label is a flag indicating tail position
-    ;;;     value0 ...  are the values of the free variables
+
+    ; (struct arity-at-least (value) #:extra-constructor-name make-arity-at-least)
+
+    (define arity-at-least-descriptor
+      (array STRUCT-TYPE-DESCRIPTOR
+             "arity-at-least" #f 1 (list 0) NULL NULL #f #f NULL #f "make-arity-at-least"))
+    (define/export/arity (arity-at-least value) (array STRUCT arity-at-least-descriptor value))
+    (define/export/arity (arity-at-least-value v) (ref v 2))
+    (define/export/arity (make-arity-at-least value) (arity-at-least value))
+    (define/export/arity (arity-at-least? v)
+      (and (array? v) (>= v.length 2) (= (ref v 1) STRUCT-TYPE-DESCRIPTOR)))
     
     (define/export (closure? v)   (and (Array.isArray v) (= (ref v 0) "CLOS")))
     (define/export (procedure? v) (or (= (typeof v) "function") (closure? v)))
