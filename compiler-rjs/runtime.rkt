@@ -1,7 +1,7 @@
 #lang racket
 (require urlang urlang/extra urlang/for
          syntax/parse syntax/stx racket/syntax)
-
+(require (for-syntax (only-in urlang urmodule-name->exports))) ; make-base-namespace
 ;;; This file contains the runtime library for the
 ;;; Racket to JavaScript compiler in urlang/compiler-rjs.
 ;;; The compiler and the runtime is included as an *example*
@@ -251,6 +251,21 @@
 (define-urlang-macro tailapp    expand-tailapp)
 (define-urlang-macro nontailapp expand-nontailapp))
 
+(define (expand-runtime-exports-values stx)
+  (syntax-parse stx
+    [(_expand-runtime-exports)
+     (with-syntax ([(sym ...) (urmodule-name->exports 'runtime)])
+       (syntax/loc stx
+         (array sym ...)))]))
+(define (expand-runtime-exports-strings stx)
+  (syntax-parse stx
+    [(_expand-runtime-exports)
+     (with-syntax ([(str ...) (map symbol->string (urmodule-name->exports 'runtime))])
+       (syntax/loc stx
+         (array str ...)))]))
+(define-urlang-macro runtime-exports-values  expand-runtime-exports-values)
+(define-urlang-macro runtime-exports-strings expand-runtime-exports-strings)
+
 ;;;
 ;;; RUNTIME WRITTEN IN URLANG
 ;;;
@@ -294,8 +309,8 @@
     (define/export SYNTAX-OBJECT                   (array "syntax-object"))
     (define/export HASHEQ                          (array "hasheq"))
 
-    (define/export CLOS                   "CLOS") ; easier in code generator
-    (define/export PARAMETER              (array "parameter")) ; parameters are closures
+    (define/export CLOS      "CLOS") ; easier in code generator
+    (define/export PARAMETER (array "parameter")) ; parameters are closures
     
     (define/export VOID (array))    ; singleton
     (define/export NULL (array))    ; singleton
@@ -780,9 +795,9 @@
     ;;     where char0 is a javascript string with length 1.
     (define/export/arity (string? v)
       (or (= (typeof v) "string")
-          (and (array? v) (= (tag v) MUTABLE-STRING))))
+          (and (array? v) (= (ref v 1) MUTABLE-STRING))))
     (define/export/arity (immutable-string? v) (= (typeof v) "string"))
-    (define/export/arity (mutable-string? v) (and (array? v) (= (tag v) MUTABLE-STRING)))
+    (define/export/arity (mutable-string? v) (and (array? v) (= (ref v 1) MUTABLE-STRING)))
     (define/export (make-string k ch) ; ch optional
       (case arguments.length
         [(1) (make-string1 k)]
@@ -926,10 +941,9 @@
       (and (array? v)
            (or (= (tag v) BYTES)
                (= (tag v) MUTABLE-BYTES))))
-    (define/export/arity (immutable-bytes? v) (and (array? v) (= (tag v) BYTES)))
-    (define/export/arity (mutable-bytes?   v) (and (array? v) (= (tag v) MUTABLE-BYTES)))
-    (define/export/arity (bytes->Int8Array bs)
-      (ref bs 1))
+    (define/export/arity (immutable-bytes? v)  (and (array? v) (= (tag v) BYTES)))
+    (define/export/arity (mutable-bytes?   v)  (and (array? v) (= (tag v) MUTABLE-BYTES)))
+    (define/export/arity (bytes->Int8Array bs) (ref bs 1))
     (define/export (make-bytes k b) ; b optional
       (case arguments.length
         [(1) (make-bytes1 k)]
@@ -1068,16 +1082,22 @@
       ; String returns a primitive (interned by js) string
       (String (ref sym 1)))
     
-    (define symbol-table (array))
-    
+    (define symbol-table (array)) ; only used by string->symbol
+    (define length-sym   (array SYMBOL "length"))
     (define/export (string->symbol str)
+      ; todo: fix bug when str is "length"
+      (sunless (string? str)
+        (raise (+ "string->symbol: expected string, got: " str)))
       ; returns interned symbol
       (var [t (typeof str)] r old)
       (:= old (ref symbol-table str))
       (scond
        [(symbol? old)   (:= r old)]
-       [(= t "string")  (:= r (array SYMBOL str))  ; primitive string
-                        (:= symbol-table str r)]   ; intern it
+       [(= t "string")  (if (= str "length")
+                            (:= r length-sym)              ; sigh
+                            (begin
+                              (:= r (array SYMBOL str))     ; primitive string
+                              (:= symbol-table str r)))]   ; intern it
        [(= t "object")  (var [n+1 t.length] [n (- n+1 1)] [a (Array n)])
                         (for ([i in-range 0 n])
                           (:= a i (ref str (+ i 1))))
@@ -1568,8 +1588,7 @@
     (define/export/arity (arity-at-least value)      (array STRUCT arity-at-least-descriptor value))
     (define/export/arity (arity-at-least-value v)    (ref v 2))
     (define/export/arity (make-arity-at-least value) (arity-at-least value))
-    (define/export/arity (arity-at-least? v)         (and (array? v) (>= v.length 2)
-                                                          (= (ref v 1) arity-at-least-descriptor)))
+    (define/export/arity (arity-at-least? v)   (and (array? v) (= (tag v) arity-at-least-descriptor)))
 
     (define/export/arity (normalized-arity? a)
       (or (null? a)
@@ -1980,7 +1999,7 @@
     ;;   guard = #f or guard procedure
 
     (define/export/arity (struct-type-property? v)
-      (and (array? v) (>= v.length 1) (= (tag v) STRUCT-TYPE-PROPERTY-DESCRIPTOR )))
+      (and (array? v) (= (tag v) STRUCT-TYPE-PROPERTY-DESCRIPTOR )))
 
     (define (struct-type-property-name  v)  (ref v 1))
     (define (struct-type-property-unique v) (ref v 2))
@@ -2497,8 +2516,8 @@
     ;;; 12.1 Pattern-Based Syntax Matching
     ;;; 12.2 Syntax Object Content
     
-    (define/export/arity (syntax? v)       (and (array? v) (>= v.length 3)
-                                                  (= (ref v 1) syntax-object-struct-type-descriptor)))
+    (define/export/arity (syntax? v)       (and (array? v)
+                                                (= (ref v 1) syntax-object-struct-type-descriptor)))
     (define/export/arity (syntax-e v)      (ref v 4))
     (define/export/arity (identifier? v)   (and (syntax? v) (symbol? (syntax-e v))))
 
@@ -2635,7 +2654,7 @@
     ;;   2) a top-level transformer binding named by the symbol
     ;;   3) a top-level variable named by the symbol
     
-    ;; An “empty” namespace maps all symbols to top-level variables.
+    ;; An "empty" namespace maps all symbols to top-level variables.
     ;; A top-level variable is both a variable and a location.
     
     ;; A namespace also has a module registry.
@@ -2653,6 +2672,18 @@
     (define/export/arity (make-empty-namespace)
       ; empty namespace, no mappings in registry
       (array NAMESPACE (array) 0 (array)))
+    ; NOTE: EXPORT-VALUES  *must* be placed at the end of the runtime.
+    ; (define EXPORT-VALUES  (runtime-exports-values))  ; array of values
+    ; (define EXPORT-STRINGS (runtime-exports-strings)) ; array of strings
+    (define/export/arity (make-base-namespace)
+      (var sym val j [ns (make-empty-namespace)])
+      (:= j 0)
+      (for ([str in-array EXPORT-STRINGS])
+        (:= sym (string->symbol str))
+        (:= val (ref EXPORT-VALUES j))
+        (namespace-set-variable-value! sym val #f ns) ; map? = #f
+        (:= j (+ j 1)))
+      ns)
     ; TODO make-base-empty-namespace
     ; TODO make-base-namespace
     ; TODO define-namespace-anchor
@@ -2876,6 +2907,12 @@
         ; [(exception? v)                
         [#t                            (console.log v)
                                        "str - internal error"]))
+
+    ;;; These EXPORT-x variables are used by make-base-namespace.
+    ;;; They must be placed at the end of the runtime.
+    (define EXPORT-VALUES  (runtime-exports-values))  ; array of values
+    (define EXPORT-STRINGS (runtime-exports-strings)) ; array of strings
+
 
     ;;;
     ;;;  TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS 
