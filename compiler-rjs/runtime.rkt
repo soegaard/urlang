@@ -28,6 +28,8 @@
 ;;;
 
 ;;  - add struct type properties to str
+;;  - add supers to struct type properties
+;;  - test guards of struct type properties
 ;;  - procedure-arity-includes?
 
 
@@ -1563,11 +1565,22 @@
     (define arity-at-least-descriptor
       (array STRUCT-TYPE-DESCRIPTOR
              "arity-at-least" #f 1 (list 0) NULL NULL #f #f NULL #f "make-arity-at-least"))
-    (define/export/arity (arity-at-least value) (array STRUCT arity-at-least-descriptor value))
-    (define/export/arity (arity-at-least-value v) (ref v 2))
+    (define/export/arity (arity-at-least value)      (array STRUCT arity-at-least-descriptor value))
+    (define/export/arity (arity-at-least-value v)    (ref v 2))
     (define/export/arity (make-arity-at-least value) (arity-at-least value))
-    (define/export/arity (arity-at-least? v)
-      (and (array? v) (>= v.length 2) (= (ref v 1) STRUCT-TYPE-DESCRIPTOR)))
+    (define/export/arity (arity-at-least? v)         (and (array? v) (>= v.length 2)
+                                                          (= (ref v 1) arity-at-least-descriptor)))
+
+    (define/export/arity (normalized-arity? a)
+      (or (null? a)
+          (and (integer? a) (>= a 0))
+          (arity-at-least? a)
+          (list? a))) ; todo / bug : doesn't check for increasing integers
+
+    (define/export/arity (arity=? a b)       (equal? (normalize-arity a) (normalize-arity b)))
+    (define/export/arity (normalize-arity a) a) ; TODO / BUG
+    
+      
     
     (define/export (closure? v)   (and (Array.isArray v) (= (ref v 0) "CLOS")))
     (define/export (procedure? v) (or (= (typeof v) "function") (closure? v)))
@@ -2834,6 +2847,8 @@
     (define (str-parameterization v)      "#<parameterization>")
     (define (str-parameter v)             (console.log v) "#<parameter>")
     (define (str-closure v)               "#<closure>")
+    (define (str-struct-type-property v) (+ "#<struct-type-property:"
+                                            (str (struct-type-property-name v)) ">"))
     (define/export (str v opt-mode)
       (var [mode (if (= opt-mode undefined) write-mode opt-mode)])
       (cond
@@ -2850,13 +2865,14 @@
         [(immutable-box? v)            (str-box-immutable          v mode)]
         [(box? v)                      (str-box                    v mode)]        
         [(char? v)                     (str-char                   v mode)]
-        [(struct-type? v)              (str-struct-type-descriptor v)]
-        [(struct? v)                   (str-struct                 v mode)]
         [(= v undefined)               (str-undefined)]
-        [(continuation-mark-set? v)    (str-continuation-mark-set v)]
+        [(continuation-mark-set? v)    (str-continuation-mark-set  v)]
         [(parameterization? v)         (str-parameterization v)]
         [(parameter? v)                (str-parameter v)]
         [(closure? v)                  (str-closure v)]
+        [(struct-type-property? v)     (str-struct-type-property   v)]
+        [(struct-type? v)              (str-struct-type-descriptor v)]
+        [(struct? v)                   (str-struct                 v mode)]
         ; [(exception? v)                
         [#t                            (console.log v)
                                        "str - internal error"]))
