@@ -746,8 +746,13 @@
         [(< z 0) Math.PI]
         [#t      (error "angle" "undefined for 0")]))
     ; integer-length  -  todo
-    (define/export/arity (random k rand-gen)  ; TODO: don't ignore rand-gen
-      (Math.floor (* (Math.random) k)))
+    (define/export (random k rand-gen)  ; TODO: don't ignore rand-gen
+      (var r)
+      (case arguments.length
+        [(0) (:= r (Math.random))
+             (if (= r 0) (random) r)]
+        [(1) (Math.floor (* (Math.random) k))]
+        [(2) (error (+ "random TODO: implement two argument variation of random"))]))
     (define/export/arity (random-seed k) (Void))            ; can't set the seed in JavaScript ?!?
     (define/export/arity (make-pseudo-random-generator) #f)
     (define/export/arity (pseudo-random-generator? v) (eq? v #f))
@@ -1201,7 +1206,7 @@
                                 (:= a i (proc i)))]
         [(closure? proc)      (var [lab (closure-label proc)])
                               (for ([i in-range 0 n])
-                                (:= a i (closlabapp #f lab i)))])
+                                (:= a i (closlabapp lab #f proc i)))])
       (array->list a))
     (define/export/arity (length xs)
       (var (n 0))
@@ -1291,9 +1296,9 @@
         [(closure? proc)
          (var [lab (closure-label proc)])
          (case arguments.length
-           [(2) (for/and ([x in-list xs])                             (closlabapp #f lab x))]
-           [(3) (for/and ([x in-list xs] [y in-list ys])              (closlabapp #f lab x y))]
-           [(4) (for/and ([x in-list xs][y in-list ys][z in-list zs]) (closlabapp #f lab x y z))]
+           [(2) (for/and ([x in-list xs])                             (closlabapp lab #f proc x))]
+           [(3) (for/and ([x in-list xs] [y in-list ys])              (closlabapp lab #f proc x y))]
+           [(4) (for/and ([x in-list xs][y in-list ys][z in-list zs]) (closlabapp lab #f proc x y z))]
            [(0) (error (andmap-sym) "expected at least two arguments")]
            [else (error (andmap-sym) "TODO implement andmap with more than 3 argument lists")])]
         [else (error (andmap-sym) "TODO implement andmap with more than 3 argument lists")]))
@@ -1310,9 +1315,9 @@
         [(closure? proc)
          (var [lab (closure-label proc)])
          (case arguments.length
-           [(2) (for/or ([x in-list xs])                             (closlabapp #f lab x))]
-           [(3) (for/or ([x in-list xs] [y in-list ys])              (closlabapp #f lab x y))]
-           [(4) (for/or ([x in-list xs][y in-list ys][z in-list zs]) (closlabapp #f lab x y z))]
+           [(2) (for/or ([x in-list xs])                             (closlabapp lab #f proc x))]
+           [(3) (for/or ([x in-list xs] [y in-list ys])              (closlabapp lab #f proc x y))]
+           [(4) (for/or ([x in-list xs][y in-list ys][z in-list zs]) (closlabapp lab #f proc x y z))]
            [(0) (error (ormap-sym) "expected at least two arguments")]
            [else (error (ormap-sym) "TODO implement ormap with more than 3 argument lists")])]
         [else (error (ormap-sym) "TODO implement andmap with more than 3 argument lists")]))    
@@ -1330,9 +1335,9 @@
         [(closure? proc)
          (var [lab (closure-label proc)])
          (case n
-           [(2)  (for ([x in-list xs])                               (closlabapp #f lab x))]
-           [(3)  (for ([x in-list xs] [y in-list ys])                (closlabapp #f lab x y))]
-           [(4)  (for ([x in-list xs] [y in-list ys] [z in-list zs]) (closlabapp #f lab x y z))]
+           [(2)  (for ([x in-list xs])                               (closlabapp lab #f proc x))]
+           [(3)  (for ([x in-list xs] [y in-list ys])                (closlabapp lab #f proc x y))]
+           [(4)  (for ([x in-list xs] [y in-list ys] [z in-list zs]) (closlabapp lab #f proc x y z))]
            [(0)  (error (for-each-sym) "expected at least two arguments")]
            [else (error (for-each-sym) "TODO immplement for-each for more than 4 arguments")])]
         [else (error (for-each-sym) "expected a procedure as first argument")])
@@ -1352,7 +1357,7 @@
                                (swhen t (:= a i x) (+= i 1)))]
         [(closure? pred)     (var [lab (closure-label pred)])
                              (for ([x in-list xs])
-                               (var [t (closlabapp #f lab x)])
+                               (var [t (closlabapp lab #f pred x)])
                                (swhen t (:= a i x) (+= i 1)))]
         [else (error (filter-sym) "expected a procedure as first argument")])
       ; create list with elements in the array
@@ -1500,7 +1505,7 @@
                                (:= a (+ i 1) (proc i)))]
         [(procedure? proc)   (var [lab (closure-label proc)])
                              (for ([i in-range 0 n])
-                               (:= a (+ i 1) (closlabapp #f lab i)))]
+                               (:= a (+ i 1) (closlabapp lab #f proc i)))]
         [else (error (string->symbol "build-vector") "expected a procedure as first argument")])
       a)
     ;;;
