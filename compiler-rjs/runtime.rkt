@@ -1543,7 +1543,9 @@
       (if (= r undefined)
           (if (= opt-failure-result undefined)
               #f
-              (call #f opt-failure-result))
+              (if opt-failure-result
+                  (call #f opt-failure-result)
+                  #f))
           r))
 
     (define/export/arity (hash-set! ht key v) 
@@ -1766,7 +1768,8 @@
                     (struct-type-is-a? (ref a-std 2) the-std)))))
     
     (define/export/arity (str-struct-type-descriptor s)
-      (+ "(struct-type-descriptor "
+      "#<struct-type-descriptor>"
+      #;(+ "(struct-type-descriptor "
          (str (ref s 1)) " " (str (ref s 2))  " " (str (ref s 3)) " " (str (ref s 4)) " "
          (str (ref s 5)) " " (str (ref s 6))  " " (str (ref s 7)) " " (str (ref s 8)) " "
          (str (ref s 9)) " " (str (ref s 10)) " " (str (ref s 11)) ")"))
@@ -2882,7 +2885,7 @@
     (define (str-continuation-mark-set v) "#<continuation-mark-set>")
     (define (str-parameterization v)      "#<parameterization>")
     (define (str-parameter v)             (console.log v) "#<parameter>")
-    (define (str-closure v)               "#<closure>")
+    (define (str-closure v)               "#<closure>")    
     (define (str-struct-type-property v) (+ "#<struct-type-property:"
                                             (str (struct-type-property-name v)) ">"))
     (define/export (str v opt-mode)
