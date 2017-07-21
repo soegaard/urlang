@@ -31,6 +31,7 @@
 ;;  - add supers to struct type properties
 ;;  - test guards of struct type properties
 ;;  - procedure-arity-includes?
+;;  - which namespace should be the initial one?
 
 
 ;;  - guards     in structs
@@ -212,7 +213,7 @@
 (define (expand-closlabapp stx)
   ; Note: args are duplicated so keep them simple
   (syntax-parse stx
-    [(_expand-closlabapp tc clos arg ...)
+    [(_expand-closlabapp lab tc clos arg ...)
      (syntax/loc stx
        (lab clos tc arg ...))]))
 (define-urlang-macro closlabapp expand-closlabapp)
@@ -1269,10 +1270,11 @@
            [else (error (map-sym) "TODO immplement map for more than 4 arguments")])]
         [(closure? proc)
          (var [lab (closure-label proc)])
-         (case n
-           [(2)  (for/list ([x in-list xs])                               (closlabapp #f lab x))]
-           [(3)  (for/list ([x in-list xs] [y in-list ys])                (closlabapp #f lab x y))]
-           [(4)  (for/list ([x in-list xs] [y in-list ys] [z in-list zs]) (closlabapp #f lab x y z))]
+         (case n                                        
+           [(2)  (for/list ([x in-list xs])                   (closlabapp lab #f proc x))]
+           [(3)  (for/list ([x in-list xs] [y in-list ys])    (closlabapp lab #f proc x y))]
+           [(4)  (for/list ([x in-list xs] [y in-list ys]
+                                           [z in-list zs])    (closlabapp lab #f proc x y z))]
            [(0)  (error (map-sym) "expected at least two arguments")]
            [else (error (map-sym) "TODO immplement map for more than 4 arguments")])]
         [else (error (map-sym) "expected a procedure as first argument")]))
@@ -1572,6 +1574,7 @@
         [else (raise-arity-error (string->symbol "in-range") (list 1 2 3))]))
     
     (define/export/arity (in-list xs)
+      ; Note: This only checks types and signals any errors.
       (unless (list? xs)
         (error (string->symbol "in-list") "expected list as first argument"))
       VOID)
