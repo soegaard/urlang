@@ -2669,9 +2669,11 @@
     ;; For now just phase 0 is stored in the namespace.
     (define/export/arity (namespace? v)
       (and (array? v) (= (tag v) NAMESPACE)))
+    (define (namespace-registry   ns) (ref ns 1))
+    (define (namespace-base-dict0 ns) (ref ns 3))
     (define/export/arity (make-empty-namespace)
       ; empty namespace, no mappings in registry
-      (array NAMESPACE (array) 0 (array)))
+      (array NAMESPACE (array) 0 (object)))
     ; NOTE: EXPORT-VALUES  *must* be placed at the end of the runtime.
     ; (define EXPORT-VALUES  (runtime-exports-values))  ; array of values
     ; (define EXPORT-STRINGS (runtime-exports-strings)) ; array of strings
