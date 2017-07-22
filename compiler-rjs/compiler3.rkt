@@ -572,7 +572,9 @@
          (find 'select-handler/breaks-as-is (expand-syntax #'(with-handlers* ([f g]) b)))
          (find 'call-handled-body           (expand-syntax #'(with-handlers  ([f g]) b)))
          ; in-range
-         (find 'in-range                    (expand-syntax #'(in-range 10)))
+         (find 'in-range                    (expand-syntax #'(in-range  10)))
+         (find 'in-list                     (expand-syntax #'(in-list   10)))
+         (find 'in-vector                   (expand-syntax #'(in-vector 10)))
          ; Exceptions
          (expand-syntax #'exn)                                 ; kernel:exn
          (expand-syntax #'exn:fail)                            ; kernel:exn:fail

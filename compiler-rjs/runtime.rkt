@@ -280,7 +280,7 @@
   (urmodule runtime
     (import document window prompt alert parseInt parseFloat)  ; Browser functions
     (import process) ; Only in Node - not in browser?
-    (import Array Int8Array Math Number String
+    (import Array Int8Array Math Number String Date
             #;new #;typeof)
     ;;; Array
     (define/export/arity (array? v) ; todo : inline array?
@@ -1548,9 +1548,9 @@
       (if (= r undefined)
           (if (= opt-failure-result undefined)
               #f
-              (if opt-failure-result
+              (if (procedure? opt-failure-result)
                   (call #f opt-failure-result)
-                  #f))
+                  opt-failure-result))
           r))
 
     (define/export/arity (hash-set! ht key v) 
@@ -2227,12 +2227,14 @@
       ; The default uncaught-exception handler prints an error message using
       ; the current error display handler (see error-display-handler), unless
       ; the argument to the handler is an instance of exn:break:hang-up.
+      (console.log e)
       (var [error-display (closapp #f error-display-handler)])
       (scond
        [(exn? e) (call #f error-display (exn-message e) e)]
        [else     (call #f error-display "uncaught exception: " e)])
       ; TODO: use error-escape-handler to exit
-      (process.exit 1))  ; process.exit works in node
+      VOID
+      #;(process.exit 1))  ; process.exit works in node
 
     (define/export error-display-handler (make-parameter default-error-display-handler))
     (define (default-error-display-handler str v)
@@ -2831,6 +2833,7 @@
     ;;;
     (define/export (js-document) document)
     (define/export (js-window)   window)
+    (define/export (js-date)     Date)
     
     (define/export (js-ref  o i)     (ref o i))
     (define/export (js-set! o i v)   (:= o i v))
