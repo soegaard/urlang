@@ -406,7 +406,7 @@
         [(1)  a]
         [(0)  0]
         [else (:= s (+ a b))
-              (for ([i in-range 1 n])
+              (for ([i in-range 2 n])
                 (:= s (+ s (ref args i))))
               s]))
     
@@ -417,7 +417,7 @@
         [(1)  (- a)]
         [(0)  0]
         [else (:= s (- a b))
-              (for ([i in-range 1 n])
+              (for ([i in-range 2 n])
                 (:= s (- s (ref args i))))
               s]))
     
@@ -428,7 +428,7 @@
         [(1)  a]
         [(0)  1]
         [else (:= s (* a b))
-              (for ([i in-range 1 n])
+              (for ([i in-range 2 n])
                 (:= s (* s (ref args i))))
               s]))
     
@@ -439,7 +439,7 @@
         [(1)  (/ 1 a)]
         [(0)  (error "PRIM/ expects at least one argument")]
         [else (:= s (/ a b))
-              (for ([i in-range 1 n])
+              (for ([i in-range 2 n])
                 (:= s (/ s (ref args i))))
               s]))
     
