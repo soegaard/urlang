@@ -157,7 +157,7 @@
       ;; References to these are rewritten here.
       (define encoding
         #hasheq((+ . PRIM+) (-  . PRIM-)  (*  . PRIM*)  (/ . PRIM/)
-                            (=  . PRIM=)  (<  . PRIM+)  (> . PRIM>)
+                            (=  . PRIM=)  (<  . PRIM<)  (> . PRIM>)
                             (<= . PRIM<=) (>= . PRIM>=) 
                             (null . Null) (void . Void)))
       (Var (cond [(hash-ref encoding (syntax-e (variable-id pr)) #f)
@@ -284,9 +284,7 @@
                                  (match (length ae1)
                                    [0 (case sym
                                         [(+)  `'0]
-                                        [(-)  `(app ,(PrimRef pr))] ; signals error
                                         [(*)  `'1]
-                                        [(/)  `(app ,(PrimRef pr))]
                                         [else `(app ,(PrimRef pr))])]
                                    [1 (case sym
                                         [(+ *)  (AExpr (first ae1))]
@@ -296,7 +294,7 @@
                                    [2 (case sym
                                         [(+ - *) `(app ,(Prim pr)
                                                        ,(AExpr (first ae1)) ,(AExpr (second ae1)))]
-                                        ; / needs to signal an Racket error ...
+                                        ; / needs to signal an Racket error if denominator is zero
                                         [else   `(app ,(PrimRef pr)
                                                       ,(AExpr (first ae1)) ,(AExpr (second ae1)))])]
                                    [_ `(app ,(PrimRef pr) ,(AExpr* ae1) ...)]))
