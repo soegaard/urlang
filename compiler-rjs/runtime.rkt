@@ -1164,9 +1164,6 @@
     ;;; 4.9-10 Lists
     ;;;
     
-    ; foldl TODO
-    ; foldr TODO
-    
     ;; Representation:
     ;;   A list is either NULL or a pair with a true list? flag.
     ;;   That is, a list is either:
@@ -1208,6 +1205,25 @@
                               (for ([i in-range 0 n])
                                 (:= a i (closlabapp lab #f proc i)))])
       (array->list a))
+    (define/export (foldl proc init xs ys zs xss)
+      ; todo: check that lengths of lists are the same
+      (var [r init])
+      (case arguments.length
+        [(3) (for ([x in-list xs])                               (:= r (call #f proc x r)))     r]
+        [(4) (for ([x in-list xs] [y in-list ys])                (:= r (call #f proc x y r)))   r]
+        [(5) (for ([x in-list xs] [y in-list ys] [z in-list zs]) (:= r (call #f proc x y z r))) r]
+        [(0 1 2) (error "foldl: expected at least 3 arguments")]
+        [else (error (+ "foldl: TODO implement foldl for more than 3 lists"))]))
+    (define/export (foldr proc init xs ys zs xss) ;
+      ; todo: check that lengths of lists are the same
+      (var [r init])
+      (case arguments.length
+        [(3) (foldl proc init (reverse xs))]
+        [(4) (foldl proc init (reverse xs) (reverse ys))]
+        [(5) (foldl proc init (reverse xs) (reverse ys) (reverse zs))]
+        [(0 1 2) (error "foldr: expected at least 3 arguments")]
+        [else (error (+ "foldr: TODO implement foldr for more than 3 lists"))]))
+    
     (define/export/arity (length xs)
       (var (n 0))
       (while (pair? xs) (+= n 1) (:= xs (cdr xs)))
