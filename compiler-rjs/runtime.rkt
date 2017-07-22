@@ -406,7 +406,7 @@
         [(1)  a]
         [(0)  0]
         [else (:= s (+ a b))
-              (for ([i in-range 2 n])
+              (for ([i in-range 1 n])
                 (:= s (+ s (ref args i))))
               s]))
     
@@ -417,7 +417,7 @@
         [(1)  (- a)]
         [(0)  0]
         [else (:= s (- a b))
-              (for ([i in-range 2 n])
+              (for ([i in-range 1 n])
                 (:= s (- s (ref args i))))
               s]))
     
@@ -428,7 +428,7 @@
         [(1)  a]
         [(0)  1]
         [else (:= s (* a b))
-              (for ([i in-range 2 n])
+              (for ([i in-range 1 n])
                 (:= s (* s (ref args i))))
               s]))
     
@@ -439,7 +439,7 @@
         [(1)  (/ 1 a)]
         [(0)  (error "PRIM/ expects at least one argument")]
         [else (:= s (/ a b))
-              (for ([i in-range 2 n])
+              (for ([i in-range 1 n])
                 (:= s (/ s (ref args i))))
               s]))
     
@@ -449,7 +449,7 @@
         [(2)   (=== a b)]
         [(0 1) (error "PRIM= expects at least two arguments")]
         [else (:= s (=== a b))
-              (for ([i in-range 2 n])
+              (for ([i in-range 1 n])
                 (:= s (and s (=== a (ref args i)))))
               s]))
     
@@ -459,7 +459,7 @@
         [(2)   (<= a b)]
         [(0 1) (error "PRIM<= expects at least two arguments")]
         [else (:= s (<= a b))
-              (for ([i in-range 2 (- n 1)])
+              (for ([i in-range 1 (- n 1)])
                 (:= s  (and s (<= (ref args i) (ref args (+ i 1))))))
               s]))
     
@@ -469,7 +469,7 @@
         [(2)   (>= a b)]
         [(0 1) (error "PRIM>= expects at least two arguments")]
         [else (:= s (>= a b))
-              (for ([i in-range 2 (- n 1)])
+              (for ([i in-range 1 (- n 1)])
                 (:= s (and s (>= (ref args i) (ref args (+ i 1))))))
               s]))
     
@@ -479,7 +479,7 @@
         [(2)   (> a b)]
         [(0 1) (error "PRIM> expects at least two arguments")]
         [else (:= s (> a b))
-              (for ([i in-range 2 (- n 1)])
+              (for ([i in-range 1 (- n 1)])
                 (:= s  (and s (> (ref args i) (ref args (+ i 1))))))
               s]))
     
@@ -489,7 +489,7 @@
         [(2)   (< a b)]
         [(0 1) (error "PRIM< expects at least two arguments")]
         [else (:= s (< a b))
-              (for ([i in-range 2 (- n 1)])
+              (for ([i in-range 1 (- n 1)])
                 (:= s  (and s (< (ref args i) (ref args (+ i 1))))))
               s]))
 

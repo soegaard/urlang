@@ -157,8 +157,8 @@
       ;; References to these are rewritten here.
       (define encoding
         #hasheq((+ . PRIM+) (-  . PRIM-)  (*  . PRIM*)  (/ . PRIM/)
-                            (=  . PRIM=)  (<  . PRIM+)  (> . PRIM+)
-                            (<= . PRIM+)  (>= . PRIM>=) 
+                            (=  . PRIM=)  (<  . PRIM+)  (> . PRIM>)
+                            (<= . PRIM<=) (>= . PRIM>=) 
                             (null . Null) (void . Void)))
       (Var (cond [(hash-ref encoding (syntax-e (variable-id pr)) #f)
                   => (λ (PRIMpr) (variable (datum->syntax #'here PRIMpr)))]
@@ -284,16 +284,22 @@
                                  (match (length ae1)
                                    [0 (case sym
                                         [(+)  `'0]
-                                        [(-)  `(app '"ERROR - arity mismatch")]
+                                        [(-)  `(app ,(PrimRef pr))] ; signals error
                                         [(*)  `'1]
-                                        [(/)  `(app '"ERROR / arity mismatch")]
-                                        [else `(app ,(Prim pr))])]
+                                        [(/)  `(app ,(PrimRef pr))]
+                                        [else `(app ,(PrimRef pr))])]
                                    [1 (case sym
                                         [(+ *)  (AExpr (first ae1))]
                                         [(-)    `(app ,(Prim pr)    ,(AExpr (first ae1)))]
                                         [(/)    `(app ,(Prim pr) '1 ,(AExpr (first ae1)))]
-                                        [else   `(app ,(Prim pr)    ,(AExpr (first ae1)))])]
-                                   [_ `(app ,(Prim pr) ,(AExpr* ae1) ...)]))
+                                        [else   `(app ,(PrimRef pr)  ,(AExpr (first ae1)))])]
+                                   [2 (case sym
+                                        [(+ - *) `(app ,(Prim pr)
+                                                       ,(AExpr (first ae1)) ,(AExpr (second ae1)))]
+                                        ; / needs to signal an Racket error ...
+                                        [else   `(app ,(PrimRef pr)
+                                                      ,(AExpr (first ae1)) ,(AExpr (second ae1)))])]
+                                   [_ `(app ,(PrimRef pr) ,(AExpr* ae1) ...)]))
                                (match dd
                                  [(or '<value> '<effect>)
                                   (match cd
