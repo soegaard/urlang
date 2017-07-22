@@ -2825,8 +2825,58 @@
     (define/export (unsafe-struct-ref*  s k)   (ref s (+ k 2)))
     (define/export (unsafe-struct-set!  s k v) (:= s (+ k 2) v))
     (define/export (unsafe-struct-set!* s k v) (:= s (+ k 2) v))
+
+    ;;;
+    ;;; FFI
+    ;;;
+    (define/export (js-document) document)
+    (define/export (js-window)   window)
     
-    
+    (define/export (js-ref  o i)     (ref o i))
+    (define/export (js-set! o i v)   (:= o i v))
+    (define/export (js-import-from obj f arity)
+      (var [obj-f (ref obj f)])
+      (case arity
+        [(0) (λ ()              (obj-f.call obj))]
+        [(1) (λ (a)             (obj-f.call obj a))]
+        [(2) (λ (a b)           (obj-f.call obj a b))]
+        [(3) (λ (a b c)         (obj-f.call obj a b c))]
+        [(4) (λ (a b c d)       (obj-f.call obj a b c d))]
+        [(5) (λ (a b c d e)     (obj-f.call obj a b c d e))]
+        [(6) (λ (a b c d e g)   (obj-f.call obj a b c d e g))]
+        [(7) (λ (a b c d e g h) (obj-f.call obj a b c d e g h))]
+        [else (error "js-import-from")]))
+      
+    (define/export (js-call f ctx v0 v1 v2 v3 v4 v5 v6)
+      (case arguments.length
+        [(2) (f.call ctx)]
+        [(3) (f.call ctx v0)]
+        [(4) (f.call ctx v0 v1)]
+        [(5) (f.call ctx v0 v1 v2)]
+        [(6) (f.call ctx v0 v1 v2 v3)]
+        [(7) (f.call ctx v0 v1 v2 v3 v4)]
+        [(8) (f.call ctx v0 v1 v2 v3 v4 v5)]
+        [(9) (f.call ctx v0 v1 v2 v3 v4 v5 v6)]
+        [else (error "js-call todo: handle more 7 arguments")]))
+    (define/export (js-import v)
+      (var r t)
+      (:= t (typeof v))
+      (case t
+            [("function")  (array CLOS (λ () (v.apply #f (Array.prototype.slice.call arguments 2))))]
+            [("string")    v]
+            [("number")    v]
+            [else          v]))
+    (define/export (js-export v)
+      (cond
+        [(procedure? v)  (if (js-function? v)
+                             v
+                             (λ () (call #f apply v (array->list arguments))))]
+        [else            v]))
+    (define/export/arity (rkt id)
+      (var [sym (string->symbol id)])
+      (js-export
+       (namespace-variable-value sym #f
+                                 (λ() (+ "rkt: identifier not in the current namespace, got: " id)))))
     
     ;;;
     ;;; racket/match
