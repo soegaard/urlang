@@ -801,9 +801,9 @@
     ;;     where char0 is a javascript string with length 1.
     (define/export/arity (string? v)
       (or (= (typeof v) "string")
-          (and (array? v) (= (ref v 1) MUTABLE-STRING))))
+          (and (array? v) (= (ref v 0) MUTABLE-STRING))))
     (define/export/arity (immutable-string? v) (= (typeof v) "string"))
-    (define/export/arity (mutable-string? v) (and (array? v) (= (ref v 1) MUTABLE-STRING)))
+    (define/export/arity (mutable-string? v) (and (array? v) (= (ref v 0) MUTABLE-STRING)))
     (define/export (make-string k ch) ; ch optional
       (case arguments.length
         [(1) (make-string1 k)]
@@ -818,7 +818,7 @@
       (:= a 0 MUTABLE-STRING)
       (for ([i in-range 1 (+ k 1)])
         (:= a i (ref ch 1)))
-      a)      
+      a)
     (define/export/arity (make-primitive-string n c) ; make primitive js string of length n
       ; http://stackoverflow.com/questions/202605/repeat-string-javascript?rq=1
       (var [s ""])
@@ -1180,7 +1180,7 @@
     (define/export/arity (cadr v)       (car (cdr v)))
     (define/export/arity (cdar v)       (cdr (car v)))
     (define/export/arity (cddr v)       (cdr (cdr v)))
-    (define/export/arity (list? v)      (or (= v NULL) (and (array? v) (= (tag v) PAIR) (ref v 1))))
+    (define/export/arity (list? v)      (or (= v NULL) (and (array? v) (= (tag v) PAIR) (ref v 0))))
     (define/export Null NULL)  ;; the name  null  is reserved in EcmaScript 6
     (define/export (list) ; (list v ...)
       ; Note:  [args arguments]  is needed
