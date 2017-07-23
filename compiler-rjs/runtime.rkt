@@ -33,7 +33,7 @@
 ;;  - procedure-arity-includes?
 ;;  - which namespace should be the initial one?
 
-
+;;  - add format and use it in error
 ;;  - guards     in structs
 ;;      guards in supers needs to be called
 ;;  - properties in structs
@@ -914,7 +914,7 @@
       (if (immutable-string? str)
           (immutable-string->string (String (str.toUpperCase)))
           (string-upcase (string->immutable-string str))))
-    (define (string-downcase str) ; creates mutable string
+    (define/export/arity (string-downcase str) ; creates mutable string
       (if (immutable-string? str)
           (immutable-string->string (String (str.toLowerCase)))
           (string-downcase (string->immutable-string str))))         
