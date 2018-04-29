@@ -1785,7 +1785,8 @@
   (Expr : Expr (e ρ) -> Expr ()
     ; all expressions that contain an id (x or f) needs consideration
     [,x                         (lookup x ρ unbound-error)]
-    [(:= ,x ,[e])               (let ((y (lookup x ρ unbound-error))) `(:= ,y ,e))]    
+    [(:= ,x ,[e])               (let ((y (lookup x ρ unbound-error))) `(:= ,y ,e))]
+    [(:= ,x ,[e0] ,[e1])        (let ((y (lookup x ρ unbound-error))) `(:= ,y ,e0 ,e1))]
     [(let ((,x ,[e]) ...) ,ab)  (letv ((x ρ) (rename* x ρ))  ; map x to x
                                   (let ([ab (AnnotatedBody ab ρ)])
                                     `(let ((,x ,e) ...) ,ab)))]
