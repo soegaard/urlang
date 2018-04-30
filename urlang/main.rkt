@@ -1988,9 +1988,7 @@
                                   [(and (identifier? e0)
                                         (identifier? pn))       (~a (mangle e0) "." pn)]
                                   [(identifier? pn)             (list e0 "." (~a pn))]
-                                  [else                         (list e0 (~brackets (Expr e1)))])]
-                               #;[(list e0 (and (? pn?)
-                                                (app pn? pn)))  (list e0 "." (~a pn))]
+                                  [else                         (list e0 (~brackets (second es)))])] ; XXX (Expr e1)
                                [(list e0 e1)                    (list e0 (~brackets e1))]
                                [(list* e0 e1 e)                 (let ([e0-ref-e1 (loop (list e0 e1))])
                                                                   (loop (cons e0-ref-e1 e)))]
