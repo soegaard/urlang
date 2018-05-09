@@ -38,7 +38,9 @@
          current-urlang-console.log-module-level-expr?   ; call console.log on each module-level expr?
          current-urlang-delete-tmp-file?
          current-urlang-beautify?                        ; process output with js-beautify ?
-         current-urlang-babel?)                          ; process output with babel ?
+         current-urlang-babel?                           ; process output with babel ?
+         current-urlang-rollup?                          ; generate code suitable for rollup
+         )
 
 
 ;; Keywords
@@ -1836,7 +1838,13 @@
     
     (define (exports.id x)   (format-id x "exports.~a" x))
     (define current-js-import-module-name (make-parameter #f))
-    (define jsmn current-js-import-module-name))
+    (define jsmn current-js-import-module-name)
+    ; Issue #13 (Rollup.js can't handle reusing the MODULE variable,
+    ; so produce MODULEi where i is the import counter.
+    (define import-counter 0)
+    (define (import-counter++)
+      (begin0 import-counter
+              (set! import-counter (+ import-counter (if (current-urlang-rollup?) 1 0))))))
   (Module : Module (u) -> * ()
     [(urmodule ,mn (,an ...) ,m ...) (list (~newline (~Statement "\"use strict\""))
                                            (map (λ (an) (Annotation an 'require)) an)
@@ -1861,11 +1869,12 @@
                          [_        '()])])
   (RequireSpec : RequireSpec (rs) -> * ()
     [,mn (define imports (urmodule-name->exports mn))
+         (define i (import-counter++))
          (let ([mn.js (urmodule-name->js-file-name mn)])
-           (list (~newline (~Statement `(var "MODULE = require(\"./" ,mn.js "\")")))
-                 (for/list ([x imports])
+           (list (~newline (~Statement `(var "MODULE" ,i " = require(\"./" ,mn.js "\")")))
+                 (for/list ([x imports]) 
                    (let ([x (mangle (datum->syntax #'ignored x))]) ; mangle expects ids (not symbols)
-                     (~newline (~Statement `(var ,x ,(~a " = MODULE[\"" x "\"]"))))))))])    
+                     (~newline (~Statement `(var ,x ,(~a " = MODULE"i"[\"" x "\"]"))))))))])    
   (ModuleLevelForm : ModuleLevelForm (m) -> * ()
     [(import-from ,js-mn ,is* ...) (parameterize ([current-js-import-module-name js-mn])
                                      (map ImportSpec  is*))]
@@ -2225,6 +2234,7 @@
 (define current-urlang-delete-tmp-file?               (make-parameter #t))
 (define current-urlang-beautify?                      (make-parameter #f))
 (define current-urlang-babel?                         (make-parameter #f))
+(define current-urlang-rollup?                        (make-parameter #f)) ; See issue #13
 
 (define (urmodule-name->file-name name extension)
   (match name
