@@ -1,4 +1,5 @@
 #lang racket
+(require syntax/strip-context)
 ;;; TODO    Fix scope of class names => make class declaration module-top-level only ?
 ;;; TODO  0. put this and super into scope in a class declaration
 ;;; TODO  1. Is the uncommented (not (keyword? ..))) correct in PropertyName
@@ -56,7 +57,7 @@
 ;                                                                - output returned as string
 ;; Compiler Phases
 ;;   The types L, L-, L0 and L1 below refer to nanopass languages. I.e. they are structures
-;;   represeting programs. A tree is represented as nested lists.
+;;   representing programs. A tree is represented as nested lists.
 (provide parse            ; syntax -> L      parse and expand syntax object into L
          flatten-topblock ; L      -> L      remove topblock (in Racket this is top-level-begin)
          desugar          ; L      -> L-     remove optional arguments
@@ -382,6 +383,9 @@
 ; (define-syntax (debug stx) (syntax-parse stx [(_ e) #'(displayln e)]))
 
 (require (for-syntax racket/syntax))
+
+; tables of symbols
+(require "symbol-table.rkt")
 
 ; tables of free identifiers
 (define-syntax (define-free-table stx)
@@ -1674,7 +1678,8 @@
 
 (define-pass α-rename : L1 (U) -> L1 ()
   (definitions
-    (define-free-table global)  ; free references refer to module-level-defined variables
+    ;(define-free-table global)  ; free references refer to module-level-defined variables
+    (define-symbol-table global)
     (define-bound-table var)    ; references to variables declared with var can be macro introduced
     (define (initial-ρ x [id= #f])
       (cond
@@ -1694,20 +1699,21 @@
     (define (lookup x ρ [on-not-found (λ (_) #f)])
       (match (ρ x bid=) [#f (match (ρ x fid=) [#f (on-not-found x)] [y y])] [y y]))
     (define (unbound-error x)
-      (displayln "global:")           (displayln (map syntax-e (globals)))
+      (displayln "global:")           (displayln (globals))
       (displayln "var introduced:")   (displayln (map syntax-e (vars)))
       (displayln "unbound variable:") (displayln x)
       (if (memq (syntax-e x) (macro-introduced-identifiers)) ; todo remove when modules arrive
           x
           (raise-syntax-error 'α-rename "(urlang) unbound variable" x)))
-    (define pre-body-ρ (make-parameter #f)))
+    (define pre-body-ρ      (make-parameter #f))
+    (define module-name-stx (make-parameter #f)))
   (Annotation : Annotation (an) -> Annotation ()
     [(export  ,x   ...)                      an]
     [(import  ,x   ...) (for-each global! x) an]
     [(require ,rs* ...) (for ([rs rs*])
                           (unless (symbol? rs) (error "internal error"))
                           (for ([sym (urmodule-name->exports rs)])
-                            (define x (datum->syntax #'here sym))
+                            (define x (datum->syntax (module-name-stx) sym))
                             (global! x)))
                           an]
     [(funs    ,x   ...) (for-each global! x) an]
@@ -1719,7 +1725,7 @@
   (Module : Module (u) -> Module ()
     [(urmodule ,mn (,[an] ...) ,m ...)
      (let ((ρ initial-ρ))
-       (parameterize ([pre-body-ρ ρ])
+       (parameterize ([pre-body-ρ ρ] [module-name-stx mn])
        ; Note: Macros can introduce global variable bindings
        ;       The statement (block (var x) ...) introduces x as a module-level variable.
        ;       This means that module-level variables may have to be renamed.
