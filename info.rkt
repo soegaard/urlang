@@ -21,8 +21,9 @@
                      "html-writing"))
 
 (define compile-omit-paths (list "compiler-test"
-                                 ; ad hoc file:
-                                 "urlang/html/tag-comparison.rkt"))
+                                 ; ad hoc files
+                                 "urlang/html/tag-comparison.rkt"
+                                 "urlang/tmp"))
 
 (define test-omit-paths (list
                          "compiler-rjs"
