@@ -20,7 +20,9 @@
                      "racket-doc"
                      "html-writing"))
 
-(define compile-omit-paths (list "compiler-test"))
+(define compile-omit-paths (list "compiler-test"
+                                 ; ad hoc file:
+                                 "urlang/html/tag-comparison.rkt"))
 
 (define test-omit-paths (list
                          "compiler-rjs"
