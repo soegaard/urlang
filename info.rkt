@@ -21,3 +21,16 @@
                      "html-writing"))
 
 (define compile-omit-paths (list "compiler-test"))
+
+(define test-omit-paths (list
+                         "compiler-rjs"
+                         "compiler-test"
+                         "urlang-examples"
+                         "urlang-test"
+                         "urlang"
+                         "README.md"
+                         ; these are not commited to Github:
+                         "old"
+                         "untracked-experiments"
+                         "urlang-compiler-examples"))
+
