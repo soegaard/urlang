@@ -1,6 +1,6 @@
-#lang racket
+#lang racket 
 (provide eval)             
-(provide (all-defined-out))       
+(provide (all-defined-out))              
 
 ;;; 
 ;;; TODO
@@ -97,6 +97,9 @@
     (namespace-require 'errortrace) 
     (namespace-require 'racket/match)
     (namespace-require 'racket/unsafe/ops) ; used by match
+    (namespace-require 'racket/include)
+    (namespace-require '(for-syntax syntax/parse))
+    (namespace-require 'syntax/parse)
     (expand-syntax top-level-form-stx)
     #;(expand-syntax #`(let () #,top-level-form-stx))))
 

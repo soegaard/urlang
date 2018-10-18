@@ -1,9 +1,13 @@
-#lang racket
-(define assoc->object values)
-(define (js-ref  . xs) (cons 'js-ref  xs))
-(define (js-set! . xs) (cons 'js-set! xs))
-(define (js-call . xs) (cons 'js-call xs))
-(define (js-undefined) 'undefined)
+; Uncommment to test in Racket
+;#lang racket/base
+(require (for-syntax racket/base))
+
+#;(begin
+  (define assoc->object values)
+  (define (js-ref  . xs) (cons 'js-ref  xs))
+  (define (js-set! . xs) (cons 'js-set! xs))
+  (define (js-call . xs) (cons 'js-call xs))
+  (define (js-undefined) 'undefined))
 
 ;;; Types
 (struct ffi-type (name check ex im))

@@ -280,7 +280,7 @@
   (urmodule runtime
     (import document window prompt alert parseInt parseFloat)  ; Browser functions
     (import process) ; Only in Node - not in browser?
-    (import Array Int8Array Math Number String Date
+    (import Object Array Int8Array Math Number String Date
             #;new #;typeof)
     ;;; Array
     (define/export/arity (array? v) ; todo : inline array?
@@ -1094,6 +1094,8 @@
       ; todo: fix bug when str is "length"
       (sunless (string? str)
         (raise (+ "string->symbol: expected string, got: " str)))
+      (swhen (mutable-string? str)
+             (return (string->symbol (string->immutable-string str))))
       ; returns interned symbol
       (var [t (typeof str)] r old)
       (:= old (ref symbol-table str))
@@ -1104,11 +1106,6 @@
                             (begin
                               (:= r (array SYMBOL str))     ; primitive string
                               (:= symbol-table str r)))]   ; intern it
-       [(= t "object")  (var [n+1 t.length] [n (- n+1 1)] [a (Array n)])
-                        (for ([i in-range 0 n])
-                          (:= a i (ref str (+ i 1))))
-                        (:= r (array SYMBOL (String (a.join ""))))
-                        (:= symbol-table str r)]   ; intern it
        [#t (error "string->symbol" "expected a string")])      
       r)
     (define/export/arity (string->uninterned-symbol str)
@@ -1799,8 +1796,8 @@
            [n s.length] [fields (for/array ([i in-range 2 n]) (str (ref s i) mode))])
       (+ "#(struct " (str (ref s 1) mode) " " (fields.join " ") ")"))
 
-    (define (assoc->array ass)
-      (var [ar (new Array)])
+    (define/export/arity (assoc->object ass)
+      (var [ar (new Object)])
       (for ([k v in-assocs ass])
         (:= ar k v))
       ar)
@@ -2808,6 +2805,13 @@
     ; TODO variable-reference->module-declaration-inspector
     
     ;;;
+    ;;; 14.4 Module Names and Loading
+    ;;;
+
+    ;;; 14.4.1 Resolving Module Names
+    ; (struct resolved-module-path (name) ...)
+
+    ;;;
     ;;; 14.9 Structure Inspectors
     ;;;
     
@@ -2853,6 +2857,18 @@
     
     (define/export (js-ref  o i)     (ref o i))
     (define/export (js-set! o i v)   (:= o i v))
+    (define/export (js-do-send obj f arity a b c d e g h)
+      (var [obj-f (ref obj f)])
+      (case arity
+        [(0) (obj-f.call obj)]
+        [(1) (obj-f.call obj a)]
+        [(2) (obj-f.call obj a b)]
+        [(3) (obj-f.call obj a b c)]
+        [(4) (obj-f.call obj a b c d)]
+        [(5) (obj-f.call obj a b c d e)]
+        [(6) (obj-f.call obj a b c d e g)]
+        [(7) (obj-f.call obj a b c d e g h)]
+        [else (error "js-import-from")]))
     (define/export (js-import-from obj f arity)
       (var [obj-f (ref obj f)])
       (case arity
