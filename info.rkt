@@ -18,12 +18,14 @@
                      "rackunit-lib"
                      "scribble-lib"
                      "racket-doc"
-                     "html-writing"))
+                     "html-writing"
+                     "html-parsing"))
 
 (define compile-omit-paths (list "compiler-test"
                                  ; ad hoc files
                                  "urlang/html/tag-comparison.rkt"
-                                 "urlang/urlang/tmp"))
+                                 "urlang/tmp/"
+                                 "urlang/urlang/tmp/"))
 
 (define test-omit-paths (list
                          "compiler-rjs"
