@@ -1,4 +1,4 @@
-; #lang racket
+#lang racket
 ; uncomment to test in Racket
 (struct color (red green blue [alpha #:auto])
   #:auto-value 255 #:transparent)
