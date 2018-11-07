@@ -1,8 +1,8 @@
 ; Uncommment to test in Racket
-;#lang racket/base
+#lang racket/base
 (require (for-syntax racket/base))
 
-#;(begin
+(begin
   (define assoc->object values)
   (define (js-ref  . xs) (cons 'js-ref  xs))
   (define (js-set! . xs) (cons 'js-set! xs))
