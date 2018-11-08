@@ -8,10 +8,16 @@
 ;;; Version number
 (define version    "1.0")
 
-;;; Dependencies declared here will need source
-(define deps       '())
+(define deps       '("base"
+                     "html-parsing"
+                     "html-writing"
+                     "nanopass"
+                     "net-lib"
+                     "rackunit-lib"
+                     "scribble-html-lib"
+                     "srfi-lite-lib"
+                     "web-server-lib"))
 
-;;; Dependencies here can be installed as binaries (i.e. zo-files)
 (define build-deps '("base"
                      "nanopass"                     
                      "at-exp-lib"
