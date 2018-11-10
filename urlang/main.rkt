@@ -48,7 +48,7 @@
 (provide keywords) ; a literal set
 (provide all-as array as begin block break catch class continue define default do-while dot export
          finally if import import-from
-         object label lambda λ let ref return require sempty sif throw topblock try urmodule
+         label lambda λ let new object ref return require sempty sif throw topblock try urmodule
          var while :=)
 (provide bit-and bit-not bit-or bit-xor ===)
 ;; Compiler 
@@ -300,6 +300,7 @@
 ; <array-reference>   ::= (ref <expr> <expr> <expr> ...)
 ; <array>             ::= (array <expr> ...)
 ; <dot>               ::= (dot <expr> ...+)
+; <new>               ::= (new <constructor-id> <expr> ...)
 ; <object>            ::= (object (<property-name> <expr>) ...)
 ; <class>             ::= (class <class-heritage> ((<property-name> x ...) <body>)) ...)
 ; <class-heritage>    ::= x | (x x)
@@ -454,6 +455,7 @@
 (define-syntax import-from   (λ (stx) (raise-syntax-error 'import-from "used out of context" stx)))
 (define-syntax label         (λ (stx) (raise-syntax-error 'label       "used out of context" stx)))
 (define-syntax object        (λ (stx) (raise-syntax-error 'object      "used out of context" stx)))
+(define-syntax new           (λ (stx) (raise-syntax-error 'new         "used out of context" stx)))
 (define-syntax ref           (λ (stx) (raise-syntax-error 'ref         "used out of context" stx)))
 (define-syntax return        (λ (stx) (raise-syntax-error 'return      "used out of context" stx)))
 (define-syntax sempty        (λ (stx) (raise-syntax-error 'sempty      "used out of context" stx)))
@@ -469,7 +471,7 @@
 ; Note: Remember to provide all keywords
 (define-literal-set keywords (array as all-as begin block break catch class continue define default
                                     do-while dot export
-                                    finally if import import-from object label lambda λ let
+                                    finally if import import-from object new label lambda λ let
                                     ref return require sempty sif throw topblock try urmodule
                                     var while :=))
 (define keyword? (literal-set->predicate keywords))
@@ -588,6 +590,7 @@
     (quote d)                           ; quotation (the parser quotes all datums)
     (ref e0 e1 e* ...)                  ; reference to array index
     (array e ...)                       ; array constructor
+    (new x e ...)                       ; new expression
     (object (pn e) ...)                 ; object literal
     (class (x)     (pn e) ...)      ; class : Restriction: e is a lambda-expression
     (class (x0 x1) (pn e) ...)      ; class
@@ -773,8 +776,13 @@
                 el:Lambda
                 e:ArrayReference
                 e:Array
+                e:New
                 e:Object
                 e:Dot)))
+
+(define-syntax-class New
+  #:literal-sets (keywords)
+  (pattern (new c:Id e:Expr ...)))
 
 (define-syntax-class Object
   #:literal-sets (keywords)
@@ -1192,9 +1200,19 @@
       [(~and ac (array . _))                  (parse-array       #'ac)]
       [(~and do (dot . _))                    (parse-dot         #'do)]
       [(~and c  (class . _))                  (parse-class       #'c)]
+      [(~and n  (new . _))                    (parse-new         #'n)]
       [(~and a  (e ...)
              (~not (k:keyword . _)))          (parse-application #'a)]
       [_ (raise-syntax-error 'parse-expr (~a "expected an expression, got " e) e)])))
+
+(define (parse-new n)
+  (debug (list 'parse-new (syntax->datum n)))
+  (with-output-language (Lur Expr)
+    (syntax-parse n
+      #:literal-sets (keywords)
+      [(new c:Id e:Expr ...)
+       (let ([e  (stx-map parse-expr #'(e  ...))])
+         `(new ,#'c ,e ...))])))
 
 (define (parse-object o)
   (debug (list 'parse-object (syntax->datum o)))
@@ -1800,7 +1818,9 @@
                                     `(let ((,x ,e) ...) ,ab)))]
     [(lambda (,x ...) ,ab)      (letv ((x ρ) (rename* x ρ))  ; map x to x
                                   (let ([ab (AnnotatedBody ab ρ)])
-                                    `(lambda (,x ...) ,ab)))])
+                                    `(lambda (,x ...) ,ab)))]
+    [(new ,x ,[e] ...)          (let ((y (lookup x ρ unbound-error)))
+                                  `(new ,y ,e ...))])
   (let ()
     ; See explanation in "globals.rkt" and in compiler3.rkt
     ; (displayln "alpha-rename (in urlang/main)")
@@ -1981,6 +2001,7 @@
     [(lambda (,x ...) ,ab)   (let ((ab (AnnotatedBody ab)))
                                (~parens "function" (~parens (~commas x)) ab))]
     [(array ,e ...)          (~brackets (~commas (map Expr e)))]
+    [(new ,x ,e ...)         (~parens "new" " " x (~parens (~commas (map Expr e))))]
     [(object (,pn* ,e*) ...) (~braces (~commas (for/list ([pn pn*] [e e*])
                                                  (list (~property-name pn) ":" (Expr e)))))]
     [(class (,x)
