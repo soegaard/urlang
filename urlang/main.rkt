@@ -1386,6 +1386,19 @@
   (pattern x:Id
            #:fail-unless (assignment-operator? (syntax-e #'x)) #f))
 
+;;; Arity
+
+(define (nullary? x) (member x '(+ *)))
+(define (unary? x)   (member x '(+ * - /       ; arithmetical
+                                   and or not  ; logical
+                                   ~           ; bitwise not
+                                   )))
+(define (binary? x)   (member x '(+ - * / %
+                                     = == === != !== < > <= >=
+                                     and or not
+                                     << >> >>>
+                                     bit-and bit-or bit-xor bit-not)))
+
 ;;;
 ;;; PREDEFINED NAMES AND RESERVED WORDS
 ;;;
@@ -1610,7 +1623,7 @@
     [(import-from ,js-mn ,is ...) (let ([is (map ImportSpec is)])
                                     `(import-from ,js-mn ,is ...))])
   (ImportSpec : ImportSpec (is) -> ImportSpec ()
-    ; This introdues variables imported via import-from into the module-level-scope
+    ; This introduces variables imported via import-from into the module-level-scope
     [(default ,x) (import! x)  `(default ,x)]
     [(as ,x1 ,x2) (import! x2) `(as ,x1 ,x2)]
     [(all-as ,x)  (import! x)  `(all-as ,x)]
@@ -2032,12 +2045,21 @@
     [(app ,e0 ,e ...)      (cond
                              [(identifier? e0)
                               (define f e0)
+                              (define sym             (syntax-e f))
                               (define (infix? _)      (infix-operator? f))
                               (define (assignment? _) (assignment-operator? f))
+                              (define unary-error "internal error: unary operator missing")
                               (match (cons (syntax-e f) (map Expr e))
                                 [(list 'new    e0 e ...)    (list "new " e0 (~parens   (~commas e)))]
                                 [(list 'array! e0 i e)         (list e0 (~brackets i) "=" e)]
-                                [(list (? infix?) e1)          (~parens f e1)]                ; unary
+                                [(list (? nullary?)) (match sym ['+ 0] ['* 1]
+                                                       [_ (error 'generate-code unary-error )])]
+                                [(list (? unary?) e1)  (match sym
+                                                         [(or '+ '*) (~parens e1)]
+                                                         [_          (~parens f e1)])]
+                                [(list (? infix?) e1)  (raise-syntax-error
+                                                        'generate-code
+                                                        "operator is not unary" e0)]
                                 [(list (? infix?) e ...)       (~parens (add-between e f))]   ; nary
                                 [(list (? assignment?) e0 e1)  (~parens e0 f e1)]             ; assign
                                 [(list _ e ...)          (~parens f (~parens (~commas e)))])] ; prefix
