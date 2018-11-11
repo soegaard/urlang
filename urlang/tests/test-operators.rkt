@@ -33,6 +33,7 @@
 (check-equal? (rs (urlang (urmodule test-add1 (+ 1 2)))) 3)
 (check-equal? (rs (urlang (urmodule test-add1 (+ 1))))   1)
 (check-equal? (rs (urlang (urmodule test-add1 (+))))     0)
+(check-equal? (rs (urlang (urmodule test-add1 (+ 1 2 3)))) 6)
 
 (check-equal? (rs (urlang (urmodule test-add1 (* 2 3)))) 6)
 (check-equal? (rs (urlang (urmodule test-add1 (* 2))))   2)

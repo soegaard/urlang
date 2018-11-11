@@ -1391,13 +1391,13 @@
 (define (nullary? x) (member x '(+ *)))
 (define (unary? x)   (member x '(+ * - /       ; arithmetical
                                    and or not  ; logical
-                                   ~           ; bitwise not
-                                   )))
+                                   ~)))        ; bitwise not
 (define (binary? x)   (member x '(+ - * / %
                                      = == === != !== < > <= >=
                                      and or not
                                      << >> >>>
                                      bit-and bit-or bit-xor bit-not)))
+(define (nary? x) (member x '(+ * - / and or bit-and bit-or bit-xor)))
 
 ;;;
 ;;; PREDEFINED NAMES AND RESERVED WORDS
@@ -2049,19 +2049,28 @@
                               (define (infix? _)      (infix-operator? f))
                               (define (assignment? _) (assignment-operator? f))
                               (define unary-error "internal error: unary operator missing")
-                              (match (cons (syntax-e f) (map Expr e))
-                                [(list 'new    e0 e ...)    (list "new " e0 (~parens   (~commas e)))]
-                                [(list 'array! e0 i e)         (list e0 (~brackets i) "=" e)]
-                                [(list (? nullary?)) (match sym ['+ 0] ['* 1]
-                                                       [_ (error 'generate-code unary-error )])]
-                                [(list (? unary?) e1)  (match sym
-                                                         [(or '+ '*) (~parens e1)]
-                                                         [_          (~parens f e1)])]
-                                [(list (? infix?) e1)  (raise-syntax-error
-                                                        'generate-code
-                                                        "operator is not unary" e0)]
-                                [(list (? infix?) e ...)       (~parens (add-between e f))]   ; nary
-                                [(list (? assignment?) e0 e1)  (~parens e0 f e1)]             ; assign
+                              (match (cons (syntax-e f)  (map Expr e))
+                                [(list 'new    e0 e ...) (list "new " e0 (~parens   (~commas e)))]
+                                [(list 'array! e0 i e)   (list e0 (~brackets i) "=" e)]
+                                [(list (? nullary?))     (match sym ['+ 0] ['* 1]
+                                                           [_ (error 'generate-code unary-error)])]
+                                [(list (? infix?))       (raise-syntax-error
+                                                          'generate-code
+                                                          "operator is not unary")]
+                                [(list (? unary?) e1)    (match sym
+                                                           [(or '+ '*) (~parens e1)]
+                                                           [_          (~parens f e1)])]
+                                [(list (? infix?) e1)    (raise-syntax-error
+                                                          'generate-code
+                                                          "operator is not unary" e0)]
+                                [(list (? binary?) e1 e2) (~parens (add-between (list e1 e2) f))]
+                                [(list (? infix?)  e1 e2) (raise-syntax-error
+                                                           'generate-code
+                                                           "operator is not binary" e0)]
+                                [(list (? nary?) e ...)  (~parens (add-between e f))]
+                                [(list (? infix?) e ...) (raise-syntax-error
+                                                          'generate-code "operator is not nary" e0)]
+                                [(list (? assignment?) e0 e1)  (~parens e0 f e1)]          
                                 [(list _ e ...)          (~parens f (~parens (~commas e)))])] ; prefix
                              [else ; expression in front
                               (let ((e0 (Expr e0)) (e (map Expr e)))
