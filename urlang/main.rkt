@@ -1157,8 +1157,20 @@
        (let ((x (attribute φ.x)))                                           ; all parameters
          (with-syntax ([((x0 e0) ...) (filter identity (attribute φ.xe))])  ; parameters with defaults
            (with-syntax ([(σ ... en) #'b])
+             ; Issue #17: Unintuitive that `define` not allowed in body, so give explanation.
+             (define δ (for/or ([σ (syntax->list #'(σ ... en))])
+                         (syntax-parse σ #:literals (define)
+                           [(define . _) σ] [_ #f])))
+             (when δ
+               (raise-syntax-error
+                'parse-lambda
+                (~a "Definition not allowed in lambda-body. Definitions work only at the "
+                    "module-level.\n Instead use:\n    (var [id lambda-expression])")
+                δ))
+             ; End Issue 17             
              (let ([b (parse-body #'(σ ... en))]
                    [φ (stx-map parse-formal #'(φ ...))])
+               
                `(lambda (,φ ...) ,b)))))])))
 
 (define (parse-formal φ)
