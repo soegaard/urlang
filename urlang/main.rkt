@@ -1879,8 +1879,20 @@
     (define (~displayln t)     (list "console.log" (~parens t)))
     (define (~top-expr t)      (if (current-urlang-console.log-module-level-expr?)
                                    (~displayln t) t))
-    (define (convert-string s) (regexp-replace* "\n" s "\\\\\n"))
-    (define (~string t)        (list "\"" (convert-string t) "\""))
+    (define (convert-string-char c)
+      (case c
+        [(#\backspace) "\\b"]
+        [(#\page) "\\f"]
+        [(#\newline) "\\n"]
+        [(#\return) "\\r"]
+        [(#\tab) "\\t"]
+        [(#\vtab) "\\v"]
+        [(#\nul) "\\000"]
+        [(#\") "\\\""]
+        [(#\\) "\\\\"]
+        [else (string c)]))
+    (define (~string t)        `("\"" ,@(for/list ([c t])
+                                          (convert-string-char c)) "\""))
     (define (~property-name t) (define v (syntax-e t)) (if (string? v) (~string v) t))
     (define (~ClassMethod pn e)
       (nanopass-case (L1 Expr) e
