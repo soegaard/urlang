@@ -12,7 +12,6 @@ compile a large subset of all Racket programs.
 
 The status so far:
 
-    - no tco
     - no continuation marks
     - no exceptions
 
@@ -20,6 +19,7 @@ The runtime library is in "runtime.rkt".
 See the complete list of support data structures
 and implemented functions in the source.
 
+On JavaScript implementations that support (JavaScript) TCO the output
+of the compiler ought to handle (Racket) tail calls properly.
+
 /Jens Axel Søgaard
-
-
