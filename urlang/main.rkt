@@ -32,15 +32,15 @@
 
 (provide urlang)
 ;; Parameters
-(provide current-urlang-output-file                      ; overrides module-name as output file
-         current-urlang-exports-file                     ; overrides name of file to store exports
-         current-urlang-run?                             ; run after compilation
-         current-urlang-echo?                            ; echo JavaScript after compilation
-         current-urlang-console.log-module-level-expr?   ; call console.log on each module-level expr?
+(provide current-urlang-output-file                     ; overrides module-name as output file
+         current-urlang-exports-file                    ; overrides name of file to store exports
+         current-urlang-run?                            ; run (using node) after compilation
+         current-urlang-echo?                           ; echo JavaScript after compilation
+         current-urlang-console.log-module-level-expr?  ; call console.log on each module-level expr?
          current-urlang-delete-tmp-file?
-         current-urlang-beautify?                        ; process output with js-beautify ?
-         current-urlang-babel?                           ; process output with babel ?
-         current-urlang-rollup?                          ; generate code suitable for rollup
+         current-urlang-beautify?                       ; process output with js-beautify ?
+         current-urlang-babel?                          ; process output with babel ?
+         current-urlang-rollup?                         ; generate code suitable for rollup
          )
 
 
@@ -50,6 +50,9 @@
          finally if import import-from
          label lambda λ let new object ref return require sempty sif throw topblock try urmodule
          var while :=)
+; Keywords from ES6
+(provide const let-decl)
+
 (provide bit-and bit-not bit-or bit-xor ===)
 ;; Compiler 
 (provide compile          ; syntax -> *         prints JavaScript
@@ -98,6 +101,7 @@
 ; * Static check of identifiers from NodeJS imported modules.
 ; * Static check: Is the label in (break label) declared as a label?
 ; * Static check: Number of arguments of assignment operators (+= x 1 2)
+; * Static check: Duplicate declarations of variabels in let and const declarations.
 
 ;;;
 ;;; URLANG
@@ -106,6 +110,7 @@
 ;; Urlang is a language designed to allow straightforward translation to JavaScript.
 ;; Think of Urlang as JavaScript with sane syntax and JavaScript semantics.
 ;; JavaScript in this context is short for ECMAScript 5 in strict mode.
+;; Update: Bit by bit we will extend Urlang to handle ES6 as well
 
 ;; Although the constructs of Urlang and JavaScript map almost one-to-one,
 ;; a little sugar was added:
@@ -114,7 +119,7 @@
 
 ;; Even though the syntax of Urlang is Racket-like, remember that the
 ;; semantics is standard JavaScript. This means in particular that tail calls
-;; build context.
+;; build context (unless the JavaScript engine supports TCO/PTC).
 
 ;; Examples
 
@@ -265,9 +270,11 @@
 ; <formal>            ::= x | [x <expr>]
 ; <require-spec>      ::= <module-name>
 
-; <statement>         ::= <var-decl> | <block> | <while> | <do-while> | <if>
-;                      |  <break> | <continue> | <return> | <label> | <sempty> | <expr>
-; <var-decl>          ::= (var <var-binding> ...)
+; <statement>         ::= <var-decl> | <let-decl> | <const-decl> | <block> | <while> | <do-while> 
+;                      | <if> | <break> | <continue> | <return> | <label> | <sempty> | <expr>
+; <var-decl>          ::= (var   <var-binding> ...)
+; <let-decl>          ::= (let-decl   <var-binding> ...)
+; <const-decl>        ::= (const <var-binding> ...)
 ; <var-binding>       ::= x | (x e)
 ; <block>             ::= (block <statement> ...)
 ; <while>             ::= (while <expr> <statement> ...)
@@ -467,13 +474,22 @@
 (define-syntax var           (λ (stx) (raise-syntax-error 'var         "used out of context" stx)))
 (define-syntax while         (λ (stx) (raise-syntax-error 'while       "used out of context" stx)))
 (define-syntax :=            (λ (stx) (raise-syntax-error ':=          "used out of context" stx)))
+;;; Keywords added in ES6
+(define-syntax const         (λ (stx) (raise-syntax-error 'const       "used out of context" stx)))
+(define-syntax let-decl      (λ (stx) (raise-syntax-error 'let-decl    "used out of context" stx)))
+
 
 ; Note: Remember to provide all keywords
 (define-literal-set keywords (array as all-as begin block break catch class continue define default
                                     do-while dot export
                                     finally if import import-from object new label lambda λ let
                                     ref return require sempty sif throw topblock try urmodule
-                                    var while :=))
+                                    var while :=
+                                    ; ES6 Keywords
+                                    const
+                                    ;
+                                    let-decl   ; let in ES6 (but we have used let for expressions)
+                                    ))
 (define keyword? (literal-set->predicate keywords))
 
 
@@ -564,6 +580,8 @@
   (Statement (σ)
     e                             ; expression
     (var vb ...)                  ; variable definition
+    (let-decl vb ...)             ; variable declaration
+    (const vb ...)                ; constant definition
     (sif e σ1 σ2)                 ; statement if
     (empty)                       ; the empty statement
     (block      σ ...)            ; block (no new scope in JavaScript)
@@ -702,6 +720,8 @@
   (pattern (~or m:Expr
                 w:While
                 v:VarDecl
+                l:LetDecl
+                k:ConstDecl
                 β:Block
                 dw:DoWhile
                 i:If
@@ -717,6 +737,14 @@
 (define-syntax-class VarDecl
   #:literal-sets (keywords)
   (pattern (var vb:VarBinding ...)))
+
+(define-syntax-class LetDecl
+  #:literal-sets (keywords)
+  (pattern (let-decl vb:VarBinding ...)))
+
+(define-syntax-class ConstDecl
+  #:literal-sets (keywords)
+  (pattern (const vb:VarBinding ...)))
 
 (define-syntax-class VarBinding
   #:literal-sets (keywords)
@@ -962,19 +990,21 @@
                                   ; (displayln (list 'parse-statement 'expansion: expansion))
                                   (parameterize ([macro-expansion-context parent-context])
                                     (context-parse expansion))]
-        [(~and b  (break    . _)) (parse-break    #'b)]
-        [(~and c  (continue . _)) (parse-continue #'c)]
-        [(~and r  (return   . _)) (parse-return   #'r)]
-        [(~and la (label    . _)) (parse-label    #'la)]
-        [(~and w  (while    . _)) (parse-while    #'w)]
-        [(~and dw (do-while . _)) (parse-do-while #'dw)]
-        [(~and v  (var      . _)) (parse-var-decl #'v)]
-        [(~and β  (block    . _)) (parse-block    #'β)]
-        [(~and i  (sif      . _)) (parse-if       #'i)]
-        [(~and se (sempty   . _)) (parse-empty    #'se)]
-        [(~and tr (try      . _)) (parse-try      #'tr)]
-        [(~and th (throw    . _)) (parse-throw    #'th)]
-        [e                        (parse-expr     #'e context-parse parent-context)]))))
+        [(~and b  (break    . _)) (parse-break      #'b)]
+        [(~and c  (continue . _)) (parse-continue   #'c)]
+        [(~and r  (return   . _)) (parse-return     #'r)]
+        [(~and la (label    . _)) (parse-label      #'la)]
+        [(~and w  (while    . _)) (parse-while      #'w)]
+        [(~and dw (do-while . _)) (parse-do-while   #'dw)]
+        [(~and v  (var      . _)) (parse-var-decl   #'v)]
+        [(~and l  (let-decl . _)) (parse-let-decl   #'l)] ; ES6
+        [(~and k  (const    . _)) (parse-const-decl #'k)] ; ES6
+        [(~and β  (block    . _)) (parse-block      #'β)]
+        [(~and i  (sif      . _)) (parse-if         #'i)]
+        [(~and se (sempty   . _)) (parse-empty      #'se)]
+        [(~and tr (try      . _)) (parse-try        #'tr)]
+        [(~and th (throw    . _)) (parse-throw      #'th)]
+        [e                        (parse-expr       #'e context-parse parent-context)]))))
 
 (define (parse-try tr)
   ; <try>               ::= (try <block> <catch>)
@@ -1102,6 +1132,24 @@
       [(var vb:VarBinding ...)
        (let ((vb (stx-map parse-var-binding #'(vb ...))))
          `(var ,vb ...))])))
+
+(define (parse-let-decl l) ; ES6
+  (debug (list 'parse-let-decl (syntax->datum l)))
+  (with-output-language (Lur Statement)
+    (syntax-parse l
+      #:literal-sets (keywords)
+      [(let-decl vb:VarBinding ...)
+       (let ((vb (stx-map parse-var-binding #'(vb ...))))
+         `(let-decl ,vb ...))])))
+
+(define (parse-const-decl k) ; ES6
+  (debug (list 'parse-const-decl (syntax->datum k)))
+  (with-output-language (Lur Statement)
+    (syntax-parse k
+      #:literal-sets (keywords)
+      [(const vb:VarBinding ...)
+       (let ((vb (stx-map parse-var-binding #'(vb ...))))
+         `(const ,vb ...))])))
 
 (define (parse-var-binding vb)
   (with-output-language (Lur VarBinding)
@@ -1641,8 +1689,8 @@
     [(all-as ,x)  (import! x)  `(all-as ,x)]
     [,x           (import! x)  `,x])
   
-  ;; Register variables declared with var only, when var is a module-level form.
-  ;; All contexts where var-forms can appear need to change the context.
+  ;; Register variables declared with var/let/const only, when var/let/const is a module-level form.
+  ;; All contexts where var/let/const-forms can appear need to change the context.
   ;; I.e. function bodies, let and lambda needs to set the context.
   (VarBinding : VarBinding (vb) -> VarBinding ()
     [,x                  (when (eq? (context) 'module-level)
@@ -1983,11 +2031,24 @@
                             (~Statement "try " (~braces σ) (CatchFinally cf)))]
     [(throw ,e)           (let ((e (Expr e)))
                             (~Statement "throw" " " e))]
+    ; the var/let/const cases are the same
     [(var ,vb ...)        (match (map VarBinding vb)
                             [(list) (~Statement)]            ; no bindings => empty statement
                             [(list (list xs es) ...)
                              (~Statement
                               `(var ,(~commas (for/list ([x xs] [e es])
+                                                (if e (list x "=" e) x)))))])]
+    [(let-decl ,vb ...)   (match (map VarBinding vb)
+                            [(list) (~Statement)]            ; no bindings => empty statement
+                            [(list (list xs es) ...)
+                             (~Statement
+                              `(let ,(~commas (for/list ([x xs] [e es])
+                                                (if e (list x "=" e) x)))))])]
+    [(const ,vb ...)      (match (map VarBinding vb)
+                            [(list) (~Statement)]            ; no bindings => empty statement
+                            [(list (list xs es) ...)
+                             (~Statement
+                              `(const ,(~commas (for/list ([x xs] [e es])
                                                 (if e (list x "=" e) x)))))])])  
   (VarBinding : VarBinding (vb) -> * ()
     [,x              (list x #f)]
