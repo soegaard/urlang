@@ -52,6 +52,8 @@
          var while :=)
 ; Keywords from ES6
 (provide const let-decl)
+; Urlang Keywords
+(provide define/async)
 
 (provide bit-and bit-not bit-or bit-xor ===)
 ;; Compiler 
@@ -265,7 +267,8 @@
 ; <import-spec>       ::= x | (as x x) | (all-as x) | (default x)
 ; <require>           ::= (require <require-spec> ...)
 ; <topblock>          ::= (topblock <module-level-form> ...)
-; <definition>        ::= (define (f <formal> ...) <body>)
+; <definition>        ::= (define       (f <formal> ...) <body>)
+;                      |  (define/async (f <formal> ...) <body>)
 ;                      |  (define x <expr>)
 ; <formal>            ::= x | [x <expr>]
 ; <require-spec>      ::= <module-name>
@@ -477,18 +480,22 @@
 ;;; Keywords added in ES6
 (define-syntax const         (λ (stx) (raise-syntax-error 'const       "used out of context" stx)))
 (define-syntax let-decl      (λ (stx) (raise-syntax-error 'let-decl    "used out of context" stx)))
+;;; Urlang Keywords
+(define-syntax define/async  (λ (stx) (raise-syntax-error 'define/async "used out of context" stx)))
 
 
 ; Note: Remember to provide all keywords
 (define-literal-set keywords (array as all-as begin block break catch class continue define default
                                     do-while dot export
-                                    finally if import import-from object new label lambda λ let
+                                    finally if import import-from object new label lambda λ
                                     ref return require sempty sif throw topblock try urmodule
                                     var while :=
                                     ; ES6 Keywords
                                     const
                                     ;
                                     let-decl   ; let in ES6 (but we have used let for expressions)
+                                    ; Urlang keywords
+                                    define/async let
                                     ))
 (define keyword? (literal-set->predicate keywords))
 
@@ -527,6 +534,8 @@
 (define (property-name? v) (or (symbol? v) (string? v) (fixnum? v) (flonum? v)
                                (and (syntax? v) (property-name? (syntax-e v)))))
 (define (js-module-name? v) (string? v))
+(define (async? v)          (boolean? v))
+
 ;;;
 ;;; URLANG AS NANOPASS LANGUAGE
 ;;;
@@ -542,7 +551,8 @@
    ((datum       (d))     . => . unparse-datum)
    (module-name  (mn))
    (js-module-name (js-mn))
-   ((property-name (pn)) . => . (λ (v) (if (syntax? v) (unparse-syntax v) v))))
+   ((property-name (pn)) . => . (λ (v) (if (syntax? v) (unparse-syntax v) v)))
+   (async         (a))) ; #t or #f
   (Module (u)
     (urmodule mn m ...))
   (ModuleLevelForm (m)
@@ -563,7 +573,7 @@
     (all-as x)               ; import all using the name x
     x)                       ; the member named x             
   (Definition (δ)
-    (define (f φ ...) b)     ; function definition
+    (define a (f φ ...) b) ; function definition (async is #t or #f)
     (define x e))
   (Formal (φ)
     x                        ; parameter name
@@ -707,7 +717,8 @@
 (define-syntax-class Definition
   #:literal-sets (keywords)
   (pattern
-   (~or (define (f:Id φ:Formal ...) σ:Statement ... body:Body)
+   (~or (define       (f:Id φ:Formal ...) σ:Statement ... body:Body)
+        (define/async (f:Id φ:Formal ...) σ:Statement ... body:Body)
         (define x:Id e:Expr))))
 
 (define-syntax-class Lambda
@@ -972,12 +983,13 @@
       (syntax-parse m
         #:literal-sets (keywords)
         [ma:MacroApplication           (parse-module-level-form (parse-macro-application #'ma))]
-        [(~and ex  (export      . _))  (parse-export #'ex)]
-        [(~and im  (import      . _))  (parse-import #'im)]
-        [(~and rm  (require     . _))  (parse-require #'rm)]
-        [(~and d   (define      . _))  (parse-definition #'d)]
-        [(~and tb  (topblock    . _))  (parse-topblock #'tb)]
-        [(~and imf (import-from . _))  (parse-import-from #'imf)]
+        [(~and ex  (export       . _))  (parse-export #'ex)]
+        [(~and im  (import       . _))  (parse-import #'im)]
+        [(~and rm  (require      . _))  (parse-require #'rm)]
+        [(~and d   (define       . _))  (parse-definition #'d)]
+        [(~and d   (define/async . _))  (parse-definition #'d)]
+        [(~and tb  (topblock     . _))  (parse-topblock #'tb)]
+        [(~and imf (import-from  . _))  (parse-import-from #'imf)]
         [σ                       (parse-statement #'σ parse-module-level-form 'module-level-form)]))))
 
 (define (parse-statement σ [context-parse parse-statement] [parent-context 'statement])
@@ -1194,7 +1206,15 @@
            (with-syntax ([(σ ... en) #'b])
              (let ([b (parse-body #'(σ ... en))]
                    [φ (stx-map parse-formal #'(φ ...))])
-               `(define (,#'f ,φ ...) ,b)))))])))
+               `(define #f (,#'f ,φ ...) ,b)))))]
+      ; identical to the one above apart from #t to indicate an async function
+      [(define/async (f:Id φ:Formal ...) . b)
+       (let ((x (attribute φ.x)))                                           ; all parameters
+         (with-syntax ([((x0 e0) ...) (filter identity (attribute φ.xe))])  ; parameters with defaults
+           (with-syntax ([(σ ... en) #'b])
+             (let ([b (parse-body #'(σ ... en))]
+                   [φ (stx-map parse-formal #'(φ ...))])
+               `(define #t (,#'f ,φ ...) ,b)))))])))
 
 (define (parse-lambda d)
   (debug (list 'parse-lambda (syntax->datum d)))
@@ -1509,8 +1529,8 @@
     (- x)
     (- [x e]))
   (Definition (δ)
-    (- (define (f φ ...) b))
-    (+ (define (f x ...) b))
+    (- (define a (f φ ...) b))
+    (+ (define a (f x ...) b))
     ; (- (define x e))
     ; (+ (define x e))
     )
@@ -1544,7 +1564,7 @@
                         ,σ ...
                         ,e)))]))])])
   (Definition : Definition (δ) ->  Definition ()
-    [(define (,f ,φ* ...) ,b)
+    [(define ,a (,f ,φ* ...) ,b)
      (match (for/list ([φ (in-list φ*)])
               (L-formal->id+expr φ Expr))
        [(list (list x s) ...)
@@ -1552,7 +1572,7 @@
           (nanopass-case (Lur Body) b
             [(body ,σ ... ,e)
              (let ([σ (map Statement σ)] [e (Expr e)])
-               `(define (,f ,x ...)
+               `(define ,a (,f ,x ...)
                   (body ,s ...
                         ,σ ...
                         ,e)))]))])]))
@@ -1596,8 +1616,8 @@
   (AnnotatedBody (ab)
     (+ (annotated-body (x ...) σ ... e)))
   (Definition (δ)
-    (- (define (f x ...) b))
-    (+ (define (f x ...) ab))
+    (- (define a (f x ...) b))
+    (+ (define a (f x ...) ab))
     ;(- (define (f φ ...) b))
     ;(+ (define (f φ ...) ab))
     )
@@ -1711,12 +1731,12 @@
                                 (raise-syntax-error 'collect "identifier is declared twice as var" x))
                                (var! x)
                               `(define ,x ,e)]
-    [(define (,f ,x0 ...) ,b) (when (fun? f)
+    [(define ,a (,f ,x0 ...) ,b) (when (fun? f)
                                 (raise-syntax-error 'collect "identifier is declared twice as fun" f))
                               (fun! f)
                               (parameterize ([context 'body])
                                 (let ((b (Body b)))
-                                  `(define (,f ,x0 ...) ,b)))])
+                                  `(define ,a (,f ,x0 ...) ,b)))])
   (Body : Body (b) -> Body ())
   
   (Module U))
@@ -1833,9 +1853,9 @@
     [(define ,x ,e)              (let ((ρ (extend ρ x x))) ; map x to x
                                    (let ((e (Expr e ρ)))
                                      `(define ,x ,e)))]    
-    [(define (,f ,x ...) ,ab)    (letv ((x ρ) (rename* x ρ))
-                                   (let ([ab (AnnotatedBody ab ρ)])
-                                     `(define (,f ,x ...) ,ab)))])
+    [(define ,a (,f ,x ...) ,ab)  (letv ((x ρ) (rename* x ρ))
+                                    (let ([ab (AnnotatedBody ab ρ)])
+                                      `(define ,a (,f ,x ...) ,ab)))])
   ; TODO: Change var to use same scope rules as let*.
   ;       In (var [binding s s]) the second s refers to an outer scope.
   (VarBinding : VarBinding (vb ρ) -> VarBinding ()
@@ -2002,14 +2022,15 @@
   (Definition : Definition (δ) -> * ()
     [(define ,x ,e)            (let ([e (Expr e)])
                                  (~Statement `(var ,x "=" ,e)))]
-    [(define (,f ,x ...) ,ab)  (let ()
+    [(define ,a (,f ,x ...) ,ab)  (let ()
                                  #;(define (formal->x φ)
                                      (nanopass-case (L1 Formal) φ
                                        [,x x] [(,x ,e) x]))
                                  (let ((ab (AnnotatedBody ab))
                                        #;[x  (map formal->x φ)])
-                                   (~Statement `(function ,f ,(~parens (~commas x))
-                                                          ,ab))))])
+                                   (~Statement `(,(if a 'async "")
+                                                 function ,f ,(~parens (~commas x))
+                                                 ,ab))))])
   (CatchFinally : CatchFinally (cf) -> * ()
     [(catch ,x ,σ ...)                      (let ([σ (map Statement σ)])
                                               (list "catch" (~parens x) (~braces σ)))]
