@@ -52,8 +52,10 @@
          var while :=)
 ; Keywords from ES6
 (provide const let-decl)
+; Keywrods from ES7
+(provide await)
 ; Urlang Keywords
-(provide define/async)
+(provide define/async) ; ES7 
 
 (provide bit-and bit-not bit-or bit-xor ===)
 ;; Compiler 
@@ -298,7 +300,7 @@
 ; <body>              ::= <statement> ... <expr>
 
 ; <expr>              ::= <datum>   | <reference> | <application> | <sequence>
-;                      |  <ternary> | <assignment> | <let> | <lambda> | <dot> | <object>
+;                      |  <ternary> | <assignment> | <let> | <lambda> | <await> | <dot> | <object>
 ;                      |  <array-reference> | <array> | <class>
 ; <ternary>           ::= (if <expr> <expr> <expr>)
 ; <reference>         ::= x
@@ -307,6 +309,7 @@
 ; <assignment>        ::= (:= x <expr>) | (:= x <expr> <expr>)
 ; <let>               ::= (let ((x <expr>) ...) <statement> ... <expr>)
 ; <lambda>            ::= (lambda (<formal> ...) <body>)
+; <await>             ::= (await <expr>) ; ES7
 ; <array-reference>   ::= (ref <expr> <expr> <expr> ...)
 ; <array>             ::= (array <expr> ...)
 ; <dot>               ::= (dot <expr> ...+)
@@ -480,23 +483,26 @@
 ;;; Keywords added in ES6
 (define-syntax const         (λ (stx) (raise-syntax-error 'const       "used out of context" stx)))
 (define-syntax let-decl      (λ (stx) (raise-syntax-error 'let-decl    "used out of context" stx)))
+;;; Keywords added in ES7
+(define-syntax await         (λ (stx) (raise-syntax-error 'await       "used out of context" stx)))
 ;;; Urlang Keywords
 (define-syntax define/async  (λ (stx) (raise-syntax-error 'define/async "used out of context" stx)))
 
 
 ; Note: Remember to provide all keywords
-(define-literal-set keywords (array as all-as begin block break catch class continue define default
-                                    do-while dot export
-                                    finally if import import-from object new label lambda λ
-                                    ref return require sempty sif throw topblock try urmodule
-                                    var while :=
-                                    ; ES6 Keywords
-                                    const
-                                    ;
-                                    let-decl   ; let in ES6 (but we have used let for expressions)
-                                    ; Urlang keywords
-                                    define/async let
-                                    ))
+(define-literal-set keywords
+  (array as all-as begin block break catch class continue define default
+         do-while dot export
+         finally if import import-from object new label lambda λ
+         ref return require sempty sif throw topblock try urmodule
+         var while :=
+         ; ES6 Keywords
+         const
+         ; ES7 Keywords
+         await
+         ; Urlang keywords
+         let-decl   ; called let in ES6 (but we have used let for expressions)
+         define/async let))
 (define keyword? (literal-set->predicate keywords))
 
 
@@ -520,6 +526,9 @@
           implements package protected static interface private public
           ; Literals
           null true false))
+
+(define ecma7-reserved-keywords ; incomplete
+  '(async await))
 
 (define (unparse-id x)     (syntax-e x))
 (define (unparse-datum d)  d)
@@ -615,6 +624,7 @@
     (if e0 e1 e2)                       ; ternary
     (let ((x e) ...) b)                 ; local binding
     (lambda (φ ...) b)                  ; anonymous function
+    (await e)                           ; await a promise
     (quote d)                           ; quotation (the parser quotes all datums)
     (ref e0 e1 e* ...)                  ; reference to array index
     (array e ...)                       ; array constructor
@@ -726,6 +736,10 @@
   (pattern (~or (lambda (x ...) body:Body)
                 (λ      (x ...) body:Body))))
 
+(define-syntax-class Await
+  #:literal-sets (keywords)
+  (pattern (await ae:Expr)))
+
 (define-syntax-class Statement
   #:literal-sets (keywords)
   (pattern (~or m:Expr
@@ -813,6 +827,7 @@
                 e:Assignment
                 e:Let
                 el:Lambda
+                e:Await
                 e:ArrayReference
                 e:Array
                 e:New
@@ -1241,6 +1256,16 @@
                
                `(lambda (,φ ...) ,b)))))])))
 
+(define (parse-await a)
+  (debug (list 'await (syntax->datum a)))
+  (with-output-language (Lur Expr)
+    (syntax-parse a
+      #:literal-sets (keywords)
+      [(_await e)
+       (let ([e (parse-expr #'e)])
+         `(await ,e))])))
+  
+
 (define (parse-formal φ)
   (with-output-language (Lur Formal)
     (syntax-parse φ
@@ -1275,6 +1300,7 @@
       [(~and a  (:=    . _))                  (parse-assignment  #'a)]
       [(~and l  (let   . _))                  (parse-let         #'l)]
       [(~and la (~or (lambda . _) (λ . _)))   (parse-lambda      #'la)]
+      [(~and aw (await . _))                  (parse-await       #'aw)]
       [(~and o  (object . _))                 (parse-object      #'o)]
       [(~and ar (ref . _))                    (parse-array-reference #'ar)]
       [(~and ac (array . _))                  (parse-array       #'ac)]
@@ -2119,6 +2145,7 @@
                                               (~parens (~commas e)))))]
     [(lambda (,x ...) ,ab)   (let ((ab (AnnotatedBody ab)))
                                (~parens "function" (~parens (~commas x)) ab))]
+    [(await ,e)              (list "await " (Expr e))]
     [(array ,e ...)          (~brackets (~commas (map Expr e)))]
     [(new ,x ,e ...)         (~parens "new" " " x (~parens (~commas (map Expr e))))]
     [(object (,pn* ,e*) ...) (~braces (~commas (for/list ([pn pn*] [e e*])
@@ -2344,7 +2371,9 @@
       (λ ()
         (define p (if (string? path) path (path->string path)))
         (parameterize ([current-subprocess-custodian-mode 'kill])
-          (system (string-append "/usr/local/bin/node --use-strict --harmony" " " p))))))
+          (system (string-append "/usr/local/bin/node --use-strict"
+                                 ; "/usr/local/bin/node --use-strict --harmony" ; for 7.6.0 (TCO)
+                                 " " p))))))
 
 ;;;
 ;;; EVAL
