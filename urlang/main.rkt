@@ -48,8 +48,8 @@
 (provide keywords) ; a literal set
 (provide all-as array as begin block break catch class continue define default do-while dot export
          finally if import import-from
-         label lambda λ let new object ref return require sempty sif throw topblock try urmodule
-         var while :=)
+         label lambda λ let new object ref return require sempty sif spread
+         throw topblock try urmodule var while :=)
 ; Keywords from ES6
 (provide const let-decl)
 ; Keywrods from ES7
@@ -301,7 +301,7 @@
 
 ; <expr>              ::= <datum>   | <reference> | <application> | <sequence>
 ;                      |  <ternary> | <assignment> | <let> | <lambda> | <await> | <dot> | <object>
-;                      |  <array-reference> | <array> | <class>
+;                      |  <array-reference> | <array> | <class> | <spread>
 ; <ternary>           ::= (if <expr> <expr> <expr>)
 ; <reference>         ::= x
 ; <application>       ::= (<expr> <expr> ...)
@@ -309,6 +309,7 @@
 ; <assignment>        ::= (:= x <expr>) | (:= x <expr> <expr>)
 ; <let>               ::= (let ((x <expr>) ...) <statement> ... <expr>)
 ; <lambda>            ::= (lambda (<formal> ...) <body>)
+; <async-lambda>      ::= (async <lambda>)
 ; <await>             ::= (await <expr>) ; ES7
 ; <array-reference>   ::= (ref <expr> <expr> <expr> ...)
 ; <array>             ::= (array <expr> ...)
@@ -316,6 +317,7 @@
 ; <new>               ::= (new <constructor-id> <expr> ...)
 ; <object>            ::= (object (<property-name> <expr>) ...)
 ; <class>             ::= (class <class-heritage> ((<property-name> x ...) <body>)) ...)
+; <spread>            ::= (spread <expr>)
 ; <class-heritage>    ::= x | (x x)
 ; <property-name>     ::= x | <keyword> | <string> | <number>
 
@@ -473,6 +475,7 @@
 (define-syntax return        (λ (stx) (raise-syntax-error 'return      "used out of context" stx)))
 (define-syntax sempty        (λ (stx) (raise-syntax-error 'sempty      "used out of context" stx)))
 (define-syntax sif           (λ (stx) (raise-syntax-error 'sif         "used out of context" stx)))
+(define-syntax spread        (λ (stx) (raise-syntax-error 'spread      "used out of context" stx)))
 (define-syntax throw         (λ (stx) (raise-syntax-error 'throw       "used out of context" stx)))
 (define-syntax topblock      (λ (stx) (raise-syntax-error 'topblock    "used out of context" stx)))
 (define-syntax try           (λ (stx) (raise-syntax-error 'try         "used out of context" stx)))
@@ -485,6 +488,9 @@
 (define-syntax let-decl      (λ (stx) (raise-syntax-error 'let-decl    "used out of context" stx)))
 ;;; Keywords added in ES7
 (define-syntax await         (λ (stx) (raise-syntax-error 'await       "used out of context" stx)))
+(define-syntax async         (λ (stx) (raise-syntax-error 'async       "used out of context" stx)))
+; Note: async is technically not a reserved word in ES7.
+
 ;;; Urlang Keywords
 (define-syntax define/async  (λ (stx) (raise-syntax-error 'define/async "used out of context" stx)))
 
@@ -497,9 +503,9 @@
          ref return require sempty sif throw topblock try urmodule
          var while :=
          ; ES6 Keywords
-         const
+         const spread
          ; ES7 Keywords
-         await
+         await async
          ; Urlang keywords
          let-decl   ; called let in ES6 (but we have used let for expressions)
          define/async let))
@@ -632,6 +638,7 @@
     (object (pn e) ...)                 ; object literal
     (class (x)     (pn e) ...)      ; class : Restriction: e is a lambda-expression
     (class (x0 x1) (pn e) ...)      ; class
+    (spread e)
     (dot e pn)))                        ; property access
 
 ; <class>             ::= (class x class-heritage? ((<property-name> x ...) <body>)) ...)
@@ -1264,6 +1271,15 @@
       [(_await e)
        (let ([e (parse-expr #'e)])
          `(await ,e))])))
+
+(define (parse-spread e)
+  (debug (list 'spread (syntax->datum e)))
+  (with-output-language (Lur Expr)
+    (syntax-parse e
+      #:literal-sets (keywords)
+      [(_spread e)
+       (let ([e (parse-expr #'e)])
+         `(spread ,e))])))
   
 
 (define (parse-formal φ)
@@ -1306,6 +1322,7 @@
       [(~and ac (array . _))                  (parse-array       #'ac)]
       [(~and do (dot . _))                    (parse-dot         #'do)]
       [(~and c  (class . _))                  (parse-class       #'c)]
+      [(~and sp (spread . _))                 (parse-spread      #'sp)]
       [(~and n  (new . _))                    (parse-new         #'n)]
       [(~and a  (e ...)
              (~not (k:keyword . _)))          (parse-application #'a)]
@@ -2146,6 +2163,7 @@
     [(lambda (,x ...) ,ab)   (let ((ab (AnnotatedBody ab)))
                                (~parens "function" (~parens (~commas x)) ab))]
     [(await ,e)              (list "await " (Expr e))]
+    [(spread ,e)             (list "..." (Expr e))]
     [(array ,e ...)          (~brackets (~commas (map Expr e)))]
     [(new ,x ,e ...)         (~parens "new" " " x (~parens (~commas (map Expr e))))]
     [(object (,pn* ,e*) ...) (~braces (~commas (for/list ([pn pn*] [e e*])
