@@ -317,7 +317,7 @@
 ; <new>               ::= (new <constructor-id> <expr> ...)
 ; <object>            ::= (object (<property-name> <expr>) ...)
 ; <class>             ::= (class <class-heritage> ((<property-name> x ...) <body>)) ...)
-; <spread>            ::= (spread <expr>)
+; <spread>            ::= (spread <expr>) ; only in applications
 ; <class-heritage>    ::= x | (x x)
 ; <property-name>     ::= x | <keyword> | <string> | <number>
 
@@ -1622,7 +1622,6 @@
 
 
 
-
 ;;;
 ;;; URLANG ANNOTATED MODULE 
 ;;;
@@ -2158,10 +2157,15 @@
     [(:= ,x ,e0 ,e1)        (let ((e0 (Expr e0)) (e1 (Expr e1)))
                               (~parens x (~brackets e0) "=" e1))]
     [(let ((,x ,e) ...) ,ab) (let ((e (map Expr e)) (ab (AnnotatedBody ab)))
-                               (list (~parens (~parens "function" (~parens (~commas x)) ab)
-                                              (~parens (~commas e)))))]
+                               (if (current-use-arrows-for-let?)
+                                   (~parens (~parens (~parens (~commas x)) " => " ab)
+                                            (~parens (~commas e)))
+                                   (list (~parens (~parens "function" (~parens (~commas x)) ab)
+                                                  (~parens (~commas e))))))]
     [(lambda (,x ...) ,ab)   (let ((ab (AnnotatedBody ab)))
-                               (~parens "function" (~parens (~commas x)) ab))]
+                               (if (current-use-arrows-for-lambda?)
+                                   (~parens (~parens (~commas x)) " => " ab)         ; ES6
+                                   (~parens "function" (~parens (~commas x)) ab)))]  ; ES5
     [(await ,e)              (list "await " (Expr e))]
     [(spread ,e)             (list "..." (Expr e))]
     [(array ,e ...)          (~brackets (~commas (map Expr e)))]
@@ -2436,6 +2440,10 @@
 ;;;
 ;;; COMPILATION
 ;;;
+
+; 
+(define current-use-arrows-for-lambda?                (make-parameter #t))
+(define current-use-arrows-for-let?                   (make-parameter #t))
 
 (define current-urlang-output-file                    (make-parameter #f))
 (define current-urlang-exports-file                   (make-parameter #f))
