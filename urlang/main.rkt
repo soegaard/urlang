@@ -41,6 +41,8 @@
          current-urlang-beautify?                       ; process output with js-beautify ?
          current-urlang-babel?                          ; process output with babel ?
          current-urlang-rollup?                         ; generate code suitable for rollup
+
+         current-use-arrows-for-lambda?                 ; use ES6 arrows for lambdas
          )
 
 
@@ -2170,8 +2172,12 @@
     [(spread ,e)             (list "..." (Expr e))]
     [(array ,e ...)          (~brackets (~commas (map Expr e)))]
     [(new ,x ,e ...)         (~parens "new" " " x (~parens (~commas (map Expr e))))]
-    [(object (,pn* ,e*) ...) (~braces (~commas (for/list ([pn pn*] [e e*])
-                                                 (list (~property-name pn) ":" (Expr e)))))]
+    [(object (,pn* ,e*) ...) (parameterize ([current-use-arrows-for-lambda? #f])
+                               ; Arrow notations does not work in object literals,
+                               ; in the browser they get passed a `Window` instead
+                               ; of the the correct this.
+                               (~braces (~commas (for/list ([pn pn*] [e e*])
+                                                   (list (~property-name pn) ":" (Expr e))))))]
     [(class (,x)
        [,pn* ,e*] ...)     (list "class " x                     (~braces (map ~ClassMethod pn* e*)))]
     [(class (,x0 ,x1)

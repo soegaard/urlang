@@ -1,5 +1,4 @@
 #lang racket/base
-
 ;; The #lang scribble/html language offers a nice solution for
 ;; constructing html using at-expressions (aka @-syntax).
 
@@ -12,19 +11,22 @@
 ;;; Self-quote identifiers that end with colon.
 
 ; Example:  class: turns into 'class
-(require (only-in scribble/html/main #%top))
+(require (only-in scribble/html/main #%top)
+         (only-in scribble/text/output special?))
+(provide special?) ; specials are used to represent entities such as nbsp
 
 
 ;;; Constructors for all standard html tags: h1, p, ...
 
 (require  (except-in scribble/html var object label block))
+(require  (only-in  scribble/html/extra figcaption))
 (require  (prefix-in html: scribble/html))
 
-; A few of the constructors have names that class with Urlang.
+; A few of the constructors have names that clash with Urlang.
 ; If you need them, then use
 ;     (require (prefix-in your-favorite-prefix var object label block))
 
-; Two standard constructor is missing from scribble/html
+; Two standard constructors is missing from scribble/html
 (define/provide-elements/not-empty footer nav canvas)
 
 
