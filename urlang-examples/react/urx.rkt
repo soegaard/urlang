@@ -66,7 +66,7 @@
 ;; '(foo: "bar")
 ;; '(Foo)
 
-
+(require racket/syntax)
 (define-urlang-macro urx
   (λ (stx)
     ; attributes+body : syntax-list -> ...
@@ -85,32 +85,41 @@
               [else (loop (cddr xs)
                           (cons (cons a-id (cadr xs)) as))])))    
     (define (convert urx-expr)
+      ; (displayln (list 'urx-convert urx-expr))
       (syntax-parse urx-expr
-        #:literals (ur)
+        #:datum-literals (ur)
         [s:string   #'s]
         [n:number   #'n]
+        [i:id       #'i]
+        [b:boolean  #'b]
         [(ur more)  #'more]   ; "unquote" for urx expressions (called mustaches in jsx)
-        [(tag:id atts+body ...)
+        [(tag:id (~optional (~seq #:spread props:id) #:defaults ([props #f]))
+                 atts+body ...)
+         (define ps (attribute props))
          (define-values (atts body)
            (attributes+body (syntax->list #'(atts+body ...))))
          (define tag-str (symbol->string (syntax-e #'tag)))
-         (with-syntax ([tag              (if (char-lower-case? (string-ref tag-str 0))
-                                             tag-str
-                                             #'tag)]
-                       [((id . val) ...) atts]
-                       [(content ...)    (map convert body)])
-           (match body
-             ['() (if (zero? (length atts))
-                      (syntax/loc urx-expr
-                        (React.createElement tag null))
-                      (syntax/loc urx-expr
-                        (React.createElement tag (object [id val] ...))))]
-             [_   (if (zero? (length atts))
-                      (syntax/loc urx-expr
-                        (React.createElement tag null (array content ...)))
-                      (syntax/loc urx-expr
-                        (React.createElement tag (object [id val] ...)
-                                             (array content ...))))]))]))  
+         (with-syntax* ([tag              (if (char-lower-case? (string-ref tag-str 0))
+                                              tag-str
+                                              #'tag)]
+                        [((id . val) ...) atts]
+                        [(val ...)        (map convert (syntax->list #'(val ...)))]
+                        [(content ...)    (map convert body)])
+           (with-syntax
+             ([atts-expr
+               (cond [(and (zero? (length atts)) (not ps)) #'null]
+                     [(and (zero? (length atts))      ps)  ps]
+                     [(not ps)                             #'(object [id val] ...)]
+                     [else
+                      (with-syntax ([props ps])
+                        ; TODO change assign here to something that works ...
+                        #'(Object.assign (object) (object [id val] ...) props))])])
+                               
+             (match body
+               ['() (syntax/loc urx-expr
+                      (React.createElement tag atts-expr))]
+               [_   (syntax/loc urx-expr
+                      (React.createElement tag atts-expr (array content ...)))])))]))
     (syntax-parse stx
       [(_urx urx-expr)
        (define out (convert #'urx-expr))
