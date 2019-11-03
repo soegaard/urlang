@@ -522,7 +522,8 @@
           ; class
           catch const continue debugger
           default 
-          delete do else export extends finally for function if import in instanceof let
+          ; delete ; allow delete expressions
+          do else export extends finally for function if import in instanceof let
           new return
           ; super ; HACK temporarily allow (import ... super ...)
           switch
@@ -731,7 +732,8 @@
 
 (define-syntax-class Assignment
   #:literal-sets (keywords)
-  (pattern (:= x4:Id e4:Expr)))
+  (pattern (~or (:= x4:Id e4:Expr)
+                (:= x4:Id e4:Expr e5:expr))))
 
 (define-syntax-class Definition
   #:literal-sets (keywords)
@@ -1964,6 +1966,7 @@
     ; (displayln (global-variables))
     (for ([v (global-variables)])
       (global! v))
+    (global! #'null)  ; Javascript null is a keyword (always available)
     ; (global! #'unsafe-fx<)
     ; Also we need `else` to be know for use in macros
     (Module U)))
@@ -2312,7 +2315,7 @@
     [bit-xor  "^"]
     [bit-not  "~"]
     [void     "Void"]
-    [null     "Null"]
+    [null     "null"] ; TODO: does this affect the rjs compiler?
     ; handle characters like ? - / etc in identifiers
     [_   (substitute (syntax-e id))]))
 
