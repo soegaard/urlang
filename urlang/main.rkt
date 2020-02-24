@@ -292,9 +292,9 @@
 ; <break>             ::= (break)    | (break l)
 ; <continue>          ::= (continue) | (continue l)
 ; <return>            ::= (return)   | (return e)
-; <try>               ::= (try <block> <catch>)
-;                      |  (try <block> <finally>)
-;                      |  (try <block> <catch> <finally>)
+; <try>               ::= (try (<statement> ...) <catch>)
+;                      |  (try (<statement> ...) <finally>)
+;                      |  (try (<statement> ...) <catch> <finally>)
 ; <catch>             ::= (catch   x <statement> ...)
 ; <finally>           ::= (finally <statement> ...)
 ; <throw>             ::= (throw <expr>)
@@ -764,7 +764,9 @@
                 b:Break
                 c:Continue
                 r:Return
-                la:Label)))
+                la:Label
+                t:Try)))
+
 
 (define-syntax-class Block
   #:literal-sets (keywords)
@@ -798,6 +800,16 @@
 (define-syntax-class Label
   #:literal-sets (keywords)
   (pattern (label x:Id σ:Statement ...)))
+
+(define-syntax-class Try
+  #:literal-sets (keywords)
+  (pattern (~or (try {σ:Statement ...}
+                     (catch x:Id cσ:Statement ...)
+                     (finally fσ:Statement ...))
+                (try {σ:Statement ...}
+                     (finally fσ:Statement ...))
+                (try {σ:Statement ...}
+                     (catch x:Id cσ:Statement ...)))))
 
 (define-syntax-class If
   #:literal-sets (keywords)
