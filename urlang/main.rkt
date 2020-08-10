@@ -2234,7 +2234,7 @@
                                                           'generate-code
                                                           "operator is not unary")]
                                 [(list (? unary?) e1)    (match sym
-                                                           [(or '+ '*) (~parens e1)]
+                                                           [(or '+ '* 'and 'or) (~parens e1)]
                                                            [_          (~parens f e1)])]
                                 [(list (? infix?) e1)    (raise-syntax-error
                                                           'generate-code
