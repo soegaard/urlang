@@ -15,6 +15,7 @@
                      "net-lib"
                      "rackunit-lib"
                      "scribble-html-lib"
+                     "scribble-text-lib"
                      "srfi-lite-lib"
                      "web-server-lib"))
 
