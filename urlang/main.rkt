@@ -59,7 +59,7 @@
 ; Urlang Keywords
 (provide define/async) ; ES7 
 
-(provide bit-and bit-not bit-or bit-xor ===)
+(provide bit-and bit-not bit-or bit-xor === !==)
 ;; Compiler 
 (provide compile          ; syntax -> *         prints JavaScript
          eval)            ; syntax -> string    compiles, saves, runs
@@ -2264,6 +2264,7 @@
 (define-syntax bit-xor (λ (stx) (raise-syntax-error 'bit-xor "used out of context" stx)))
 (define-syntax bit-not (λ (stx) (raise-syntax-error 'bit-not "used out of context" stx)))
 (define-syntax ===     (λ (stx) (raise-syntax-error '===     "used out of context" stx)))
+(define-syntax !==     (λ (stx) (raise-syntax-error '!==     "used out of context" stx)))
 
 (require syntax/id-table racket/syntax)
 (define bound-ids (make-bound-id-table))
@@ -2304,13 +2305,14 @@
   ; (displayln (list "  " 'mangle 'id (syntax-e id) 'id* (syntax-e id*)))
   ; (set! id id*)  
   (syntax-parse id
-    #:literals (and or not = === bit-and bit-or bit-xor bit-not < > <= >= + - * / void null)
+    #:literals (and or not = === !== bit-and bit-or bit-xor bit-not < > <= >= + - * / void null)
     ;; Take care of JavaScript operators first
     ;;  - assignment operators
     [ao:AssignmentOperator (symbol->string (syntax-e #'ao))]
     ;;  - infix operators
     [=       "==="]
     [===     "==="]
+    [!==     "!=="]
     [<       "<"]
     [>       ">"]
     [<=      "<="]
