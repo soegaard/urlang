@@ -308,7 +308,8 @@
 ; <reference>         ::= x
 ; <application>       ::= (<expr> <expr> ...)
 ; <sequence>          ::= (begin <expr> ...)
-; <assignment>        ::= (:= x <expr>) | (:= x <expr> <expr>)
+; <assignment>        ::= (:= x <expr>) | (:= x <expr> <expr>) | (:= (dot <expr> <property-name> ...) <expr>)
+; Note: If x in (:= x <expr>) contains periods, it will be parse as  (:= (dot parts-of-x ...) <expr>)
 ; <let>               ::= (let ((x <expr>) ...) <statement> ... <expr>)
 ; <lambda>            ::= (lambda (<formal> ...) <body>)
 ; <async-lambda>      ::= (async <lambda>)
@@ -624,11 +625,15 @@
     (label l σ)
     (try (σ ...) cf)
     (throw e))
+  (LeftHand (lh)
+    x 
+    (dot e0 pn ...))                     ; dotted identifier
   (Expr (e)
     x                                   ; reference
     (app e0 e ...) => (e0 e ...)        ; application
-    (:= x e)                            ; assignment    x = e
+    ; (:= x e)                          ; assignment    x = e
     (:= x e0 e1)                        ; assignment    x[e0] = e1
+    (:= lh e0)                          ; assignment    lh = e1
     (begin e ...)                       ; sequence
     (if e0 e1 e2)                       ; ternary
     (let ((x e) ...) b)                 ; local binding
@@ -730,10 +735,20 @@
   #:literal-sets (keywords)
   (pattern (if e0:Expr e1:Expr e2:Expr)))
 
+
+(define-syntax-class LeftHandIdentifier
+  (pattern x:Id))
+
+(define-syntax-class LeftHand
+  #:literal-sets (keywords)
+  (pattern x:LeftHandIdentifier)
+  (pattern (dot e:Expr pn:PropertyName ...)))
+
 (define-syntax-class Assignment
   #:literal-sets (keywords)
-  (pattern (~or (:= x4:Id e4:Expr)
-                (:= x4:Id e4:Expr e5:expr))))
+  (pattern (~or #;(:= x4:Id e4:Expr)
+                (:= x4:Id e4:Expr e5:expr)
+                (:= lh:LeftHand e5:Expr))))
 
 (define-syntax-class Definition
   #:literal-sets (keywords)
@@ -840,6 +855,7 @@
 
 (define-splicing-syntax-class Body
   (pattern (~seq σ:Statement ... b:Expr)))
+
 
 (define-syntax-class Expr
   (pattern (~or e:Datum
@@ -1316,6 +1332,43 @@
              (σ (stx-map parse-statement #'(σ ...))))
          `(body ,σ ... ,e))])))
 
+(define (parse-identifier-left-hand x)
+  (debug (list 'parse-identifier-left-hand (syntax->datum x)))
+  (with-output-language (Lur LeftHand)
+    (syntax-parse x
+      #:literal-sets (keywords)
+      [x:Id
+       (match (regexp-split #rx"[.]" (symbol->string (syntax-e #'x)))
+         [(list _) `,#'x]       ; standard left hand identifier
+         [(list p ...)  ; y.p is short for y["p"]
+          (with-syntax ([(p ...)  (map (λ (p) (format-id #'x p #:source #'x)) p)])
+            (parse-dotted-left-hand #'(dot p ...)))])])))
+
+(define (parse-dotted-left-hand lh)
+  ; parse left hand side of assignment of the form (dot e pn ...).
+  ; Note: The input syntax is (dot e ...) but the output have (dot e pn) forms only.
+  (debug (list 'parse-dotted-left-hand (syntax->datum lh)))
+  (with-output-language (Lur LeftHand)
+    (syntax-parse lh
+      #:literal-sets (keywords)
+      [(dot e0)                       (parse-left-hand #'e0)]
+      ; [(dot e0 pn:PropertyName)        `(dot ,(parse-expr #'e0) ,pn)]
+      [(dot e0 pn:PropertyName ...)   (let ([pn (syntax->list #'(pn ...))])
+                                        `(dot ,(parse-expr #'e0) ,pn ...))]
+      [_ ; (dot)
+       (raise-syntax-error 'parse-dot (~a "expected a dot expression, got " lh) lh)])))
+
+(define (parse-left-hand lh)
+  ; parse left hand side of assignment
+  (debug (list 'parse-left-hand (syntax->datum lh)))
+  (syntax-parse lh
+    #:literal-sets (keywords)
+    [x:LeftHandIdentifier  (parse-identifier-left-hand #'x)]
+    [(~and lh  (dot . _))  (parse-dotted-left-hand #'lh)]
+    [_ (raise-syntax-error 'parse-left-hand (~a "expected an left hand side of an assignment, got " lh) lh)]))
+
+
+
 (define (parse-expr e [context-parse parse-expr] [parent-context 'expression])
   (debug (list 'parse-expr (syntax->datum e)))
   (parameterize ([macro-expansion-context 'expression])
@@ -1454,13 +1507,15 @@
   (with-output-language (Lur Expr)
     (syntax-parse a
       #:literal-sets (keywords)
-      [(:= x:Id e)
-       (let ((e (parse-expr #'e)))
-         `(:= ,#'x ,e))]
-      [(:= x:Id e0 e1)
-       (let ((e0 (parse-expr #'e0))
-             (e1 (parse-expr #'e1)))
-         `(:= ,#'x ,e0 ,e1))])))
+      [(:= lh:LeftHand e)
+       (let ((lh (parse-left-hand #'lh))
+             (e (parse-expr #'e)))
+         `(:= ,lh ,e))]
+      ; Backward compatibility
+       [(:= x:Id e0 e1)
+        (let ((e0 (parse-expr #'e0))
+              (e1 (parse-expr #'e1)))
+          `(:= ,#'x ,e0 ,e1))])))
 
 (define (parse-ternary t)
   (debug (list 'parse-ternary (syntax->datum t)))
@@ -1567,7 +1622,8 @@
         [(topblock ,m ...)            (append-map flatten m)]        
         [,δ                           (list δ)]
         [,σ                           (list σ)])))
-  (Statement  : Statement  (σ) ->  Statement ())
+  (Statement  : Statement  (σ)  ->  Statement ())
+  (LeftHand   : LeftHand   (lh) ->  LeftHand  ())
   (ModuleLevelForm : ModuleLevelForm  (m) ->  ModuleLevelForm ()
     [(topblock ,m ...) (append-map flatten m)])
   (Module : Module (u) -> Module ()
@@ -1962,8 +2018,10 @@
   (Expr : Expr (e ρ) -> Expr ()
     ; all expressions that contain an id (x or f) needs consideration
     [,x                         (lookup x ρ unbound-error)]
-    [(:= ,x ,[e])               (let ((y (lookup x ρ unbound-error))) `(:= ,y ,e))]
+    ; [(:= ,x ,[e])               (let ((y (lookup x ρ unbound-error))) `(:= ,y ,e))]
+    [(:= ,lh ,[e])               `(:= ,(LeftHand lh ρ) ,e)]
     [(:= ,x ,[e0] ,[e1])        (let ((y (lookup x ρ unbound-error))) `(:= ,y ,e0 ,e1))]
+
     [(let ((,x ,[e]) ...) ,ab)  (letv ((x ρ) (rename* x ρ))  ; map x to x
                                   (let ([ab (AnnotatedBody ab ρ)])
                                     `(let ((,x ,e) ...) ,ab)))]
@@ -1972,6 +2030,11 @@
                                     `(lambda (,x ...) ,ab)))]
     [(new ,x ,[e] ...)          (let ((y (lookup x ρ unbound-error)))
                                   `(new ,y ,e ...))])
+
+  (LeftHand : LeftHand (lh ρ) -> LeftHand ()
+   [,x                         (lookup x ρ unbound-error)]
+   [(dot ,e ,pn* ...)          `(dot ,(Expr e ρ) ,pn* ...)])
+
   (let ()
     ; See explanation in "globals.rkt" and in compiler3.rkt
     ; (displayln "alpha-rename (in urlang/main)")
@@ -2148,6 +2211,13 @@
   (AnnotatedBody : AnnotatedBody (ab) -> * ()
     [(annotated-body (,x ...) ,σ ... ,e) (let ((σ (map Statement σ)) (e (Expr e)))
                                            (~braces σ (~Return e)))])
+  (LeftHand : LeftHand (e) -> * ()
+    [,x                x]
+    [(dot ,e ,pn* ...) (let ((e (Expr e)))
+                         (list (~parens e)
+                               (map (λ (pn) (~brackets (list "\"" pn "\"")))
+                                    pn*)))])
+
   (Expr : Expr (e) -> * ()
     [,x x]
     [(quote ,d)             (cond
@@ -2169,10 +2239,14 @@
                               (~parens e0 "?" e1 ":" e2))]
     [(begin ,e ...)         (let ((e (map Expr e)))
                               (~parens (~commas e)))]
-    [(:= ,x ,e)             (let ((e (Expr e)))
-                              (~parens x "=" e))]
+    ;; [(:= ,x ,e)             (let ((e (Expr e)))
+    ;;                           (~parens x "=" e))]
+    [(:= ,lh ,e)            (let ((e (Expr e)))
+                              (~parens (LeftHand lh) "=" e))]
+    ; Backward compatibility
     [(:= ,x ,e0 ,e1)        (let ((e0 (Expr e0)) (e1 (Expr e1)))
                               (~parens x (~brackets e0) "=" e1))]
+    
     [(let ((,x ,e) ...) ,ab) (let ((e (map Expr e)) (ab (AnnotatedBody ab)))
                                (if (current-use-arrows-for-let?)
                                    (~parens (~parens (~parens (~commas x)) " => " ab)
