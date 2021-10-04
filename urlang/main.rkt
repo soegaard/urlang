@@ -715,7 +715,7 @@
 
 (define-syntax-class Array
   #:literal-sets (keywords)
-  (pattern (array e:Expr ...)))
+  (pattern (array e:ArrayExpr ...)))
 
 (define-syntax-class MacroApplication
   #:literal-sets (keywords)
@@ -872,6 +872,16 @@
                 e:New
                 e:Object
                 e:Dot)))
+
+; Note: Spread expressions are only legal with array expressions or
+;       in destructuring arguments.
+(define-syntax-class Spread
+  #:literal-sets (keywords)
+  (pattern (spread se:Expr)))
+
+(define-syntax-class ArrayExpr
+  (pattern (~or e:Spread
+                e:Expr)))
 
 (define-syntax-class New
   #:literal-sets (keywords)
