@@ -2156,10 +2156,12 @@
     [(default ,x) (if (current-use-es6-export?)
                       (~Statement "export default " x)
                       '())]
-    [(,x1 ,x2)     (if (current-use-es6-export?)
-                       (~Statement "export " (~braces x1 " as " x2))
-                       '())]
-    [,x           (if (current-use-es6-export?)
+    [(,x1 ,x2)    (current-exports (cons x2 (current-exports)))
+                  (if (current-use-es6-export?)
+                      (~Statement "export " (~braces x1 " as " x2))
+                      '())]
+    [,x           (current-exports (cons x (current-exports)))
+                  (if (current-use-es6-export?)
                       (~Statement "export " (~braces x))
                       '())])
   (Annotation : Annotation (an type) -> * ()
@@ -2189,13 +2191,19 @@
                          ['require (map RequireSpec rs)]
                          [_        '()])])
   (RequireSpec : RequireSpec (rs) -> * ()
-    [,mn (define imports (urmodule-name->exports mn))
-         (define i (import-counter++))
-         (let ([mn.js (urmodule-name->js-file-name mn)])
-           (list (~newline (~Statement `(var "MODULE" ,i " = require(\"./" ,mn.js "\")")))
-                 (for/list ([x imports]) 
-                   (let ([x (mangle (datum->syntax #'ignored x))]) ; mangle expects ids (not symbols)
-                     (~newline (~Statement `(var ,x ,(~a " = MODULE"i"[\"" x "\"]"))))))))])    
+    [,mn (define mn.js (urmodule-name->js-file-name mn))
+         (define imports (urmodule-name->exports mn))
+         (define mangled-imports
+           (for/list ([x imports]) 
+             (mangle (datum->syntax #'ignored x)))) ; mangle expects ids (not symbols)
+         (cond
+           [(current-use-es6-export?)
+            (~newline (~Statement "import " (~braces (~commas mangled-imports)) " from " (~string (~a "./" mn.js))))]
+           [else
+            (define i (import-counter++))
+            (list (~newline (~Statement `(var "MODULE" ,i " = require(\"./" ,mn.js "\")")))
+                  (for/list ([x mangled-imports]) 
+                    (~newline (~Statement `(var ,x ,(~a " = MODULE"i"[\"" x "\"]"))))))])])
   (ModuleLevelForm : ModuleLevelForm (m) -> * ()
     [(import-from ,js-mn ,is* ...) (parameterize ([current-js-import-module-name js-mn])
                                      (map ImportSpec  is*))]
