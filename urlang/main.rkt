@@ -43,6 +43,7 @@
          current-urlang-rollup?                         ; generate code suitable for rollup
 
          current-use-arrows-for-lambda?                 ; use ES6 arrows for lambdas
+         current-use-es6-export?                        ; use ES6 syntax for exports 
          )
 
 
@@ -59,7 +60,7 @@
 ; Urlang Keywords
 (provide define/async) ; ES7 
 
-(provide bit-and bit-not bit-or bit-xor === !==)
+(provide bit-and bit-not bit-or bit-xor === !== ==)
 ;; Compiler 
 (provide compile          ; syntax -> *         prints JavaScript
          eval)            ; syntax -> string    compiles, saves, runs
@@ -265,10 +266,11 @@
 
 ; <module-level-form> ::= <export> | <import> | <import-from> | <require>
 ;                      |  <definition> | <statement> | <topblock>
-; <export>            ::= (export x ...)
+; <export>            ::= (export <export-spec> ...)
 ; <import>            ::= (import x ...)
 ; <import-from>       ::= (import-from <string-literal> <import-spec> ...)
 ; <import-spec>       ::= x | (as x x) | (all-as x) | (default x)
+; <export-spec>       ::= x | (as x x) | (default x)
 ; <require>           ::= (require <require-spec> ...)
 ; <topblock>          ::= (topblock <module-level-form> ...)
 ; <definition>        ::= (define       (f <formal> ...) <body>)
@@ -575,7 +577,7 @@
   (Module (u)
     (urmodule mn m ...))
   (ModuleLevelForm (m)
-    (export  x ...)        
+    (export  es ...)
     (import  x ...)              ; declare that x ... are declared (builtin or required from Node)
     (import-from js-mn is ...)   ; ES6:   import {is ...} from the module named js-mn (string literal)
     (require rs ...)             ; import from modules compiled by urlang
@@ -591,6 +593,10 @@
     (as x1 x2)               ; the member x1 using the name x2 locally
     (all-as x)               ; import all using the name x
     x)                       ; the member named x             
+  (ExportSpec (es)
+    (default x)              ; make x the default export
+    (as x1 x2)               ; export x1 under the name x2
+    x)                       ; export x
   (Definition (δ)
     (define a (f φ ...) b) ; function definition (async is #t or #f)
     (define x e))
@@ -901,7 +907,7 @@
 
 (define-syntax-class Export
   #:literal-sets (keywords)
-  (pattern (export x:Id ...)))
+  (pattern (export ean ...))) ; todo: add ExportSpec here
 
 (define-syntax-class Import
   #:literal-sets (keywords)
@@ -984,9 +990,9 @@
   (with-output-language (Lur ModuleLevelForm)
     (syntax-parse ex
       #:literal-sets (keywords)
-      [(export x:Id ...)
-       (let ([x (syntax->list #'(x ...))])
-         `(export ,x ...))])))
+      [(export es* ...)
+       (let ([es* (map parse-export-spec (syntax->list #'(es* ...)))])
+         `(export ,es* ...))])))
 
 (define (parse-import im)
   (with-output-language (Lur ModuleLevelForm)
@@ -1015,6 +1021,17 @@
        `(as ,#'x1 ,#'x2)]
       [(all-as x:NonECMA6ReservedKeyword)
        `(all-as ,#'x)]
+      [x:NonECMA6ReservedKeyword
+       `,#'x])))
+
+(define (parse-export-spec es)
+  (with-output-language (Lur ExportSpec)
+    (syntax-parse es
+      #:literal-sets (keywords)
+      [(default x:NonECMA6ReservedKeyword)
+       `(default ,#'x)]
+      [(as x1:NonECMA6ReservedKeyword x2:NonECMA6ReservedKeyword)
+       `(as ,#'x1 ,#'x2)]
       [x:NonECMA6ReservedKeyword
        `,#'x])))
 
@@ -1625,7 +1642,7 @@
     (define (flatten m)
       ; (displayln (list 'flatten m))
       (nanopass-case (Lur ModuleLevelForm) m
-        [(export   ,x ...)            (add-form m) '()]
+        [(export   ,es ...)           (add-form m) '()]
         [(import   ,x ...)            (add-form m) '()]
         [(require  ,rs ...)           (add-form m) '()]
         [(import-from ,js-mn ,is ...) (add-form m) '()]
@@ -1713,11 +1730,15 @@
    (- ((id (f x l)) . => . unparse-id))
    (+ ((id (f x l)) . => . unparse-id)))
   (ModuleLevelForm (m)
-    (- (export  x  ...)
+    (- (export  es  ...)
        (import  x  ...)
        (require rs ...)))
   (Annotation (an)
-    (+ (export x0 ...) (import x1 ...) (require rs ...) (funs x2 ...) (vars x3 ...)))
+    (+ (export ean ...) (import x1 ...) (require rs ...) (funs x2 ...) (vars x3 ...)))
+  (ExportAnnotation (ean)
+    (+ x             ; export x
+       (x1 x2)       ; export x1 as x2
+       (default x))) ; make x the default export       
   (Module (u)
     (- (urmodule mn m ...))
     (+ (urmodule mn (an ...) m ...))))
@@ -1763,7 +1784,8 @@
 ;;   * collects all module-level defined variable names
 ;;   * Adds an annotation to the urmodule form
 ;;       (annotation
-;;         (export x ...) (import x ...) (require rs ...) (funs ...) (vars ...))
+;;         (export ean ...) (import x ...) (import-from is ...)
+;;         (require rs ...) (funs ...) (vars ...))
 ;;   * Remove import and export forms from ModuleLevelForm
 
 ;;   * checks that a function f is not declared as global
@@ -1812,18 +1834,28 @@
      (match (for/first ([x (vars)] #:when (fun? x)) x)
        [#f #f] [x  (complain "identifier is declared as a function" x)])
      ;; annotate module
+     (define ean*
+       (with-output-language (L0 ExportAnnotation)
+         (reverse (free-id-table-map
+                   export-ft
+                   (λ (x1 x2)
+                     (cond
+                       [(eq? x2 'default) `(default ,x1)]
+                       [(eq? x1 x2)       `,x1]
+                       [(eq? x2 #t)       `,x1]
+                       [else              `(,x1 ,x2)]))))))
      (let ((m (filter keep? m)))
        (let ((an (with-output-language (L0 Annotation)
-                   (list `(export  ,(exports) ...)
+                   (list `(export  ,ean* ...)
                          `(import  ,(append (predefineds) (operators) (imports)) ...)
                          `(require ,require-specs ...)
                          `(funs    ,(funs)    ...)
                          `(vars    ,(vars)    ...)))))
          `(urmodule ,mn (,an ...) ,m ...)))])
   (ModuleLevelForm : ModuleLevelForm (m) -> ModuleLevelForm ()
-    [(import  ,x ...)             (for-each import! x)            remove-form]
-    [(export  ,x ...)             (for-each export! x)            remove-form]
-    [(require ,rs ...)            (for-each add-require-spec! rs) remove-form]
+    [(import  ,x ...)             (for-each import! x)             remove-form]
+    [(require ,rs ...)            (for-each add-require-spec! rs)  remove-form]
+    [(export  ,es ...)            (for-each ExportSpec es)         remove-form]
     [(import-from ,js-mn ,is ...) (let ([is (map ImportSpec is)])
                                     `(import-from ,js-mn ,is ...))])
   (ImportSpec : ImportSpec (is) -> ImportSpec ()
@@ -1832,6 +1864,12 @@
     [(as ,x1 ,x2) (import! x2) `(as ,x1 ,x2)]
     [(all-as ,x)  (import! x)  `(all-as ,x)]
     [,x           (import! x)  `,x])
+
+  (ExportSpec : ExportSpec (es) -> ExportSpec ()
+    ; This registers variables exported via export from the module-level-scope
+    [(default ,x) (export! x 'default)  `(default ,x)]
+    [(as ,x1 ,x2) (export! x1 x2 )      `(as ,x1 ,x2)]
+    [,x           (export! x)           `,x])
   
   ;; Register variables declared with var/let/const only, when var/let/const is a module-level form.
   ;; All contexts where var/let/const-forms can appear need to change the context.
@@ -2082,17 +2120,18 @@
     (define (convert-string-char c)
       (case c
         [(#\backspace) "\\b"]
-        [(#\page) "\\f"]
-        [(#\newline) "\\n"]
-        [(#\return) "\\r"]
-        [(#\tab) "\\t"]
-        [(#\vtab) "\\v"]
-        [(#\nul) "\\000"]
-        [(#\") "\\\""]
-        [(#\\) "\\\\"]
-        [else (string c)]))
-    (define (~string t)        `("\"" ,@(for/list ([c t])
-                                          (convert-string-char c)) "\""))
+        [(#\page)      "\\f"]
+        [(#\newline)   "\\n"]
+        [(#\return)    "\\r"]
+        [(#\tab)       "\\t"]
+        [(#\vtab)      "\\v"]
+        [(#\nul)       "\\000"]
+        [(#\")         "\\\""]
+        [(#\\)         "\\\\"]
+        [else          (string c)]))
+    (define (~string t)
+      `("\"" ,@(for/list ([c t])
+                 (convert-string-char c)) "\""))
     (define (~property-name t) (define v (syntax-e t)) (if (string? v) (~string v) t))
     (define (~ClassMethod pn e)
       (nanopass-case (L1 Expr) e
@@ -2113,20 +2152,39 @@
                                            (map (λ (an) (Annotation an 'require)) an)
                                            (map ModuleLevelForm m)
                                            (map (λ (an) (Annotation an 'export)) an))])
+  (ExportAnnotation : ExportAnnotation (ean type) -> * ()
+    [(default ,x) (if (current-use-es6-export?)
+                      (~Statement "export default " x)
+                      '())]
+    [(,x1 ,x2)     (if (current-use-es6-export?)
+                       (~Statement "export " (~braces x1 " as " x2))
+                       '())]
+    [,x           (if (current-use-es6-export?)
+                      (~Statement "export " (~braces x))
+                      '())])
   (Annotation : Annotation (an type) -> * ()
+    ; here type is either 'require or 'export (see the call above) in Module.              
     [(import ,x ...)   ""]
     [(funs   ,x ...)   ""]
     [(vars   ,x ...)   ""]
-    [(export ,x* ...) (match type
-                        ['export
-                         ; add the exports to current-exports
-                         ; (emit will then make a modulename.exports)
-                         (current-exports (append x* (current-exports)))
-                         ; export the identifiers using the Node convention
-                         ; (storing exported values in exports)
-                         (for/list ([x x*])
-                           (~newline (~Statement (exports.id x) "=" x)))]
-                        [_ ""])]
+    [(export ,ean* ...) (case type
+                          [(export) (map (λ (ean) (ExportAnnotation ean type)) ean*)]
+                          [else     ""])]
+    ;; [(export ,x* ...)  (match type
+    ;;                     ['export
+    ;;                      ; add the exports to current-exports
+    ;;                      ; (emit will then make a modulename.exports)
+    ;;                      (current-exports (append x* (current-exports)))
+    ;;                      (cond
+    ;;                        [(current-use-es6-export?)
+    ;;                         ; export the identifiers using ES6 syntax
+    ;;                         (~Statement "export " (apply ~braces (~commas x*)))]
+    ;;                        [else
+    ;;                         ; export the identifiers using the Node convention
+    ;;                         ; (storing exported values in exports)
+    ;;                         (for/list ([x x*])
+    ;;                           (~newline (~Statement (exports.id x) "=" x)))])]
+    ;;                        [_ ""])]
     [(require ,rs ...) (match type
                          ['require (map RequireSpec rs)]
                          [_        '()])])
@@ -2389,7 +2447,7 @@
   ; (displayln (list "  " 'mangle 'id (syntax-e id) 'id* (syntax-e id*)))
   ; (set! id id*)  
   (syntax-parse id
-    #:literals (and or not = === !== bit-and bit-or bit-xor bit-not < > <= >= + - * / void null)
+    #:literals (and or not = == === !== bit-and bit-or bit-xor bit-not < > <= >= + - * / void null)
     ;; Take care of JavaScript operators first
     ;;  - assignment operators
     [ao:AssignmentOperator (symbol->string (syntax-e #'ao))]
@@ -2397,6 +2455,7 @@
     [=       "==="]
     [===     "==="]
     [!==     "!=="]
+    [==      "=="]
     [<       "<"]
     [>       ">"]
     [<=      "<="]
@@ -2551,6 +2610,9 @@
 ; 
 (define current-use-arrows-for-lambda?                (make-parameter #t))
 (define current-use-arrows-for-let?                   (make-parameter #t))
+(define current-use-es6-export?                       (make-parameter #t)) 
+; #t = use ES6 syntax for modules exports,
+; #f = use "old" module convention
 
 (define current-urlang-output-file                    (make-parameter #f))
 (define current-urlang-exports-file                   (make-parameter #f))
@@ -2639,7 +2701,8 @@
            (when (current-urlang-echo?)
              ;; Display result on screen
              (with-input-from-file js-path
-               (λ() (copy-port (current-input-port) (current-output-port)))))
+               (λ() (copy-port (current-input-port) (current-output-port))))
+             (newline))
            (when (current-urlang-run?)
              ;; Run the resulting program using Node
              (node/break js-path)))
