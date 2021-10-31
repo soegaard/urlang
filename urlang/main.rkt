@@ -498,6 +498,7 @@
 
 ;;; Urlang Keywords
 (define-syntax define/async  (λ (stx) (raise-syntax-error 'define/async "used out of context" stx)))
+; (define-syntax only-in       (λ (stx) (raise-syntax-error 'only-in      "used out of context" stx)))
 
 
 ; Note: Remember to provide all keywords
@@ -513,7 +514,9 @@
          await async
          ; Urlang keywords
          let-decl   ; called let in ES6 (but we have used let for expressions)
-         define/async let))
+         define/async let
+         only-in
+         ))
 (define keyword? (literal-set->predicate keywords))
 
 
@@ -586,8 +589,10 @@
     δ σ)                         ; definition or statement
   (RequireSpec (rs)
     mn                       ; import all exported identifers from the module with module name mn
-    #;(only-in   mn x ...)   ; import x ... from the module named mn
-    #;(except-in mn x ...))  ; import all exported identifiers from the module named mn except x ...
+    (only-in   mn x ...)     ; import x ... from the module named mn
+    #;(except-in mn x ...)
+    #;(prefix-in pre )       ; 
+    )  ; import all exported identifiers from the module named mn except x ...
   (ImportSpec (is)
     (default x)              ; the default export as x
     (as x1 x2)               ; the member x1 using the name x2 locally
@@ -916,7 +921,12 @@
 
 (define-syntax-class Require
   #:literal-sets (keywords)
-  (pattern (require x:Id ...)))
+  (pattern (require rs:RequireSpec ...)))
+
+(define-syntax-class RequireSpec
+  #:literal-sets (keywords)
+  (pattern (~or mn:Id
+                (require (only-n mn:Id x:Id ...)))))
 
 (define-syntax-class TopBlock
   #:literal-sets (keywords)
@@ -1047,7 +1057,12 @@
   (with-output-language (Lur RequireSpec)
     (syntax-parse rs
       #:literal-sets (keywords)
-      [mn:Id `,(syntax-e #'mn)])))  ; todo : allow syntax-object instead of symbol
+      [mn:Id
+       `,(syntax-e #'mn)]
+      [(only-in mn:Id x:NonECMA6ReservedKeyword ...)
+       `(only-in ,(syntax-e #'mn)
+                 ,(syntax->list #'(x ...)) ...)]
+      )))  ; todo : allow syntax-object instead of symbol
 
 (define (parse-topblock tb)
   (with-output-language (Lur ModuleLevelForm)
@@ -1802,8 +1817,13 @@
     (define-free-table  reserved)   ; reserved words
     (define-free-table  predefined) ; predefined names
     (define require-specs '())
-    (define (add-require-spec! rs) (set! require-specs (cons rs require-specs)))
-
+    (define (add-require-spec! rs)
+      (define new-rs
+        (with-output-language (L0 RequireSpec)           
+          (nanopass-case (L- RequireSpec) rs
+            [(only-in ,mn ,x* ...) `(only-in ,mn ,x* ...)]
+            [,mn                   mn])))
+      (set! require-specs (cons new-rs require-specs)))
     (define context      (make-parameter 'module-level))
     (define remove-form  (list 'remove-form))       ; used to remove im- and export forms
     (define (keep? v)    (not (eq? v remove-form)))
@@ -1984,11 +2004,29 @@
     [(export  ,x   ...)                      an]
     [(import  ,x   ...) (for-each global! x) an]
     [(require ,rs* ...) (for ([rs rs*])
-                          (unless (symbol? rs) (error "internal error"))
-                          (for ([sym (urmodule-name->exports rs)])
-                            (define x (datum->syntax (module-name-stx) sym))
-                            (global! x)))
-                          an]
+                          (nanopass-case (L1 RequireSpec) rs
+                            [(only-in ,mn ,x* ...)
+                             (define exported (urmodule-name->exports mn)) ; symbols
+                             ;; Check that all identifiers in x* are exported from mn.
+                             (for ([x x*])
+                               (unless (member (syntax-e x) exported)
+                                 (raise-syntax-error
+                                  'α-rename
+                                  "attempt to import identifier from a module, that doesn't export it"
+                                  x)))
+                             ;; Now we now that all imported identifiers are available
+                             (define sym-x* (map syntax->datum x*))
+                             (for ([sym exported])
+                               (when (member sym sym-x*)
+                                 (define x (datum->syntax (module-name-stx) sym))
+                                 (global! x)))]
+                            [,mn 
+                             (for ([sym (urmodule-name->exports mn)])
+                               (define x (datum->syntax (module-name-stx) sym))
+                               (global! x))]
+                            [else
+                             (unless (symbol? rs) (error "internal error"))]))
+                        an]
     [(funs    ,x   ...) (for-each global! x) an]
     [(vars    ,x*  ...) (for ((x x*))
                          (let ([y (fresh-var x)])
@@ -2203,7 +2241,23 @@
             (define i (import-counter++))
             (list (~newline (~Statement `(var "MODULE" ,i " = require(\"./" ,mn.js "\")")))
                   (for/list ([x mangled-imports]) 
-                    (~newline (~Statement `(var ,x ,(~a " = MODULE"i"[\"" x "\"]"))))))])])
+                    (~newline (~Statement `(var ,x ,(~a " = MODULE"i"[\"" x "\"]"))))))])]
+    [(only-in ,mn ,x* ...)     
+     (define mn.js   (urmodule-name->js-file-name mn))
+     (define imports (urmodule-name->exports mn))
+     (define filtered-mangled-imports
+       (for/list ([x imports]
+                  #:when (member x imports))
+         (mangle (datum->syntax #'ignored x)))) ; mangle expects ids (not symbols)
+     (cond
+       [(current-use-es6-export?)
+        (~newline (~Statement "import " (~braces (~commas filtered-mangled-imports)) 
+                              " from " (~string (~a "./" mn.js))))]
+       [else
+        (define i (import-counter++))
+        (list (~newline (~Statement `(var "MODULE" ,i " = require(\"./" ,mn.js "\")")))
+              (for/list ([x filtered-mangled-imports]) 
+                (~newline (~Statement `(var ,x ,(~a " = MODULE"i"[\"" x "\"]"))))))])])
   (ModuleLevelForm : ModuleLevelForm (m) -> * ()
     [(import-from ,js-mn ,is* ...) (parameterize ([current-js-import-module-name js-mn])
                                      (map ImportSpec  is*))]
