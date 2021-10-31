@@ -498,8 +498,9 @@
 
 ;;; Urlang Keywords
 (define-syntax define/async  (λ (stx) (raise-syntax-error 'define/async "used out of context" stx)))
-; (define-syntax only-in       (λ (stx) (raise-syntax-error 'only-in      "used out of context" stx)))
-
+; (define-syntax only-in     (λ (stx) (raise-syntax-error 'only-in      "used out of context" stx)))
+; (define-syntax except-in   (λ (stx) (raise-syntax-error 'except-in    "used out of context" stx)))
+; Note: We use the same only-in as racket.
 
 ; Note: Remember to provide all keywords
 (define-literal-set keywords
@@ -515,7 +516,7 @@
          ; Urlang keywords
          let-decl   ; called let in ES6 (but we have used let for expressions)
          define/async let
-         only-in
+         only-in except-in
          ))
 (define keyword? (literal-set->predicate keywords))
 
@@ -590,7 +591,7 @@
   (RequireSpec (rs)
     mn                       ; import all exported identifers from the module with module name mn
     (only-in   mn x ...)     ; import x ... from the module named mn
-    #;(except-in mn x ...)
+    (except-in mn x ...)     ; import all identifiers from mn, except x ...
     #;(prefix-in pre )       ; 
     )  ; import all exported identifiers from the module named mn except x ...
   (ImportSpec (is)
@@ -926,7 +927,8 @@
 (define-syntax-class RequireSpec
   #:literal-sets (keywords)
   (pattern (~or mn:Id
-                (require (only-n mn:Id x:Id ...)))))
+                (only-n    mn:Id x:Id ...)
+                (except-in mn:Id x:Id ...))))
 
 (define-syntax-class TopBlock
   #:literal-sets (keywords)
@@ -1049,7 +1051,7 @@
   (with-output-language (Lur ModuleLevelForm)
     (syntax-parse rm
       #:literal-sets (keywords)
-      [(require rs ...)
+      [(require rs:RequireSpec ...)
        (let ([rs (map parse-require-spec (syntax->list #'(rs ...)))])
          `(require ,rs ...))])))
 
@@ -1062,6 +1064,9 @@
       [(only-in mn:Id x:NonECMA6ReservedKeyword ...)
        `(only-in ,(syntax-e #'mn)
                  ,(syntax->list #'(x ...)) ...)]
+      [(except-in mn:Id x:NonECMA6ReservedKeyword ...)
+       `(except-in ,(syntax-e #'mn)
+                   ,(syntax->list #'(x ...)) ...)]
       )))  ; todo : allow syntax-object instead of symbol
 
 (define (parse-topblock tb)
@@ -1821,7 +1826,8 @@
       (define new-rs
         (with-output-language (L0 RequireSpec)           
           (nanopass-case (L- RequireSpec) rs
-            [(only-in ,mn ,x* ...) `(only-in ,mn ,x* ...)]
+            [(only-in   ,mn ,x* ...) `(only-in   ,mn ,x* ...)]
+            [(except-in ,mn ,x* ...) `(except-in ,mn ,x* ...)]
             [,mn                   mn])))
       (set! require-specs (cons new-rs require-specs)))
     (define context      (make-parameter 'module-level))
@@ -2018,6 +2024,22 @@
                              (define sym-x* (map syntax->datum x*))
                              (for ([sym exported])
                                (when (member sym sym-x*)
+                                 (define x (datum->syntax (module-name-stx) sym))
+                                 (global! x)))]
+                            [(except-in ,mn ,x* ...)
+                             ; import all identifiers in mn, except x* ... 
+                             (define exported (urmodule-name->exports mn)) ; symbols
+                             ;; Check that all excluded identifiers are actually exported from mn.
+                             (for ([x x*])
+                               (unless (member (syntax-e x) exported)
+                                 (raise-syntax-error
+                                  'α-rename
+                                  "attempt to exclude identifier from a module, that doesn't export it"
+                                  x)))
+                             ;; Now import the non-excluded identifiers
+                             (define sym-x* (map syntax->datum x*))
+                             (for ([sym exported])
+                               (unless (member sym sym-x*)
                                  (define x (datum->syntax (module-name-stx) sym))
                                  (global! x)))]
                             [,mn 
@@ -2248,6 +2270,22 @@
      (define filtered-mangled-imports
        (for/list ([x imports]
                   #:when (member x imports))
+         (mangle (datum->syntax #'ignored x)))) ; mangle expects ids (not symbols)
+     (cond
+       [(current-use-es6-export?)
+        (~newline (~Statement "import " (~braces (~commas filtered-mangled-imports)) 
+                              " from " (~string (~a "./" mn.js))))]
+       [else
+        (define i (import-counter++))
+        (list (~newline (~Statement `(var "MODULE" ,i " = require(\"./" ,mn.js "\")")))
+              (for/list ([x filtered-mangled-imports]) 
+                (~newline (~Statement `(var ,x ,(~a " = MODULE"i"[\"" x "\"]"))))))])]
+    [(except-in ,mn ,x* ...)
+     (define mn.js   (urmodule-name->js-file-name mn))
+     (define imports (urmodule-name->exports mn))
+     (define excluded (map syntax-e x*))
+     (define filtered-mangled-imports
+       (for/list ([x imports] #:unless (member x excluded))
          (mangle (datum->syntax #'ignored x)))) ; mangle expects ids (not symbols)
      (cond
        [(current-use-es6-export?)
