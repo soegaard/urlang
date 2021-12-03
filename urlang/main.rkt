@@ -1,9 +1,15 @@
 #lang racket
 (require syntax/strip-context)
-;;; TODO    Fix scope of class names => make class declaration module-top-level only ?
+(error-print-source-location #t)
 ;;; TODO  0. put this and super into scope in a class declaration
 ;;; TODO  1. Is the uncommented (not (keyword? ..))) correct in PropertyName
 ;;; TODO  2. Write more documentation.
+
+
+;;; ALMOST DONE  Fix scope of class names => make class declaration module-top-level only.
+;;;              Status: Class names are collected and put in scope.
+;;               In JavaScript there is both class statements and class expressions.
+;;               The scope analysis in Urlang is based on class statements.
 
 ;;;
 ;;; INTRODUCTION
@@ -272,12 +278,12 @@
 ; <import-spec>       ::= x | (as x x) | (all-as x) | (default x)
 ; <export-spec>       ::= x | (as x x) | (default x)
 ; <require>           ::= (require <require-spec> ...)
+; <require-spec>      ::= <module-name> | (only-in <module-name> x ...) | (except-in <module-name> x ...)
 ; <topblock>          ::= (topblock <module-level-form> ...)
 ; <definition>        ::= (define       (f <formal> ...) <body>)
 ;                      |  (define/async (f <formal> ...) <body>)
 ;                      |  (define x <expr>)
 ; <formal>            ::= x | [x <expr>]
-; <require-spec>      ::= <module-name>
 
 ; <statement>         ::= <var-decl> | <let-decl> | <const-decl> | <block> | <while> | <do-while> 
 ;                      | <if> | <break> | <continue> | <return> | <label> | <sempty> | <expr>
@@ -656,8 +662,8 @@
     (array e ...)                       ; array constructor
     (new x e ...)                       ; new expression
     (object (pn e) ...)                 ; object literal
-    (class (x)     (pn e) ...)      ; class : Restriction: e is a lambda-expression
-    (class (x0 x1) (pn e) ...)      ; class
+    (class (x)     (pn e) ...)          ; class : Restriction: e is a lambda-expression
+    (class (x0 x1) (pn e) ...)          ; class
     (spread e)
     (dot e pn)))                        ; property access
 
@@ -1754,7 +1760,7 @@
        (import  x  ...)
        (require rs ...)))
   (Annotation (an)
-    (+ (export ean ...) (import x1 ...) (require rs ...) (funs x2 ...) (vars x3 ...)))
+    (+ (export ean ...) (import x1 ...) (require rs ...) (funs x2 ...) (vars x3 ...) (classes x4 ...)))
   (ExportAnnotation (ean)
     (+ x             ; export x
        (x1 x2)       ; export x1 as x2
@@ -1802,10 +1808,11 @@
 ;;   * imports predefined operators (+, -, *, ...)
 ;;   * collects all module-level defined function names
 ;;   * collects all module-level defined variable names
+;;   * collects all class names
 ;;   * Adds an annotation to the urmodule form
 ;;       (annotation
 ;;         (export ean ...) (import x ...) (import-from is ...)
-;;         (require rs ...) (funs ...) (vars ...))
+;;         (require rs ...) (funs ...) (vars ...) (classs ...))
 ;;   * Remove import and export forms from ModuleLevelForm
 
 ;;   * checks that a function f is not declared as global
@@ -1818,6 +1825,7 @@
     (define-free-table  import)
     (define-free-table  fun)
     (define-bound-table var)
+    (define-bound-table class)
     (define-free-table  operator)   ; operators 
     (define-free-table  reserved)   ; reserved words
     (define-free-table  predefined) ; predefined names
@@ -1876,7 +1884,8 @@
                          `(import  ,(append (predefineds) (operators) (imports)) ...)
                          `(require ,require-specs ...)
                          `(funs    ,(funs)    ...)
-                         `(vars    ,(vars)    ...)))))
+                         `(vars    ,(vars)    ...)
+                         `(classes ,(classs)  ...))))) 
          `(urmodule ,mn (,an ...) ,m ...)))])
   (ModuleLevelForm : ModuleLevelForm (m) -> ModuleLevelForm ()
     [(import  ,x ...)             (for-each import! x)             remove-form]
@@ -1913,7 +1922,16 @@
                                     [b (parameterize ([context 'body]) (Body b))])
                                 `(let ((,x ,e) ...) ,b))]                                
     [(lambda (,x ...) ,b)     (let ([b (parameterize ([context 'body]) (Body b))])
-                                `(lambda (,x ...) ,b))])
+                                `(lambda (,x ...) ,b))]
+    ; Note: In class expressions, at this point, e is a lambda expression.
+    [(class (,x) (,pn ,e) ...)      (when (eq? (context) 'module-level)
+                                      (class! x))
+                                    (let ([e (parameterize ([context 'rhs])  (map Expr e))])
+                                      `(class (,x) (,pn ,e) ...))]
+    [(class (,x0 ,x1) (,pn ,e) ...) (when (eq? (context) 'module-level)
+                                      (class! x0))
+                                    (let ([e (parameterize ([context 'rhs])  (map Expr e))])
+                                      `(class (,x0 ,x1) (,pn ,e) ...))])
   (Definition : Definition (δ) ->  Definition ()
     [(define ,x ,[e])         (when (var? x)
                                 (raise-syntax-error 'collect "identifier is declared twice as var" x))
@@ -1943,10 +1961,11 @@
     (define (get-locals)   (reverse (bound-id-table-map (locals) (λ (x _) x))))
     (define (add! x)       (when (locals) (bound-id-table-set! (locals) x #t))))
   (Annotation : Annotation (an) -> Annotation ()
-    [(export ,x ...)                     `(export ,x ...)]
-    [(import ,x ...)   (for-each add! x) `(import ,x ...)]
-    [(funs   ,x ...)   (for-each add! x) `(funs   ,x ...)]
-    [(vars   ,x ...)   (for-each add! x) `(vars   ,x ...)])
+    [(export  ,x ...)                       `(export  ,x ...)]
+    [(import  ,x ...)   (for-each add! x)   `(import  ,x ...)]
+    [(funs    ,x ...)   (for-each add! x)   `(funs    ,x ...)]
+    [(vars    ,x ...)   (for-each add! x)   `(vars    ,x ...)]
+    [(classes ,x ...)   #;(for-each add! x) `(classes ,x ...)])
   (Statement : Statement (σ) ->  Statement ())
   (Expr : Expr (e) -> Expr ())
   (Body : Body (b) -> AnnotatedBody ()
@@ -1979,12 +1998,14 @@
   (definitions
     ;(define-free-table global)  ; free references refer to module-level-defined variables
     (define-symbol-table global)
-    (define-bound-table var)    ; references to variables declared with var can be macro introduced
+    (define-bound-table  var)     ; references to variables declared with var can be macro introduced
+    (define-bound-table  class)   ; references to class names can be macro introduced
     (define (initial-ρ x [id= #f])
       (cond
-        [(var? x) => identity]  ; get (potentially renamed x)
-        [(global? x) x]         ; exports, imports, funs are never renamed
-        [else        #f]))      ; no other variables are bound
+        [(var?   x) => identity]  ; get (potentially renamed x)
+        [(class? x) => identity]  ; get (potentially renamed x)
+        [(global? x)   x]         ; exports, imports, funs are never renamed
+        [else          #f]))      ; no other variables are bound
     (define (fid= x y) (free-identifier=?  x y))
     (define (bid= x y) (bound-identifier=? x y))
     (define (extend ρ original renamed)
@@ -1998,12 +2019,34 @@
     (define (lookup x ρ [on-not-found (λ (_) #f)])
       (match (ρ x bid=) [#f (match (ρ x fid=) [#f (on-not-found x)] [y y])] [y y]))
     (define (unbound-error x)
-      (displayln "global:")           (displayln (globals))
-      (displayln "var introduced:")   (displayln (map syntax-e (vars)))
-      (displayln "unbound variable:") (displayln x)
-      (if (memq (syntax-e x) (macro-introduced-identifiers)) ; todo remove when modules arrive
-          x
-          (raise-syntax-error 'α-rename "(urlang) unbound variable" x)))
+      (parameterize ([current-output-port (current-error-port)])
+        ; (displayln "global:")           (displayln (globals))
+        ; (displayln "var introduced:")   (displayln (map syntax-e (vars)))
+        ; (displayln "unbound variable:") (displayln x)
+        (if (memq (syntax-e x) (macro-introduced-identifiers)) ; todo remove when modules arrive
+            x
+            (raise-syntax-error 'α-rename "(urlang) unbound variable" x))))
+    (define (make-unbound-reference-error e)
+      (define (unbound-error x)
+        (parameterize ([current-output-port (current-error-port)])
+          ; (displayln "expression: ")      (displayln e)
+          ; (displayln "global:")           (displayln (globals))
+          ; (displayln "var introduced:")   (displayln (map syntax-e (vars)))
+          ; (displayln "unbound variable:") (displayln x)
+          (if (memq (syntax-e x) (macro-introduced-identifiers)) ; todo remove when modules arrive
+              x
+              (raise-syntax-error 'α-rename "(urlang) reference to unbound variable" x))))
+      unbound-error)
+    (define (make-unbound-class-name-in-new-error e)
+      (define (unbound-class-name-error x)
+        (parameterize ([current-output-port (current-error-port)])
+          ; (displayln "global:")            (displayln (globals))
+          ; (displayln "class introduced:")  (displayln (map syntax-e (classs)))
+          ; (displayln "unbound variable:")  (displayln x)
+          (if (memq (syntax-e x) (macro-introduced-identifiers)) ; todo remove when modules arrive
+              x
+              (raise-syntax-error 'α-rename "(urlang) unbound class name" x))))
+      unbound-class-name-error)      
     (define pre-body-ρ      (make-parameter #f))
     (define module-name-stx (make-parameter #f)))
   (Annotation : Annotation (an) -> Annotation ()
@@ -2054,6 +2097,11 @@
                          (let ([y (fresh-var x)])
                            (global! y)
                            (var! x y)))
+                        an]
+    [(classes ,x* ...) (for ((x x*))
+                         (let ([y (fresh-var x)])
+                           (global! y)
+                           (class! x y)))
                         an])
   (Module : Module (u) -> Module ()
     [(urmodule ,mn (,[an] ...) ,m ...)
@@ -2125,7 +2173,7 @@
   ; Expression never change the environment, so only a single return value
   (Expr : Expr (e ρ) -> Expr ()
     ; all expressions that contain an id (x or f) needs consideration
-    [,x                         (lookup x ρ unbound-error)]
+    [,x                         (lookup x ρ (make-unbound-reference-error e))]
     ; [(:= ,x ,[e])               (let ((y (lookup x ρ unbound-error))) `(:= ,y ,e))]
     [(:= ,lh ,[e])               `(:= ,(LeftHand lh ρ) ,e)]
     [(:= ,x ,[e0] ,[e1])        (let ((y (lookup x ρ unbound-error))) `(:= ,y ,e0 ,e1))]
@@ -2136,8 +2184,8 @@
     [(lambda (,x ...) ,ab)      (letv ((x ρ) (rename* x ρ))  ; map x to x
                                   (let ([ab (AnnotatedBody ab ρ)])
                                     `(lambda (,x ...) ,ab)))]
-    [(new ,x ,[e] ...)          (let ((y (lookup x ρ unbound-error)))
-                                  `(new ,y ,e ...))])
+    [(new ,x ,[e0] ...)          (let ((y (lookup x ρ (make-unbound-class-name-in-new-error e))))
+                                   `(new ,y ,e0 ...))])
 
   (LeftHand : LeftHand (lh ρ) -> LeftHand ()
    [,x                         (lookup x ρ unbound-error)]
@@ -2226,12 +2274,13 @@
                       '())])
   (Annotation : Annotation (an type) -> * ()
     ; here type is either 'require or 'export (see the call above) in Module.              
-    [(import ,x ...)   ""]
-    [(funs   ,x ...)   ""]
-    [(vars   ,x ...)   ""]
-    [(export ,ean* ...) (case type
-                          [(export) (map (λ (ean) (ExportAnnotation ean type)) ean*)]
-                          [else     ""])]
+    [(import  ,x ...)    ""]
+    [(funs    ,x ...)    ""]
+    [(vars    ,x ...)    ""]
+    [(classes ,x ...)    ""]
+    [(export  ,ean* ...) (case type
+                           [(export) (map (λ (ean) (ExportAnnotation ean type)) ean*)]
+                           [else     ""])]
     ;; [(export ,x* ...)  (match type
     ;;                     ['export
     ;;                      ; add the exports to current-exports
