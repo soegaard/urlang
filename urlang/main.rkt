@@ -538,9 +538,9 @@
           ; delete ; allow delete expressions
           do else export extends finally for function if import in instanceof let
           new return
-          ; super ; HACK temporarily allow (import ... super ...)
+          super  
           switch
-          ; this  ; HACK temporarily allow (import ... this ...)
+          this   
           throw try typeof var void while with yield
           ; Future Keywords
           enum await
@@ -707,11 +707,20 @@
            #:fail-unless (member (syntax-e #'x) ecma6-reserved-keywords)
            "ECMA6 reserved keyword"))
 
+(define-syntax-class ThisOrSuper
+  (pattern x:identifier
+           #:fail-unless (member (syntax-e #'x) '(this super))
+           "this or super"))
+
 (define-syntax-class Id
   (pattern (~and x:id (~not y:Keyword))))
 
 (define-syntax-class NonECMA6ReservedKeyword
   (pattern (~and x:id (~not y:ECMA6ReservedKeyword))))
+
+(define-syntax-class NonECMA6ReservedKeywordExceptThisOrSuper
+  (pattern (~and x:id (~or (~not y:ECMA6ReservedKeyword)
+                           z:ThisOrSuper))))
 
 (define-syntax-class PropertyName
   (pattern (~or (~and x:id #;(~not y:Keyword))  ; TODO TODO is this correct?
@@ -924,7 +933,9 @@
 (define-syntax-class Import
   #:literal-sets (keywords)
   ; note this was x:Id, but then the identifier  require  can not be imported.
-  (pattern (import x:NonECMA6ReservedKeyword ...)))
+  ; Note: This ought to be NonECMA6ReservedKeyword but
+  ;       old user code might contain (import this super)
+  (pattern (import x:NonECMA6ReservedKeywordExceptThisOrSuper ...)))
 
 (define-syntax-class Require
   #:literal-sets (keywords)
@@ -1016,7 +1027,8 @@
   (with-output-language (Lur ModuleLevelForm)
     (syntax-parse im
       #:literal-sets (keywords)
-      [(import x:NonECMA6ReservedKeyword ...)
+      ; Note: We allow `this` and `super` in order for old code with (import this) to work.
+      [(import x:NonECMA6ReservedKeywordExceptThisOrSuper ...)
        (let ([x (syntax->list #'(x ...))])
          `(import ,x ...))])))
 
@@ -1650,7 +1662,7 @@
 ;;; PREDEFINED NAMES AND RESERVED WORDS
 ;;;
 
-(define predefined-names '(Array array array! arguments console ref undefined new typeof))
+(define predefined-names '(Array array array! arguments console ref undefined new typeof this super))
 ; (besides operators)
 
 (define reserved-words-ids (symbols->ids ecma6-reserved-keywords))
@@ -1959,7 +1971,8 @@
     (define locals         (make-parameter #f)) ; #f indicate module-level
     (define (local? x)     (bound-id-table-ref (locals) x #f))
     (define (get-locals)   (reverse (bound-id-table-map (locals) (λ (x _) x))))
-    (define (add! x)       (when (locals) (bound-id-table-set! (locals) x #t))))
+    (define (add! x)       (when (locals) (bound-id-table-set! (locals) x #t)))
+    (define context        (make-parameter #f))) ; 'method means inside a class 
   (Annotation : Annotation (an) -> Annotation ()
     [(export  ,x ...)                       `(export  ,x ...)]
     [(import  ,x ...)   (for-each add! x)   `(import  ,x ...)]
@@ -1967,11 +1980,19 @@
     [(vars    ,x ...)   (for-each add! x)   `(vars    ,x ...)]
     [(classes ,x ...)   #;(for-each add! x) `(classes ,x ...)])
   (Statement : Statement (σ) ->  Statement ())
-  (Expr : Expr (e) -> Expr ())
+  (Expr : Expr (δ) -> Expr ()
+    [(class (,x) (,pn ,e) ...)      (let ([e (parameterize ([context 'method])  (map Expr e))])
+                                      `(class (,x) (,pn ,e) ...))]
+    [(class (,x0 ,x1) (,pn ,e) ...) (let ([e (parameterize ([context 'method])  (map Expr e))])
+                                      `(class (,x0 ,x1) (,pn ,e) ...))])
   (Body : Body (b) -> AnnotatedBody ()
     [(body ,σ ... ,e)
      (parameterize ([locals (make-bound-id-table)])
        (let ((σ (map Statement σ)) (e (Expr e)))
+         ; `this` and `super` are pontially in scope inside method bodies
+         ; Note: in the browser a module level `this` refers to the "Window",
+         ;       so `this` is always scope.
+         (when (equal? (context) 'method) (add! #'this) (add! #'super))
          `(annotated-body (,(get-locals) ...) ,σ ... ,e)))])
   (VarBinding : VarBinding (vb) -> VarBinding ()
     [,x                (add! x) vb]
