@@ -1477,8 +1477,12 @@
     (syntax-parse o
       #:literal-sets (keywords)
       [(object [pn:PropertyName e] ...)
-       (let ([pn (syntax->list #'(pn ...))]
-             [e  (stx-map parse-expr #'(e  ...))])
+       (let* ([pn (syntax->list #'(pn ...))]
+             [e  (stx-map parse-expr #'(e  ...))]
+             [first-duplicate (check-duplicates pn free-identifier=? #:default #f)])
+          (when (not (eq? #f first-duplicate))
+            (displayln 
+              (format "Warning: object contains shadowing variables ~a: ~a" first-duplicate (syntax->datum o))))
          `(object [,pn ,e] ...))])))
 
 (define (parse-class c)
