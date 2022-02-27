@@ -1480,9 +1480,10 @@
        (let* ([pn (syntax->list #'(pn ...))]
              [e  (stx-map parse-expr #'(e  ...))]
              [first-duplicate (check-duplicates pn free-identifier=? #:default #f)])
-          (when (not (eq? #f first-duplicate))
-            (displayln 
-              (format "Warning: object contains shadowing variables ~a: ~a" first-duplicate (syntax->datum o))))
+          (when first-duplicate
+            (displayln (format "Warning: object contains shadowing variables ~a: ~a"
+                               first-duplicate (syntax->datum o))
+                       (current-error-port)))
          `(object [,pn ,e] ...))])))
 
 (define (parse-class c)
