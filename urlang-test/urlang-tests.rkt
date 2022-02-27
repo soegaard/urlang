@@ -103,6 +103,10 @@
 ;;; STATEMENTS
 ;;;
 
+;; #26 - This should emit a warning in the console
+(check-equal? (rs (urlang (urmodule test-duplicate (define a (object [foo 1] [foo 2]))
+        (dot a foo)))) 1)
+
 ;; While
 (check-equal? (rs ; test while
                (urlang (urmodule test-while
