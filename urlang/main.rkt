@@ -316,7 +316,10 @@
 ; <reference>         ::= x
 ; <application>       ::= (<expr> <expr> ...)
 ; <sequence>          ::= (begin <expr> ...)
-; <assignment>        ::= (:= x <expr>) | (:= x <expr> <expr>) | (:= (dot <expr> <property-name> ...) <expr>)
+; <assignment>        ::= (:= x <expr>)
+;                      |  (:= x <expr> <expr>)
+;                      |  (:= (dot <expr> <property-name> ...) <expr>)
+;                      |  (:= (dot <expr> <property-name> ...) <expr> <expr>) 
 ; Note: If x in (:= x <expr>) contains periods, it will be parse as  (:= (dot parts-of-x ...) <expr>)
 ; <let>               ::= (let ((x <expr>) ...) <statement> ... <expr>)
 ; <lambda>            ::= (lambda (<formal> ...) <body>)
@@ -650,7 +653,7 @@
     x                                   ; reference
     (app e0 e ...) => (e0 e ...)        ; application
     ; (:= x e)                          ; assignment    x = e
-    (:= x e0 e1)                        ; assignment    x[e0] = e1
+    (:= lh e0 e1)                       ; assignment    lh[e0] = e1
     (:= lh e0)                          ; assignment    lh = e1
     (begin e ...)                       ; sequence
     (if e0 e1 e2)                       ; ternary
@@ -773,8 +776,7 @@
 
 (define-syntax-class Assignment
   #:literal-sets (keywords)
-  (pattern (~or #;(:= x4:Id e4:Expr)
-                (:= x4:Id e4:Expr e5:expr)
+  (pattern (~or (:= lh:LeftHand e4:Expr e5:expr)
                 (:= lh:LeftHand e5:Expr))))
 
 (define-syntax-class Definition
@@ -1582,10 +1584,11 @@
              (e (parse-expr #'e)))
          `(:= ,lh ,e))]
       ; Backward compatibility
-       [(:= x:Id e0 e1)
-        (let ((e0 (parse-expr #'e0))
+       [(:= lh:LeftHand e0 e1)
+        (let ((lh (parse-left-hand #'lh))
+              (e0 (parse-expr #'e0))
               (e1 (parse-expr #'e1)))
-          `(:= ,#'x ,e0 ,e1))])))
+          `(:= ,lh ,e0 ,e1))])))
 
 (define (parse-ternary t)
   (debug (list 'parse-ternary (syntax->datum t)))
@@ -2201,8 +2204,9 @@
     ; all expressions that contain an id (x or f) needs consideration
     [,x                         (lookup x ρ (make-unbound-reference-error e))]
     ; [(:= ,x ,[e])               (let ((y (lookup x ρ unbound-error))) `(:= ,y ,e))]
-    [(:= ,lh ,[e])               `(:= ,(LeftHand lh ρ) ,e)]
-    [(:= ,x ,[e0] ,[e1])        (let ((y (lookup x ρ unbound-error))) `(:= ,y ,e0 ,e1))]
+    [(:= ,lh ,[e])              `(:= ,(LeftHand lh ρ) ,e)]
+    ; [(:= ,x ,[e0] ,[e1])        (let ((y (lookup x ρ unbound-error))) `(:= ,y ,e0 ,e1))]
+    [(:= ,lh ,[e0] ,[e1])       `(:= ,(LeftHand lh ρ) ,e0 ,e1)]
 
     [(let ((,x ,[e]) ...) ,ab)  (letv ((x ρ) (rename* x ρ))  ; map x to x
                                   (let ([ab (AnnotatedBody ab ρ)])
@@ -2487,8 +2491,8 @@
     [(:= ,lh ,e)            (let ((e (Expr e)))
                               (~parens (LeftHand lh) "=" e))]
     ; Backward compatibility
-    [(:= ,x ,e0 ,e1)        (let ((e0 (Expr e0)) (e1 (Expr e1)))
-                              (~parens x (~brackets e0) "=" e1))]
+    [(:= ,lh ,e0 ,e1)        (let ((e0 (Expr e0)) (e1 (Expr e1)))
+                              (~parens (LeftHand lh) (~brackets e0) "=" e1))]
     
     [(let ((,x ,e) ...) ,ab) (let ((e (map Expr e)) (ab (AnnotatedBody ab)))
                                (if (current-use-arrows-for-let?)
