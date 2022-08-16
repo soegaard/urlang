@@ -1480,12 +1480,13 @@
       #:literal-sets (keywords)
       [(object [pn:PropertyName e] ...)
        (let* ([pn (syntax->list #'(pn ...))]
-             [e  (stx-map parse-expr #'(e  ...))]
-             [first-duplicate (check-duplicates pn free-identifier=? #:default #f)])
-          (when first-duplicate
-            (displayln (format "Warning: object contains shadowing variables ~a: ~a"
-                               first-duplicate (syntax->datum o))
-                       (current-error-port)))
+              [e  (stx-map parse-expr #'(e  ...))])
+         (define pn-ids (filter identifier? pn))
+         (define first-duplicate (check-duplicates pn-ids free-identifier=? #:default #f))
+         (when first-duplicate
+           (displayln (format "Warning: object contains shadowing variables ~a: ~a"
+                              first-duplicate (syntax->datum o))
+                      (current-error-port)))
          `(object [,pn ,e] ...))])))
 
 (define (parse-class c)
