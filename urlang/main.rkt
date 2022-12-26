@@ -56,7 +56,7 @@
 ;; Keywords
 (provide keywords) ; a literal set
 (provide all-as array as begin block break catch class continue define default do-while dot export
-         finally if import import-from
+         finally if import import-from instanceof
          label lambda λ let new object ref return require sempty sif spread
          throw topblock try urmodule var while :=)
 ; Keywords from ES6
@@ -311,7 +311,7 @@
 
 ; <expr>              ::= <datum>   | <reference> | <application> | <sequence>
 ;                      |  <ternary> | <assignment> | <let> | <lambda> | <await> | <dot> | <object>
-;                      |  <array-reference> | <array> | <class> | <spread>
+;                      |  <array-reference> | <array> | <class> | <spread> | <instanceof>
 ; <ternary>           ::= (if <expr> <expr> <expr>)
 ; <reference>         ::= x
 ; <application>       ::= (<expr> <expr> ...)
@@ -332,6 +332,7 @@
 ; <object>            ::= (object (<property-name> <expr>) ...)
 ; <class>             ::= (class <class-heritage> ((<property-name> x ...) <body>)) ...)
 ; <spread>            ::= (spread <expr>) ; only in applications
+; <instanceof>        ::= (instanceof <expr> <expr>)
 ; <class-heritage>    ::= x | (x x)
 ; <property-name>     ::= x | <keyword> | <string> | <number>
 
@@ -482,6 +483,7 @@
 (define-syntax finally       (λ (stx) (raise-syntax-error 'finally     "used out of context" stx)))
 (define-syntax import        (λ (stx) (raise-syntax-error 'import      "used out of context" stx)))
 (define-syntax import-from   (λ (stx) (raise-syntax-error 'import-from "used out of context" stx)))
+(define-syntax instanceof    (λ (stx) (raise-syntax-error 'instanceof  "used out of context" stx)))
 (define-syntax label         (λ (stx) (raise-syntax-error 'label       "used out of context" stx)))
 (define-syntax object        (λ (stx) (raise-syntax-error 'object      "used out of context" stx)))
 (define-syntax new           (λ (stx) (raise-syntax-error 'new         "used out of context" stx)))
@@ -515,7 +517,7 @@
 (define-literal-set keywords
   (array as all-as begin block break catch class continue define default
          do-while dot export
-         finally if import import-from object new label lambda λ
+         finally if import import-from instanceof object new label lambda λ
          ref return require sempty sif throw topblock try urmodule
          var while :=
          ; ES6 Keywords
@@ -668,6 +670,7 @@
     (class (x)     (pn e) ...)          ; class : Restriction: e is a lambda-expression
     (class (x0 x1) (pn e) ...)          ; class
     (spread e)
+    (instanceof e0 e1)                  ; v instanceof F
     (dot e pn)))                        ; property access
 
 ; <class>             ::= (class x class-heritage? ((<property-name> x ...) <body>)) ...)
@@ -900,7 +903,13 @@
                 e:Array
                 e:New
                 e:Object
+                e:InstanceOf
                 e:Dot)))
+
+(define-syntax-class InstanceOf
+  #:literal-sets (keywords)
+  (pattern (instanceof e0:Expr e1:Expr)))
+
 
 ; Note: Spread expressions are only legal with array expressions or
 ;       in destructuring arguments.
@@ -1460,9 +1469,20 @@
       [(~and c  (class . _))                  (parse-class       #'c)]
       [(~and sp (spread . _))                 (parse-spread      #'sp)]
       [(~and n  (new . _))                    (parse-new         #'n)]
+      [(~and i  (instanceof . _))             (parse-instanceof  #'i)]
       [(~and a  (e ...)
              (~not (k:keyword . _)))          (parse-application #'a)]
       [_ (raise-syntax-error 'parse-expr (~a "expected an expression, got " e) e)])))
+
+(define (parse-instanceof n)
+  (debug (list 'parse-instanceof (syntax->datum n)))
+  (with-output-language (Lur Expr)
+    (syntax-parse n
+      #:literal-sets (keywords)
+      [(instanceof e0:Expr e1:Expr)
+       (let ([e0  (parse-expr #'e0)]
+             [e1  (parse-expr #'e1)])
+         `(instanceof ,e0 ,e1))])))
 
 (define (parse-new n)
   (debug (list 'parse-new (syntax->datum n)))
@@ -2507,6 +2527,7 @@
                                    (~parens "function" (~parens (~commas x)) ab)))]  ; ES5
     [(await ,e)              (list "await " (Expr e))]
     [(spread ,e)             (list "..." (Expr e))]
+    [(instanceof ,e0 ,e1)    (~parens (Expr e0) " instanceof " (Expr e1))]
     [(array ,e ...)          (~brackets (~commas (map Expr e)))]
     [(new ,x ,e ...)         (~parens "new" " " x (~parens (~commas (map Expr e))))]
     [(object (,pn* ,e*) ...) (parameterize ([current-use-arrows-for-lambda? #f])
