@@ -665,7 +665,7 @@
     (quote d)                           ; quotation (the parser quotes all datums)
     (ref e0 e1 e* ...)                  ; reference to array index
     (array e ...)                       ; array constructor
-    (new x e ...)                       ; new expression
+    (new lh e ...)                      ; new expression
     (object (pn e) ...)                 ; object literal
     (class (x)     (pn e) ...)          ; class : Restriction: e is a lambda-expression
     (class (x0 x1) (pn e) ...)          ; class
@@ -923,7 +923,7 @@
 
 (define-syntax-class New
   #:literal-sets (keywords)
-  (pattern (new c:Id e:Expr ...)))
+  (pattern (new c:LeftHand e:Expr ...)))
 
 (define-syntax-class Object
   #:literal-sets (keywords)
@@ -1489,9 +1489,10 @@
   (with-output-language (Lur Expr)
     (syntax-parse n
       #:literal-sets (keywords)
-      [(new c:Id e:Expr ...)
-       (let ([e  (stx-map parse-expr #'(e  ...))])
-         `(new ,#'c ,e ...))])))
+      [(new c:LeftHand e:Expr ...)
+       (let ([c (parse-left-hand #'c)]
+             [e (stx-map parse-expr #'(e  ...))])
+         `(new ,c ,e ...))])))
 
 (define (parse-object o)
   (debug (list 'parse-object (syntax->datum o)))
@@ -2235,11 +2236,14 @@
     [(lambda (,x ...) ,ab)      (letv ((x ρ) (rename* x ρ))  ; map x to x
                                   (let ([ab (AnnotatedBody ab ρ)])
                                     `(lambda (,x ...) ,ab)))]
-    [(new ,x ,[e0] ...)          (let ((y (lookup x ρ (make-unbound-class-name-in-new-error e))))
-                                   `(new ,y ,e0 ...))])
+    [(new ,lh ,[e0] ...)        `(new ,(NewLeftHand lh ρ) ,e0 ...)])
 
   (LeftHand : LeftHand (lh ρ) -> LeftHand ()
    [,x                         (lookup x ρ unbound-error)]
+   [(dot ,e ,pn* ...)          `(dot ,(Expr e ρ) ,pn* ...)])
+
+  (NewLeftHand : LeftHand (lh ρ) -> LeftHand ()
+   [,x                         (lookup x ρ (make-unbound-class-name-in-new-error x))]
    [(dot ,e ,pn* ...)          `(dot ,(Expr e ρ) ,pn* ...)])
 
   (let ()
@@ -2529,7 +2533,7 @@
     [(spread ,e)             (list "..." (Expr e))]
     [(instanceof ,e0 ,e1)    (~parens (Expr e0) " instanceof " (Expr e1))]
     [(array ,e ...)          (~brackets (~commas (map Expr e)))]
-    [(new ,x ,e ...)         (~parens "new" " " x (~parens (~commas (map Expr e))))]
+    [(new ,lh ,e ...)        (~parens "new" " " (LeftHand lh) (~parens (~commas (map Expr e))))]
     [(object (,pn* ,e*) ...) (parameterize ([current-use-arrows-for-lambda? #f])
                                ; Arrow notations does not work in object literals,
                                ; in the browser they get passed a `Window` instead
