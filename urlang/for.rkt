@@ -146,17 +146,17 @@
     [[x in-range from]
      (raise-syntax-error 'in-range "expected: in-range from to  or  in-range from to step")]
     [[x in-range from to]
-     #'(([i from]          ; list of var clauses to create initial state
-         [t to])
-        (< i t)            ; termination condition
-        ([x i])            ; let bindings (needs to bind x)
-        ((+= i 1)))]       ; statements to step state forward
+     #'(([i_ from]          ; list of var clauses to create initial state
+         [t_ to])
+        (< i_ t_)            ; termination condition
+        ([x i_])            ; let bindings (needs to bind x)
+        ((+= i_ 1)))]       ; statements to step state forward
     [[x in-range from to step]
-     #'(([i from]          ; list of var clauses to create initial state
-         [t to])
-        (< i t)            ; termination condition
-        ([x i])            ; let bindings (needs to bind x)
-        ((+= i step)))]))  ; statements to step state forward
+     #'(([i_ from]          ; list of var clauses to create initial state
+         [t_ to])
+        (< i_ t_)            ; termination condition
+        ([x i_])            ; let bindings (needs to bind x)
+        ((+= i_ step)))]))  ; statements to step state forward
 
 (define (handle-in-array clause)
   (syntax-parse clause
