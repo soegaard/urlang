@@ -36,7 +36,7 @@
          (only-in racket/base in-range))
 
 
-(provide urlang)
+(provide urlang urlang/string)
 ;; Parameters
 (provide current-urlang-output-file                     ; overrides module-name as output file
          current-urlang-exports-file                    ; overrides name of file to store exports
@@ -2911,4 +2911,35 @@
            (when (current-urlang-run?)
              ;; Run the resulting program using Node
              (node/break js-path)))
+         ...))]))
+
+
+(define-syntax (urlang/string stx)
+  (define-syntax-class String
+    #:opaque (pattern d #:fail-unless (string? (syntax-e #'d)) #f))
+  (define-syntax-class Symbol
+    #:opaque (pattern d #:fail-unless (symbol? (syntax-e #'d)) #f))
+  (define-syntax-class ModuleName
+    #:description "<module-name>" (pattern (~or mn:Symbol mn:String)))
+  (syntax-parse stx
+    #:literals (urmodule)
+    [(_urlang (~and urmod (urmodule mn:ModuleName . _)) ...)
+     (syntax/loc stx
+       (list
+        (list 'mn
+              (let ()
+                (define name         (syntax-e #'mn))
+                (define js-path      (or (current-urlang-output-file)  ; parameter can override module name
+                                         (urmodule-name->js-file-name name)))
+                (define es6-path     (or (current-urlang-output-file)  ; parameter can override module name
+                                         (urmodule-name->es6-file-name name)))
+                (define exports-path (or (current-urlang-exports-file) ; parameter can override
+                                         (urmodule-name->exports-file-name name)))
+                (define-values (tree exports)
+                  (parameterize ([current-exports '()])
+                    (values (compile #'urmod #f) (current-exports)))) ; #f = don't emit
+                (define out-path (if (current-urlang-babel?) es6-path js-path))
+                (parameterize ([current-urlang-output-file out-path])
+                  (with-output-to-string
+                    (λ () (emit tree))))))
          ...))]))
