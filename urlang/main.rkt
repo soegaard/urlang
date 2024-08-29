@@ -55,7 +55,8 @@
 
 ;; Keywords
 (provide keywords) ; a literal set
-(provide all-as array as begin block break catch class continue define default do-while dot export
+(provide all-as array as begin block break catch class continue define default delete
+         do-while dot export
          finally if import import-from instanceof
          label lambda λ let new object ref return require sempty sif spread
          throw topblock try urmodule var while :=)
@@ -312,6 +313,7 @@
 ; <expr>              ::= <datum>   | <reference> | <application> | <sequence>
 ;                      |  <ternary> | <assignment> | <let> | <lambda> | <await> | <dot> | <object>
 ;                      |  <array-reference> | <array> | <class> | <spread> | <instanceof>
+;                      |  <delete>
 ; <ternary>           ::= (if <expr> <expr> <expr>)
 ; <reference>         ::= x
 ; <application>       ::= (<expr> <expr> ...)
@@ -333,6 +335,7 @@
 ; <class>             ::= (class <class-heritage> ((<property-name> x ...) <body>)) ...)
 ; <spread>            ::= (spread <expr>) ; only in applications
 ; <instanceof>        ::= (instanceof <expr> <expr>)
+; <delete>            ::= (delete <expr>)
 ; <class-heritage>    ::= x | (x x)
 ; <property-name>     ::= x | <keyword> | <string> | <number>
 
@@ -477,6 +480,7 @@
 (define-syntax class         (λ (stx) (raise-syntax-error 'class       "used out of context" stx)))
 (define-syntax continue      (λ (stx) (raise-syntax-error 'continue    "used out of context" stx)))
 (define-syntax default       (λ (stx) (raise-syntax-error 'default     "used out of context" stx)))
+(define-syntax delete        (λ (stx) (raise-syntax-error 'delete      "used out of context" stx)))
 (define-syntax dot           (λ (stx) (raise-syntax-error 'dot         "used out of context" stx)))
 (define-syntax do-while      (λ (stx) (raise-syntax-error 'do-while    "used out of context" stx)))
 (define-syntax export        (λ (stx) (raise-syntax-error 'export      "used out of context" stx)))
@@ -516,7 +520,7 @@
 ; Note: Remember to provide all keywords
 (define-literal-set keywords
   (array as all-as begin block break catch class continue define default
-         do-while dot export
+         delete do-while dot export
          finally if import import-from instanceof object new label lambda λ
          ref return require sempty sif throw topblock try urmodule
          var while :=
@@ -671,6 +675,7 @@
     (class (x0 x1) (pn e) ...)          ; class
     (spread e)
     (instanceof e0 e1)                  ; v instanceof F
+    (delete e)                          ; delete operator
     (dot e pn)))                        ; property access
 
 ; <class>             ::= (class x class-heritage? ((<property-name> x ...) <body>)) ...)
@@ -729,9 +734,10 @@
                            z:ThisOrSuper))))
 
 (define-syntax-class PropertyName
-  (pattern (~or (~and x:id #;(~not y:Keyword))  ; TODO TODO is this correct?
+  (pattern (~or (~and x:id #;(~not y:Keyword))
                 d:Number
                 s:String)))
+
 
 #;(define-syntax-class Label
    (pattern x:Id))
@@ -909,6 +915,10 @@
 (define-syntax-class InstanceOf
   #:literal-sets (keywords)
   (pattern (instanceof e0:Expr e1:Expr)))
+
+(define-syntax-class Delete
+  #:literal-sets (keywords)
+  (pattern (delete e0:Expr)))
 
 
 ; Note: Spread expressions are only legal with array expressions or
@@ -1470,6 +1480,7 @@
       [(~and sp (spread . _))                 (parse-spread      #'sp)]
       [(~and n  (new . _))                    (parse-new         #'n)]
       [(~and i  (instanceof . _))             (parse-instanceof  #'i)]
+      [(~and de (delete . _))                 (parse-delete      #'de)]
       [(~and a  (e ...)
              (~not (k:keyword . _)))          (parse-application #'a)]
       [_ (raise-syntax-error 'parse-expr (~a "expected an expression, got " e) e)])))
@@ -1483,6 +1494,16 @@
        (let ([e0  (parse-expr #'e0)]
              [e1  (parse-expr #'e1)])
          `(instanceof ,e0 ,e1))])))
+
+(define (parse-delete de)
+  (debug (list 'parse-delete (syntax->datum de)))
+  (with-output-language (Lur Expr)
+    (syntax-parse de
+      #:literal-sets (keywords)
+      [(delete e:Expr)
+       (let ([e  (parse-expr #'e)])
+         `(delete ,e))])))
+
 
 (define (parse-new n)
   (debug (list 'parse-new (syntax->datum n)))
@@ -1589,8 +1610,10 @@
   (with-output-language (Lur Expr)
     (syntax-parse do
       #:literal-sets (keywords)
+      [(dot pn:PropertyName)          `,#'pn]
       [(dot e0)                       (parse-expr #'e0)]
       [(dot e0 (x:Id e ...) e1 ...)   (parse-expr #'(dot ((dot e0 x) e ...) e1 ...))]
+      [(dot e0 pn:PropertyName)      `(dot ,(parse-expr #'e0) ,#'pn)]
       [(dot e0 e1)                   `(dot ,(parse-expr #'e0) ,(parse-expr #'e1))]
       [(dot e0 e1 e2 ...)             (parse-expr #'(dot (dot e0 e1) e2 ...))]
       [(dot)
@@ -2532,6 +2555,7 @@
     [(await ,e)              (list "await " (Expr e))]
     [(spread ,e)             (list "..." (Expr e))]
     [(instanceof ,e0 ,e1)    (~parens (Expr e0) " instanceof " (Expr e1))]
+    [(delete ,e)             (~parens "delete " (Expr e))]
     [(array ,e ...)          (~brackets (~commas (map Expr e)))]
     [(new ,lh ,e ...)        (~parens "new" " " (LeftHand lh) (~parens (~commas (map Expr e))))]
     [(object (,pn* ,e*) ...) (parameterize ([current-use-arrows-for-lambda? #f])
