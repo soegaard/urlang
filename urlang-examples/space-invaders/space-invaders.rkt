@@ -242,7 +242,7 @@
    (define (invader-below? i is)
      (match-define (body x y size) i)
      (for/or ([b in-array is])
-       (and (<= x b.x (+ x size))
+       (and (<= x b.x) (<= b.x (+ x size))
             (> b.y (+ y size)))))
    
    ; spawn-player-bullet : world -> world
@@ -295,8 +295,8 @@
    
    (define (inside-screen? b)
      (match-define (body x y size) b)
-     (and (< -40 x (+ width  40))
-          (< -40 y (+ height 40))))
+     (and (< -40 x) (< x (+ width  40))
+          (< -40 y) (< y (+ height 40))))
    
    (define (remove-colliding-bodies w)
      (match-define (world p is bs) w)
