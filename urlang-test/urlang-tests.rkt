@@ -194,3 +194,8 @@
        45)
      (foo 42)))
  ; 43 is expected
+
+(urlang (urmodule variadic
+          (define (f y . ys)
+            ys)
+          (f 1 2 3 4)))

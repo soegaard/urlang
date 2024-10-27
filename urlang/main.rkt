@@ -62,7 +62,7 @@
          throw topblock try urmodule var while :=)
 ; Keywords from ES6
 (provide const let-decl)
-; Keywrods from ES7
+; Keywords from ES7
 (provide await)
 ; Urlang Keywords
 (provide define/async) ; ES7 
@@ -281,8 +281,10 @@
 ; <require>           ::= (require <require-spec> ...)
 ; <require-spec>      ::= <module-name> | (only-in <module-name> x ...) | (except-in <module-name> x ...)
 ; <topblock>          ::= (topblock <module-level-form> ...)
-; <definition>        ::= (define       (f <formal> ...) <body>)
-;                      |  (define/async (f <formal> ...) <body>)
+; <definition>        ::= (define       (f <formal> ...)     <body>)
+;                      |  (define       (f <formal> ... . x) <body>)
+;                      |  (define/async (f <formal> ...)     <body>)
+;                      |  (define/async (f <formal> ... . x) <body>)
 ;                      |  (define x <expr>)
 ; <formal>            ::= x | [x <expr>]
 
@@ -583,7 +585,7 @@
 (define-language Lur
   (entry Module)
   (terminals
-   ((id          (f x l)) . => . unparse-id)
+   ((id          (f x xs l)) . => . unparse-id)
    ; Even though f, x, and, l are specified to be general identifiers, we will use this convention:
    ;   f   function name
    ;   l   statement label
@@ -619,7 +621,8 @@
     (as x1 x2)               ; export x1 under the name x2
     x)                       ; export x
   (Definition (δ)
-    (define a (f φ ...) b) ; function definition (async is #t or #f)
+    (define  a (f φ ...  ) b)  ; function definition (a is for async and is #t or #f)
+    (define* a (f φ ... xs) b) ; variadic function, that is (define (f φ ... . xs) b)
     (define x e))
   (Formal (φ)
     x                        ; parameter name
@@ -791,8 +794,10 @@
 (define-syntax-class Definition
   #:literal-sets (keywords)
   (pattern
-   (~or (define       (f:Id φ:Formal ...) σ:Statement ... body:Body)
-        (define/async (f:Id φ:Formal ...) σ:Statement ... body:Body)
+   (~or (define       (f:Id φ:Formal ...)        σ:Statement ... body:Body)
+        (define/async (f:Id φ:Formal ...)        σ:Statement ... body:Body)
+        (define       (f:Id φ:Formal ... . xs:Id) σ:Statement ... body:Body)
+        (define/async (f:Id φ:Formal ... . xs:Id) σ:Statement ... body:Body)
         (define x:Id e:Expr))))
 
 (define-syntax-class Lambda
@@ -1354,7 +1359,23 @@
            (with-syntax ([(σ ... en) #'b])
              (let ([b (parse-body #'(σ ... en))]
                    [φ (stx-map parse-formal #'(φ ...))])
-               `(define #t (,#'f ,φ ...) ,b)))))])))
+               `(define #t (,#'f ,φ ...) ,b)))))]
+      ; Variadic versions
+      [(define (f:Id φ:Formal ... . xs:Id) . b)
+       (let ((x (attribute φ.x)))                                           ; all parameters
+         (with-syntax ([((x0 e0) ...) (filter identity (attribute φ.xe))])  ; parameters with defaults
+           (with-syntax ([(σ ... en) #'b])
+             (let ([b (parse-body #'(σ ... en))]
+                   [φ (stx-map parse-formal #'(φ ...))])
+               `(define* #f (,#'f ,φ ... ,#'xs) ,b)))))]
+      ; identical to the one above apart from #t to indicate an async function
+      [(define/async (f:Id φ:Formal ... . xs:Id) . b)
+       (let ((x (attribute φ.x)))                                           ; all parameters
+         (with-syntax ([((x0 e0) ...) (filter identity (attribute φ.xe))])  ; parameters with defaults
+           (with-syntax ([(σ ... en) #'b])
+             (let ([b (parse-body #'(σ ... en))]
+                   [φ (stx-map parse-formal #'(φ ...))])
+               `(define* #t (,#'f ,φ ... ,#'xs) ,b)))))])))
 
 (define (parse-lambda d)
   (debug (list 'parse-lambda (syntax->datum d)))
@@ -1764,6 +1785,8 @@
   (Definition (δ)
     (- (define a (f φ ...) b))
     (+ (define a (f x ...) b))
+    (- (define* a (f φ ... xs) b))
+    (+ (define* a (f x ... xs) b))
     ; (- (define x e))
     ; (+ (define x e))
     )
@@ -1808,6 +1831,18 @@
                `(define ,a (,f ,x ...)
                   (body ,s ...
                         ,σ ...
+                        ,e)))]))])]
+    [(define* ,a (,f ,φ* ... ,xs) ,b)
+     (match (for/list ([φ (in-list φ*)])
+              (L-formal->id+expr φ Expr))
+       [(list (list x s) ...)
+        (let ([s (filter identity s)])
+          (nanopass-case (Lur Body) b
+            [(body ,σ ... ,e)
+             (let ([σ (map Statement σ)] [e (Expr e)])
+               `(define* ,a (,f ,x ... ,xs)
+                  (body ,s ...
+                        ,σ ...
                         ,e)))]))])]))
 
 
@@ -1818,8 +1853,8 @@
 
 (define-language L0 (extends L-)  ; L-
   (terminals
-   (- ((id (f x l)) . => . unparse-id))
-   (+ ((id (f x l)) . => . unparse-id)))
+   #;(- ((id (f x xs l)) . => . unparse-id))
+   #;(+ ((id (f x xs l)) . => . unparse-id)))
   (ModuleLevelForm (m)
     (- (export  es  ...)
        (import  x  ...)
@@ -1845,8 +1880,8 @@
 
 (define-language L1 (extends L0)
   (terminals
-   (- ((id (f x l)) . => . unparse-id))
-   (+ ((id (f x l)) . => . unparse-id)))
+   (- ((id (f x xs l)) . => . unparse-id))
+   (+ ((id (f x xs l)) . => . unparse-id)))
   (Body (b)
     (- (body σ ... e)))
   (AnnotatedBody (ab)
@@ -1854,6 +1889,8 @@
   (Definition (δ)
     (- (define a (f x ...) b))
     (+ (define a (f x ...) ab))
+    (- (define* a (f x ... xs) b))
+    (+ (define* a (f x ... xs) ab))
     ;(- (define (f φ ...) b))
     ;(+ (define (f φ ...) ab))
     )
@@ -2007,7 +2044,13 @@
                               (fun! f)
                               (parameterize ([context 'body])
                                 (let ((b (Body b)))
-                                  `(define ,a (,f ,x0 ...) ,b)))])
+                                  `(define ,a (,f ,x0 ...) ,b)))]
+    [(define* ,a (,f ,x0 ... ,xs) ,b) (when (fun? f)
+                                (raise-syntax-error 'collect "identifier is declared twice as fun" f))
+                              (fun! f)
+                              (parameterize ([context 'body])
+                                (let ((b (Body b)))
+                                  `(define* ,a (,f ,x0 ... ,xs) ,b)))])
   (Body : Body (b) -> Body ())
   
   (Module U))
@@ -2194,12 +2237,16 @@
     [,σ (Statement  σ ρ)])
   (Definition : Definition  (δ ρ)  ->  Definition  ()
     ; module-level-definitions aren't renamed
-    [(define ,x ,e)              (let ((ρ (extend ρ x x))) ; map x to x
-                                   (let ((e (Expr e ρ)))
-                                     `(define ,x ,e)))]    
-    [(define ,a (,f ,x ...) ,ab)  (letv ((x ρ) (rename* x ρ))
-                                    (let ([ab (AnnotatedBody ab ρ)])
-                                      `(define ,a (,f ,x ...) ,ab)))])
+    [(define ,x ,e)                    (let ((ρ (extend ρ x x))) ; map x to x
+                                         (let ((e (Expr e ρ)))
+                                           `(define ,x ,e)))]    
+    [(define ,a (,f ,x ...) ,ab)       (letv ((x ρ) (rename* x ρ))
+                                         (let ([ab (AnnotatedBody ab ρ)])
+                                           `(define ,a (,f ,x ...) ,ab)))]
+    [(define* ,a (,f ,x ... ,xs) ,ab)  (letv ((x ρ) (rename* x ρ))
+                                         (letv ((xs ρ) (rename xs ρ))
+                                           (let ([ab (AnnotatedBody ab ρ)])
+                                             `(define* ,a (,f ,x ... ,xs) ,ab))))])
   ; TODO: Change var to use same scope rules as let*.
   ;       In (var [binding s s]) the second s refers to an outer scope.
   (VarBinding : VarBinding (vb ρ) -> VarBinding ()
@@ -2447,6 +2494,12 @@
                                        #;[x  (map formal->x φ)])
                                    (~Statement `(,(if a 'async "")
                                                  function ,f ,(~parens (~commas x))
+                                                 ,ab))))]
+    [(define* ,a (,f ,x ... ,xs) ,ab)  (let ()
+                                 (let ((ab (AnnotatedBody ab)))
+                                   (~Statement `(,(if a 'async "")
+                                                 function 
+                                                 ,f ,(~parens (~commas (append x (list (list "..." xs)))))
                                                  ,ab))))])
   (CatchFinally : CatchFinally (cf) -> * ()
     [(catch ,x ,σ ...)                      (let ([σ (map Statement σ)])
