@@ -199,3 +199,15 @@
           (define (f y . ys)
             ys)
           (f 1 2 3 4)))
+; => "[ 2, 3, 4 ]\n"
+
+(urlang (urmodule variadic
+          ((lambda (y . ys) ys)
+           1 2 3 4)))
+; => "[ 2, 3, 4 ]\n"
+
+(urlang (urmodule variadic
+          ((lambda y y)
+           1 2 3 4)))
+; => "[ 1, 2, 3, 4 ]\n"
+

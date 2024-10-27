@@ -326,7 +326,9 @@
 ;                      |  (:= (dot <expr> <property-name> ...) <expr> <expr>) 
 ; Note: If x in (:= x <expr>) contains periods, it will be parse as  (:= (dot parts-of-x ...) <expr>)
 ; <let>               ::= (let ((x <expr>) ...) <statement> ... <expr>)
-; <lambda>            ::= (lambda (<formal> ...) <body>)
+; <lambda>            ::= (lambda (<formal> ...)     <body>)
+;                      |  (lambda (<formal> ... . x) <body>)
+;                      |  (lambda x                  <body>)
 ; <async-lambda>      ::= (async <lambda>)
 ; <await>             ::= (await <expr>) ; ES7
 ; <array-reference>   ::= (ref <expr> <expr> <expr> ...)
@@ -585,7 +587,7 @@
 (define-language Lur
   (entry Module)
   (terminals
-   ((id          (f x xs l)) . => . unparse-id)
+   ((id          (f x x-rest l)) . => . unparse-id)
    ; Even though f, x, and, l are specified to be general identifiers, we will use this convention:
    ;   f   function name
    ;   l   statement label
@@ -606,27 +608,26 @@
     ;                            ; (allows macros to expand to more than one module level form)
     δ σ)                         ; definition or statement
   (RequireSpec (rs)
-    mn                       ; import all exported identifers from the module with module name mn
-    (only-in   mn x ...)     ; import x ... from the module named mn
-    (except-in mn x ...)     ; import all identifiers from mn, except x ...
-    #;(prefix-in pre )       ; 
+    mn                        ; import all exported identifers from the module with module name mn
+    (only-in   mn x ...)      ; import x ... from the module named mn
+    (except-in mn x ...)      ; import all identifiers from mn, except x ...
+    #;(prefix-in pre )        ; 
     )  ; import all exported identifiers from the module named mn except x ...
   (ImportSpec (is)
-    (default x)              ; the default export as x
-    (as x1 x2)               ; the member x1 using the name x2 locally
-    (all-as x)               ; import all using the name x
-    x)                       ; the member named x             
+    (default x)               ; the default export as x
+    (as x1 x2)                ; the member x1 using the name x2 locally
+    (all-as x)                ; import all using the name x
+    x)                        ; the member named x             
   (ExportSpec (es)
-    (default x)              ; make x the default export
-    (as x1 x2)               ; export x1 under the name x2
-    x)                       ; export x
-  (Definition (δ)
-    (define  a (f φ ...  ) b)  ; function definition (a is for async and is #t or #f)
-    (define* a (f φ ... xs) b) ; variadic function, that is (define (f φ ... . xs) b)
+    (default x)               ; make x the default export
+    (as x1 x2)                ; export x1 under the name x2
+    x)                        ; export x
+  (Definition (δ)                         ; function definition (a is for async and is #t or #f)
+    (define a (maybe x-rest) (f φ ...) b) ;   the rest argument x-rest is either #f or an identifier
     (define x e))
   (Formal (φ)
-    x                        ; parameter name
-    [x e])                   ; parameter name and default value
+    x                         ; parameter name
+    [x e])                    ; parameter name and default value
   (Body (b)
     (body σ ... e))
   (VarBinding (vb)
@@ -667,7 +668,7 @@
     (begin e ...)                       ; sequence
     (if e0 e1 e2)                       ; ternary
     (let ((x e) ...) b)                 ; local binding
-    (lambda (φ ...) b)                  ; anonymous function
+    (lambda (maybe x-rest) (φ ...) b)   ; anonymous function, x is the rest argument if present
     (await e)                           ; await a promise
     (quote d)                           ; quotation (the parser quotes all datums)
     (ref e0 e1 e* ...)                  ; reference to array index
@@ -803,7 +804,11 @@
 (define-syntax-class Lambda
   #:literal-sets (keywords)
   (pattern (~or (lambda (x ...) body:Body)
-                (λ      (x ...) body:Body))))
+                (λ      (x ...) body:Body)
+                (lambda (x ... . x-rest:Id) body:Body)
+                (λ      (x ... . x-rest:Id) body:Body)
+                (lambda x-rest:Id body:Body)
+                (λ      x-rest:Id body:Body))))
 
 (define-syntax-class Await
   #:literal-sets (keywords)
@@ -1351,7 +1356,7 @@
            (with-syntax ([(σ ... en) #'b])
              (let ([b (parse-body #'(σ ... en))]
                    [φ (stx-map parse-formal #'(φ ...))])
-               `(define #f (,#'f ,φ ...) ,b)))))]
+               `(define #f #f (,#'f ,φ ...) ,b)))))]
       ; identical to the one above apart from #t to indicate an async function
       [(define/async (f:Id φ:Formal ...) . b)
        (let ((x (attribute φ.x)))                                           ; all parameters
@@ -1359,7 +1364,7 @@
            (with-syntax ([(σ ... en) #'b])
              (let ([b (parse-body #'(σ ... en))]
                    [φ (stx-map parse-formal #'(φ ...))])
-               `(define #t (,#'f ,φ ...) ,b)))))]
+               `(define #t #f (,#'f ,φ ...) ,b)))))]
       ; Variadic versions
       [(define (f:Id φ:Formal ... . xs:Id) . b)
        (let ((x (attribute φ.x)))                                           ; all parameters
@@ -1367,7 +1372,7 @@
            (with-syntax ([(σ ... en) #'b])
              (let ([b (parse-body #'(σ ... en))]
                    [φ (stx-map parse-formal #'(φ ...))])
-               `(define* #f (,#'f ,φ ... ,#'xs) ,b)))))]
+               `(define #f ,#'xs (,#'f ,φ ...) ,b)))))]
       ; identical to the one above apart from #t to indicate an async function
       [(define/async (f:Id φ:Formal ... . xs:Id) . b)
        (let ((x (attribute φ.x)))                                           ; all parameters
@@ -1375,7 +1380,7 @@
            (with-syntax ([(σ ... en) #'b])
              (let ([b (parse-body #'(σ ... en))]
                    [φ (stx-map parse-formal #'(φ ...))])
-               `(define* #t (,#'f ,φ ... ,#'xs) ,b)))))])))
+               `(define #t ,#'xs (,#'f ,φ ...) ,b)))))])))
 
 (define (parse-lambda d)
   (debug (list 'parse-lambda (syntax->datum d)))
@@ -1399,8 +1404,40 @@
              ; End Issue 17             
              (let ([b (parse-body #'(σ ... en))]
                    [φ (stx-map parse-formal #'(φ ...))])
-               
-               `(lambda (,φ ...) ,b)))))])))
+               `(lambda ,#f (,φ ...) ,b)))))]
+      [(_lambda (φ:Formal ... . x-rest:Id) . b)
+       (let ((x (attribute φ.x)))                                           ; all parameters
+         (with-syntax ([((x0 e0) ...) (filter identity (attribute φ.xe))])  ; parameters with defaults
+           (with-syntax ([(σ ... en) #'b])
+             ; Issue #17: Unintuitive that `define` not allowed in body, so give explanation.
+             (define δ (for/or ([σ (syntax->list #'(σ ... en))])
+                         (syntax-parse σ #:literals (define)
+                           [(define . _) σ] [_ #f])))
+             (when δ
+               (raise-syntax-error
+                'parse-lambda
+                (~a "Definition not allowed in lambda-body. Definitions work only at the "
+                    "module-level.\n Instead use:\n    (var [id lambda-expression])")
+                δ))
+             ; End Issue 17             
+             (let ([b (parse-body #'(σ ... en))]
+                   [φ (stx-map parse-formal #'(φ ...))])               
+               `(lambda ,#'x-rest (,φ ...) ,b)))))]
+      [(_lambda x-rest:Id . b)
+       (with-syntax ([(σ ... en) #'b])
+         ; Issue #17: Unintuitive that `define` not allowed in body, so give explanation.
+         (define δ (for/or ([σ (syntax->list #'(σ ... en))])
+                     (syntax-parse σ #:literals (define)
+                                   [(define . _) σ] [_ #f])))
+         (when δ
+           (raise-syntax-error
+            'parse-lambda
+            (~a "Definition not allowed in lambda-body. Definitions work only at the "
+                "module-level.\n Instead use:\n    (var [id lambda-expression])")
+            δ))
+         ; End Issue 17             
+         (let ([b (parse-body #'(σ ... en))])
+           `(lambda ,#'x-rest () ,b)))])))
 
 (define (parse-await a)
   (debug (list 'await (syntax->datum a)))
@@ -1564,13 +1601,13 @@
        (let* ([pn (syntax->list #'(pn ...))]
               [a  (stx-map syntax->list #'((a ...) ...))]
               [b  (stx-map parse-body #'(b ...))])
-         `(class (,#'x) [,pn (lambda (,a ...) ,b)] ...))]
+         `(class (,#'x) [,pn (lambda #f (,a ...) ,b)] ...))]
       [(class (x0:Id x1:Id) [(pn:PropertyName a:Id ...) . b] ...)
        ; The class x0 extends the class x1, otherwise as above
        (let* ([pn (syntax->list #'(pn ...))]
               [a  (stx-map syntax->list #'((a ...) ...))]
               [b  (stx-map parse-body #'(b ...))])
-         `(class (,#'x0 ,#'x1) [,pn (lambda (,a ...) ,b)] ...))])))
+         `(class (,#'x0 ,#'x1) [,pn (lambda #f (,a ...) ,b)] ...))])))
 
 (define (parse-application a)
   (debug (list 'parse-application (syntax->datum a)))
@@ -1783,16 +1820,14 @@
     (- x)
     (- [x e]))
   (Definition (δ)
-    (- (define a (f φ ...) b))
-    (+ (define a (f x ...) b))
-    (- (define* a (f φ ... xs) b))
-    (+ (define* a (f x ... xs) b))
+    (- (define a (maybe x-rest) (f φ ...) b))
+    (+ (define a (maybe x-rest) (f x ...) b))
     ; (- (define x e))
     ; (+ (define x e))
     )
   (Expr (e)
-    (- (lambda (φ ...) b))
-    (+ (lambda (x ...) b))))
+    (- (lambda (maybe x-rest) (φ ...) b))
+    (+ (lambda (maybe x-rest) (x ...) b))))
 
 
 (define-pass desugar : Lur (U) -> L- ()
@@ -1807,7 +1842,7 @@
                                    (empty)))))])))
   (Statement  : Statement  (σ) ->  Statement ())  
   (Expr       : Expr       (e) ->  Expr ()
-    [(lambda (,φ* ...) ,b)
+    [(lambda ,x-rest (,φ* ...) ,b)
      (match (for/list ([φ (in-list φ*)])
               (L-formal->id+expr φ Expr))
        [(list (list x s) ...)
@@ -1815,12 +1850,12 @@
           (nanopass-case (Lur Body) b
             [(body ,σ ... ,e)
              (let ([σ (map Statement σ)] [e (Expr e)])
-               `(lambda (,x ...)
+               `(lambda ,x-rest (,x ...)
                   (body ,s ...
                         ,σ ...
                         ,e)))]))])])
   (Definition : Definition (δ) ->  Definition ()
-    [(define ,a (,f ,φ* ...) ,b)
+    [(define ,a ,x-rest (,f ,φ* ...) ,b)
      (match (for/list ([φ (in-list φ*)])
               (L-formal->id+expr φ Expr))
        [(list (list x s) ...)
@@ -1828,19 +1863,7 @@
           (nanopass-case (Lur Body) b
             [(body ,σ ... ,e)
              (let ([σ (map Statement σ)] [e (Expr e)])
-               `(define ,a (,f ,x ...)
-                  (body ,s ...
-                        ,σ ...
-                        ,e)))]))])]
-    [(define* ,a (,f ,φ* ... ,xs) ,b)
-     (match (for/list ([φ (in-list φ*)])
-              (L-formal->id+expr φ Expr))
-       [(list (list x s) ...)
-        (let ([s (filter identity s)])
-          (nanopass-case (Lur Body) b
-            [(body ,σ ... ,e)
-             (let ([σ (map Statement σ)] [e (Expr e)])
-               `(define* ,a (,f ,x ... ,xs)
+               `(define ,a ,x-rest (,f ,x ...)
                   (body ,s ...
                         ,σ ...
                         ,e)))]))])]))
@@ -1880,25 +1903,23 @@
 
 (define-language L1 (extends L0)
   (terminals
-   (- ((id (f x xs l)) . => . unparse-id))
-   (+ ((id (f x xs l)) . => . unparse-id)))
+   (- ((id (f x x-rest l)) . => . unparse-id))
+   (+ ((id (f x x-rest l)) . => . unparse-id)))
   (Body (b)
     (- (body σ ... e)))
   (AnnotatedBody (ab)
     (+ (annotated-body (x ...) σ ... e)))
   (Definition (δ)
-    (- (define a (f x ...) b))
-    (+ (define a (f x ...) ab))
-    (- (define* a (f x ... xs) b))
-    (+ (define* a (f x ... xs) ab))
+    (- (define a (maybe x-rest) (f x ...) b))
+    (+ (define a (maybe x-rest) (f x ...) ab))
     ;(- (define (f φ ...) b))
     ;(+ (define (f φ ...) ab))
     )
   (Expr (e)
     (- (let ((x e) ...) b))
     (+ (let ((x e) ...) ab))
-    (- (lambda (x ...) b))
-    (+ (lambda (x ...) ab))))
+    (- (lambda (maybe x-rest) (x ...) b))
+    (+ (lambda (maybe x-rest) (x ...) ab))))
 
 ;;;
 ;;; ANNOTATE MODULE
@@ -2020,11 +2041,11 @@
                         `(binding ,x ,e)])
   (Expr : Expr (δ) -> Expr ()
     ; let and lambda have bodies, so they need special attention
-    [(let ((,x ,e) ...) ,b)   (let ([e (parameterize ([context 'rhs])  (map Expr e))]
-                                    [b (parameterize ([context 'body]) (Body b))])
-                                `(let ((,x ,e) ...) ,b))]                                
-    [(lambda (,x ...) ,b)     (let ([b (parameterize ([context 'body]) (Body b))])
-                                `(lambda (,x ...) ,b))]
+    [(let ((,x ,e) ...) ,b)       (let ([e (parameterize ([context 'rhs])  (map Expr e))]
+                                        [b (parameterize ([context 'body]) (Body b))])
+                                    `(let ((,x ,e) ...) ,b))]                                
+    [(lambda ,x-rest (,x ...) ,b) (let ([b (parameterize ([context 'body]) (Body b))])
+                                    `(lambda ,x-rest (,x ...) ,b))]
     ; Note: In class expressions, at this point, e is a lambda expression.
     [(class (,x) (,pn ,e) ...)      (when (eq? (context) 'module-level)
                                       (class! x))
@@ -2039,18 +2060,12 @@
                                 (raise-syntax-error 'collect "identifier is declared twice as var" x))
                                (var! x)
                               `(define ,x ,e)]
-    [(define ,a (,f ,x0 ...) ,b) (when (fun? f)
+    [(define ,a ,x-rest (,f ,x0 ...) ,b) (when (fun? f)
                                 (raise-syntax-error 'collect "identifier is declared twice as fun" f))
                               (fun! f)
                               (parameterize ([context 'body])
                                 (let ((b (Body b)))
-                                  `(define ,a (,f ,x0 ...) ,b)))]
-    [(define* ,a (,f ,x0 ... ,xs) ,b) (when (fun? f)
-                                (raise-syntax-error 'collect "identifier is declared twice as fun" f))
-                              (fun! f)
-                              (parameterize ([context 'body])
-                                (let ((b (Body b)))
-                                  `(define* ,a (,f ,x0 ... ,xs) ,b)))])
+                                  `(define ,a ,x-rest (,f ,x0 ...) ,b)))])
   (Body : Body (b) -> Body ())
   
   (Module U))
@@ -2237,16 +2252,15 @@
     [,σ (Statement  σ ρ)])
   (Definition : Definition  (δ ρ)  ->  Definition  ()
     ; module-level-definitions aren't renamed
-    [(define ,x ,e)                    (let ((ρ (extend ρ x x))) ; map x to x
-                                         (let ((e (Expr e ρ)))
-                                           `(define ,x ,e)))]    
-    [(define ,a (,f ,x ...) ,ab)       (letv ((x ρ) (rename* x ρ))
-                                         (let ([ab (AnnotatedBody ab ρ)])
-                                           `(define ,a (,f ,x ...) ,ab)))]
-    [(define* ,a (,f ,x ... ,xs) ,ab)  (letv ((x ρ) (rename* x ρ))
-                                         (letv ((xs ρ) (rename xs ρ))
-                                           (let ([ab (AnnotatedBody ab ρ)])
-                                             `(define* ,a (,f ,x ... ,xs) ,ab))))])
+    [(define ,x ,e)                      (let ((ρ (extend ρ x x))) ; map x to x
+                                           (let ((e (Expr e ρ)))
+                                             `(define ,x ,e)))]    
+    [(define ,a ,x-rest (,f ,x ...) ,ab) (letv ((x ρ) (rename* x ρ))
+                                           (letv ((vφ ρ) (if x-rest
+                                                             (rename x-rest ρ)
+                                                             (values x-rest ρ)))
+                                             (let ([ab (AnnotatedBody ab ρ)])
+                                               `(define ,a ,x-rest (,f ,x ...) ,ab))))])
   ; TODO: Change var to use same scope rules as let*.
   ;       In (var [binding s s]) the second s refers to an outer scope.
   (VarBinding : VarBinding (vb ρ) -> VarBinding ()
@@ -2294,19 +2308,22 @@
   ; Expression never change the environment, so only a single return value
   (Expr : Expr (e ρ) -> Expr ()
     ; all expressions that contain an id (x or f) needs consideration
-    [,x                         (lookup x ρ (make-unbound-reference-error e))]
+    [,x                            (lookup x ρ (make-unbound-reference-error e))]
     ; [(:= ,x ,[e])               (let ((y (lookup x ρ unbound-error))) `(:= ,y ,e))]
-    [(:= ,lh ,[e])              `(:= ,(LeftHand lh ρ) ,e)]
+    [(:= ,lh ,[e])                 `(:= ,(LeftHand lh ρ) ,e)]
     ; [(:= ,x ,[e0] ,[e1])        (let ((y (lookup x ρ unbound-error))) `(:= ,y ,e0 ,e1))]
-    [(:= ,lh ,[e0] ,[e1])       `(:= ,(LeftHand lh ρ) ,e0 ,e1)]
+    [(:= ,lh ,[e0] ,[e1])          `(:= ,(LeftHand lh ρ) ,e0 ,e1)]
 
-    [(let ((,x ,[e]) ...) ,ab)  (letv ((x ρ) (rename* x ρ))  ; map x to x
-                                  (let ([ab (AnnotatedBody ab ρ)])
-                                    `(let ((,x ,e) ...) ,ab)))]
-    [(lambda (,x ...) ,ab)      (letv ((x ρ) (rename* x ρ))  ; map x to x
-                                  (let ([ab (AnnotatedBody ab ρ)])
-                                    `(lambda (,x ...) ,ab)))]
-    [(new ,lh ,[e0] ...)        `(new ,(NewLeftHand lh ρ) ,e0 ...)])
+    [(let ((,x ,[e]) ...) ,ab)     (letv ((x ρ) (rename* x ρ))  ; map x to x
+                                     (let ([ab (AnnotatedBody ab ρ)])
+                                       `(let ((,x ,e) ...) ,ab)))]
+    [(lambda ,x-rest (,x ...) ,ab) (letv ((x ρ) (rename* x ρ))  ; map x to x
+                                     (letv ((x-rest ρ) (if x-rest
+                                                           (rename x-rest ρ)
+                                                           (values x-rest ρ)))
+                                       (let ([ab (AnnotatedBody ab ρ)])
+                                         `(lambda ,x-rest (,x ...) ,ab))))]
+    [(new ,lh ,[e0] ...)           `(new ,(NewLeftHand lh ρ) ,e0 ...)])
 
   (LeftHand : LeftHand (lh ρ) -> LeftHand ()
    [,x                         (lookup x ρ unbound-error)]
@@ -2368,7 +2385,7 @@
     (define (~property-name t) (define v (syntax-e t)) (if (string? v) (~string v) t))
     (define (~ClassMethod pn e)
       (nanopass-case (L1 Expr) e
-        [(lambda (,x* ...) ,ab)
+        [(lambda ,x-rest (,x* ...) ,ab)
          (list pn (~parens (~commas x*)) (AnnotatedBody ab))]))
     
     (define (exports.id x)   (format-id x "exports.~a" x))
@@ -2486,20 +2503,17 @@
   (Definition : Definition (δ) -> * ()
     [(define ,x ,e)            (let ([e (Expr e)])
                                  (~Statement `(var ,x "=" ,e)))]
-    [(define ,a (,f ,x ...) ,ab)  (let ()
+    [(define ,a ,x-rest (,f ,x ...) ,ab)  (let ()
                                  #;(define (formal->x φ)
                                      (nanopass-case (L1 Formal) φ
                                        [,x x] [(,x ,e) x]))
                                  (let ((ab (AnnotatedBody ab))
                                        #;[x  (map formal->x φ)])
                                    (~Statement `(,(if a 'async "")
-                                                 function ,f ,(~parens (~commas x))
-                                                 ,ab))))]
-    [(define* ,a (,f ,x ... ,xs) ,ab)  (let ()
-                                 (let ((ab (AnnotatedBody ab)))
-                                   (~Statement `(,(if a 'async "")
-                                                 function 
-                                                 ,f ,(~parens (~commas (append x (list (list "..." xs)))))
+                                                 function ,f 
+                                                 ,(if x-rest
+                                                      (~parens (~commas (append x (list (list "..." x-rest)))))
+                                                      (~parens (~commas         x)))
                                                  ,ab))))])
   (CatchFinally : CatchFinally (cf) -> * ()
     [(catch ,x ,σ ...)                      (let ([σ (map Statement σ)])
@@ -2601,10 +2615,13 @@
                                             (~parens (~commas e)))
                                    (list (~parens (~parens "function" (~parens (~commas x)) ab)
                                                   (~parens (~commas e))))))]
-    [(lambda (,x ...) ,ab)   (let ((ab (AnnotatedBody ab)))
-                               (if (current-use-arrows-for-lambda?)
-                                   (~parens (~parens (~commas x)) " => " ab)         ; ES6
-                                   (~parens "function" (~parens (~commas x)) ab)))]  ; ES5
+    [(lambda ,x-rest (,x ...) ,ab) (let ((args (if x-rest
+                                                   (~parens (~commas (append x (list (list "..." x-rest)))))
+                                                   (~parens (~commas x))))
+                                         (ab (AnnotatedBody ab)))
+                                     (if (current-use-arrows-for-lambda?)
+                                         (~parens args " => " ab)         ; ES6
+                                         (~parens "function" args ab)))]  ; ES5
     [(await ,e)              (list "await " (Expr e))]
     [(spread ,e)             (list "..." (Expr e))]
     [(instanceof ,e0 ,e1)    (~parens (Expr e0) " instanceof " (Expr e1))]
