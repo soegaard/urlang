@@ -417,8 +417,8 @@
                        (values (cons x xs) ρ)))]))
   (f* xs ρ))
 
-; (define-syntax (debug stx) #'(void))
-(define-syntax (debug stx) (syntax-parse stx [(_ e) #'(displayln e)]))
+(define-syntax (debug stx) #'(void))
+; (define-syntax (debug stx) (syntax-parse stx [(_ e) #'(displayln e)]))
 
 (require (for-syntax racket/syntax))
 
