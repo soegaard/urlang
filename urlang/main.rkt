@@ -4,7 +4,7 @@
 ;;; TODO  0. put this and super into scope in a class declaration
 ;;; TODO  1. Is the uncommented (not (keyword? ..))) correct in PropertyName
 ;;; TODO  2. Write more documentation.
-
+;;; TODO  3. When `await` is used, check that it is in the body of an asynchronous function.
 
 ;;; ALMOST DONE  Fix scope of class names => make class declaration module-top-level only.
 ;;;              Status: Class names are collected and put in scope.
@@ -55,7 +55,7 @@
 
 ;; Keywords
 (provide keywords) ; a literal set
-(provide all-as array as begin block break catch class continue define default delete
+(provide all-as array as async await begin block break catch class continue define default delete
          do-while dot export
          finally if import import-from instanceof
          label lambda λ let new object ref return require sempty sif spread
@@ -315,7 +315,7 @@
 ; <expr>              ::= <datum>   | <reference> | <application> | <sequence>
 ;                      |  <ternary> | <assignment> | <let> | <lambda> | <await> | <dot> | <object>
 ;                      |  <array-reference> | <array> | <class> | <spread> | <instanceof>
-;                      |  <delete>
+;                      |  <delete> | <async-lambda>
 ; <ternary>           ::= (if <expr> <expr> <expr>)
 ; <reference>         ::= x
 ; <application>       ::= (<expr> <expr> ...)
@@ -417,8 +417,8 @@
                        (values (cons x xs) ρ)))]))
   (f* xs ρ))
 
-(define-syntax (debug stx) #'(void))
-; (define-syntax (debug stx) (syntax-parse stx [(_ e) #'(displayln e)]))
+; (define-syntax (debug stx) #'(void))
+(define-syntax (debug stx) (syntax-parse stx [(_ e) #'(displayln e)]))
 
 (require (for-syntax racket/syntax))
 
@@ -592,11 +592,11 @@
    ;   f   function name
    ;   l   statement label
    ;   x   identifier
-   ((datum       (d))     . => . unparse-datum)
-   (module-name  (mn))
+   ((datum         (d))     . => . unparse-datum)
+   (module-name    (mn))
    (js-module-name (js-mn))
    ((property-name (pn)) . => . (λ (v) (if (syntax? v) (unparse-syntax v) v)))
-   (async         (a))) ; #t or #f
+   (async          (a))) ; #t or #f
   (Module (u)
     (urmodule mn m ...))
   (ModuleLevelForm (m)
@@ -669,6 +669,7 @@
     (if e0 e1 e2)                       ; ternary
     (let ((x e) ...) b)                 ; local binding
     (lambda (maybe x-rest) (φ ...) b)   ; anonymous function, x is the rest argument if present
+    (async-lambda e)                    ; where e is a lambda-expression
     (await e)                           ; await a promise
     (quote d)                           ; quotation (the parser quotes all datums)
     (ref e0 e1 e* ...)                  ; reference to array index
@@ -810,9 +811,14 @@
                 (lambda x-rest:Id body:Body)
                 (λ      x-rest:Id body:Body))))
 
+(define-syntax-class AsyncLambda
+  #:literal-sets (keywords)
+  (pattern (async al:Lambda)))  ; Just `async` in the input syntax
+
 (define-syntax-class Await
   #:literal-sets (keywords)
   (pattern (await ae:Expr)))
+
 
 (define-syntax-class Statement
   #:literal-sets (keywords)
@@ -914,6 +920,7 @@
                 e:Assignment
                 e:Let
                 el:Lambda
+                e:AsyncLambda
                 e:Await
                 e:ArrayReference
                 e:Array
@@ -1448,6 +1455,15 @@
        (let ([e (parse-expr #'e)])
          `(await ,e))])))
 
+(define (parse-async-lambda as)
+  (debug (list 'async-lambda (syntax->datum as)))
+  (with-output-language (Lur Expr)
+    (syntax-parse as
+      #:literal-sets (keywords)
+      [(_async-lambda l)
+       (let ([l (parse-lambda #'l)])
+         `(async-lambda ,l))])))
+
 (define (parse-spread e)
   (debug (list 'spread (syntax->datum e)))
   (with-output-language (Lur Expr)
@@ -1522,23 +1538,24 @@
                                               ; (displayln (list 'parse-expr 'expansion: expansion))
                                               (parameterize ([macro-expansion-context parent-context])
                                               (context-parse expansion))]
-      [d:Datum                                (parse-datum       #'d)]
-      [r:Reference                            (parse-reference   #'r)]
-      [(~and s  (begin . _))                  (parse-sequence    #'s)]
-      [(~and t  (if    . _))                  (parse-ternary     #'t)]
-      [(~and a  (:=    . _))                  (parse-assignment  #'a)]
-      [(~and l  (let   . _))                  (parse-let         #'l)]
-      [(~and la (~or (lambda . _) (λ . _)))   (parse-lambda      #'la)]
-      [(~and aw (await . _))                  (parse-await       #'aw)]
-      [(~and o  (object . _))                 (parse-object      #'o)]
+      [d:Datum                                (parse-datum        #'d)]
+      [r:Reference                            (parse-reference    #'r)]
+      [(~and s  (begin . _))                  (parse-sequence     #'s)]
+      [(~and t  (if    . _))                  (parse-ternary      #'t)]
+      [(~and a  (:=    . _))                  (parse-assignment   #'a)]
+      [(~and l  (let   . _))                  (parse-let          #'l)]
+      [(~and la (~or (lambda . _) (λ . _)))   (parse-lambda       #'la)]
+      [(~and al (async . _))                  (parse-async-lambda #'al)]
+      [(~and aw (await . _))                  (parse-await        #'aw)]
+      [(~and o  (object . _))                 (parse-object       #'o)]
       [(~and ar (ref . _))                    (parse-array-reference #'ar)]
-      [(~and ac (array . _))                  (parse-array       #'ac)]
-      [(~and do (dot . _))                    (parse-dot         #'do)]
-      [(~and c  (class . _))                  (parse-class       #'c)]
-      [(~and sp (spread . _))                 (parse-spread      #'sp)]
-      [(~and n  (new . _))                    (parse-new         #'n)]
-      [(~and i  (instanceof . _))             (parse-instanceof  #'i)]
-      [(~and de (delete . _))                 (parse-delete      #'de)]
+      [(~and ac (array . _))                  (parse-array        #'ac)]
+      [(~and do (dot . _))                    (parse-dot          #'do)]
+      [(~and c  (class . _))                  (parse-class        #'c)]
+      [(~and sp (spread . _))                 (parse-spread       #'sp)]
+      [(~and n  (new . _))                    (parse-new          #'n)]
+      [(~and i  (instanceof . _))             (parse-instanceof   #'i)]
+      [(~and de (delete . _))                 (parse-delete       #'de)]
       [(~and a  (e ...)
              (~not (k:keyword . _)))          (parse-application #'a)]
       [_ (raise-syntax-error 'parse-expr (~a "expected an expression, got " e) e)])))
@@ -2354,6 +2371,11 @@
 
 (define current-exports (make-parameter '()))
 
+; The following internal parameter is used when processing async-lambda.
+; It tells the code generator for lambda not to emit parens around the
+; function expression if it part of an async-lambda.
+(define current-avoid-parens? (make-parameter #f))
+
 (define-pass generate-code : L1 (U) -> * ()
   (definitions
     (define (~parens . t)      (list "(" t ")"))
@@ -2615,13 +2637,19 @@
                                             (~parens (~commas e)))
                                    (list (~parens (~parens "function" (~parens (~commas x)) ab)
                                                   (~parens (~commas e))))))]
-    [(lambda ,x-rest (,x ...) ,ab) (let ((args (if x-rest
-                                                   (~parens (~commas (append x (list (list "..." x-rest)))))
-                                                   (~parens (~commas x))))
-                                         (ab (AnnotatedBody ab)))
-                                     (if (current-use-arrows-for-lambda?)
-                                         (~parens args " => " ab)         ; ES6
-                                         (~parens "function" args ab)))]  ; ES5
+    [(lambda ,x-rest (,x ...) ,ab) (define avoid-parens? (current-avoid-parens?))
+                                   (parameterize ([current-avoid-parens? #f])
+                                     (let ((args (if x-rest
+                                                     (~parens (~commas (append x (list (list "..." x-rest)))))
+                                                     (~parens (~commas x))))
+                                           (ab (AnnotatedBody ab)))
+                                       (define wrap (if avoid-parens? list ~parens))
+                                       (if (current-use-arrows-for-lambda?)
+                                           (wrap args " => " ab)         ; ES6
+                                           (wrap "function" args ab))))] ; ES5
+    [(async-lambda ,e)       (list "async "
+                                   (parameterize ([current-avoid-parens? #t])
+                                     (Expr e)))]
     [(await ,e)              (list "await " (Expr e))]
     [(spread ,e)             (list "..." (Expr e))]
     [(instanceof ,e0 ,e1)    (~parens (Expr e0) " instanceof " (Expr e1))]
@@ -2912,6 +2940,7 @@
 (define current-use-es6-export?                       (make-parameter #t)) 
 ; #t = use ES6 syntax for modules exports,
 ; #f = use "old" module convention
+
 
 (define current-urlang-output-file                    (make-parameter #f))
 (define current-urlang-exports-file                   (make-parameter #f))
