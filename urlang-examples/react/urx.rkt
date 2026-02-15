@@ -39,8 +39,7 @@
 ;; '(div foo: "bar" Foo)
 
 ;; The library scribble/html/xml provides a few tools that will help us.
-(require scribble/html/xml
-         )
+(require scribble/html/xml)
 
 ;; First The attribute names are represented as symbols that end with a colon.
 
@@ -118,8 +117,9 @@
              (match body
                ['() (syntax/loc urx-expr
                       (React.createElement tag atts-expr))]
-               [_   (syntax/loc urx-expr
-                      (React.createElement tag atts-expr (array content ...)))])))]))
+               [_   (displayln "XXX")
+                    (syntax/loc urx-expr
+                      (React.createElement tag atts-expr content ...))])))])) ; todo was (array content ...)
     (syntax-parse stx
       [(_urx urx-expr)
        (define out (convert #'urx-expr))
