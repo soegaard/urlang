@@ -162,3 +162,11 @@
 ;;; check for in expression context
 (check-equal? (rs (urlang (urmodule test-for (+ 0 (for/sum ([x in-range 1 6]) x)))))
               15)
+
+
+#;(rs (urlang
+     (urmodule test-for
+       (define sum 0)
+       (for ([x in-array (array 1 2 3 4 5) #:when (odd? x)])
+         (+= sum x))
+       sum)))

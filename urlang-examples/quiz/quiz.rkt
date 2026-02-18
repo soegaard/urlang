@@ -54,14 +54,13 @@
 (require urlang)
 
 (current-urlang-run?                           #f) ; run using Node?              No, use browser
-(current-urlang-echo?                          #t) ; print generated JavaScript?  
-(current-urlang-console.log-module-level-expr? #f) ; print top-level expression?  
-(current-urlang-beautify?                       #t) ; invoke js-beautify 
+(current-urlang-echo?                          #t) ; print generated JavaScript?  Yes, why not
+(current-urlang-console.log-module-level-expr? #f) ; print top-level expression?  No
+(current-urlang-beautify?                      #t) ; invoke js-beautify           Yes
 
 ;;; Urls for JavaScript and CSS libraries used in this example.
 
-;(define bootstrap-css "https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css")
-(define bootstrap-css
+(define bootstrap-css ; The Cerulean theme for Bootstrap
   "https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.3.6/cerulean/bootstrap.min.css")
 (define bootstrap-js  "https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js")
 (define jquery-js     "https://ajax.googleapis.com/ajax/libs/jquery/1.12.0/jquery.min.js")
@@ -161,7 +160,7 @@
     ("The Racket IRC is on ________"                    "freenode")
     ("Racket was formerly known as ___ Scheme"          "PLT")
     ("A list with no elements is called the _____ list" "empty")
-    ("Are lists mutable?"                               "no")
+    ("Are lists mutable?"                               "no")    
     ))
 
 (define  (card->html card)
@@ -195,7 +194,7 @@
 ;;; Generate JavaScript
 
 ;; The urlang will generate a JavaScript file.
-;; The JavaScript will be activated in then the user
+;; The JavaScript will be activated when the user
 ;; clicks the compute button.
 
 (require urlang/extra ; make cond  available in urlang

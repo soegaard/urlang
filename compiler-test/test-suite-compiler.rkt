@@ -18,7 +18,7 @@
 ;; Check that the compiler and racket get the same result.
 
 (define (test-numbers)
-  (define src "tests-compiler/numbers.tests")
+  (define src "numbers.tests")
   (with-input-from-file src
     (λ ()
       (parameterize ([current-namespace (make-base-namespace)])
@@ -37,7 +37,8 @@
 
 
 (define (test-letrec)
-  (define src "tests-compiler/letrec.tests")
+  ; (define src "tests-compiler/letrec.tests")
+  (define src "letrec.tests")
   (define (test? stx) (and (syntax? stx) (eq? 'test (syntax-e stx))))
   (define all
     (with-input-from-file src
@@ -60,5 +61,5 @@
   all)
 
 
-;(test-numbers)
-(test-letrec)
+(test-numbers)
+; (test-letrec)

@@ -45,3 +45,14 @@
 ;(check-equal? (rs (urlang (urmodule test-add1 (-))))      "error")
 
 ;(check-equal? (rs (urlang (urmodule test-add1 (% 1))))   -1)
+#;(check-equal? (rs (urlang (urmodule test-dot
+                              (var [foo 42])
+                              foo.ba-bar.baz)))
+                2)
+
+(urlang
+ (urmodule deleteme
+   ((lambda (x)
+      (define y 43)
+      42))))
+

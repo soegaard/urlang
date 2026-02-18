@@ -36,7 +36,7 @@
     (import string-append str) 
     
     ;; These identifier are available in a browser (but not declared in the source)
-    (import document window window.module prompt alert window.document.body.onload )
+    (import document window window.module prompt alert window.document.body.onload)
     ;; The following types should be supported by urlang.rkt eventually
     (import Array Int8Array Number String this)
     ;; Import Raphael.js

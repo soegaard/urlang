@@ -161,13 +161,14 @@
 (define (handle-in-array clause)
   (syntax-parse clause
     #:literal-sets (for-keywords)
+    ; without #:when
     [[x in-array array-expr]
-     #'(([a array-expr]       ; list of var clauses to create initial state
+     #'(([a array-expr]      ; list of var clauses to create initial state
          [n a.length]
          [i 0])
         (< i n)              ; termination condition
-        ([x (ref a i)]) ; let bindings (needs to bind x)
-        ((+= i 1)))]))  ; statements to step state forward
+        ([x (ref a i)])      ; let bindings (needs to bind x)
+        ((+= i 1)))]))       ; statements to step state forward
 
 
 ;; This handles "Racket strings" not JavaScript strings (see compiler-rjs)

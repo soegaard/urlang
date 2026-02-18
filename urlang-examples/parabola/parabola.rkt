@@ -53,7 +53,7 @@
 (current-urlang-run?                           #f) ; run using Node?              No, use browser
 (current-urlang-echo?                          #t) ; print generated JavaScript?  
 (current-urlang-console.log-module-level-expr? #f) ; print top-level expression?  
-
+; (current-urlang-beatify?                       #t) ; invoke js-beautify 
 
 ;;; Urls for JavaScript and CSS libraries used in this example.
 
