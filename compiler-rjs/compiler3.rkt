@@ -508,7 +508,7 @@
                  )
          ;; Import the Node module "runtime.js"
          (define ,#'RUNTIME
-           (app ,#'require '"/Users/soegaard/Dropbox/GitHub/urlang/compiler-rjs/runtime.js"))
+           (app ,#'require '"/Users/soegaard/Dropbox/GitHub/urlang/compiler-rjs/runtime.mjs"))
          ;; Bind all imported identifiers
          (var [binding ,pr (ref ,RUNTIMES ',pr-str)] ...)
          ;; Global variables
@@ -563,7 +563,7 @@
 
 (let ([find find-identifier-in-tree])
   (global-variables
-   ; These identifiers are not define in runtime.rkt.
+   ; These identifiers are not defined in runtime.rkt.
    ; If an identifier is in this list and in runtime.rkt, then the identifier
    ; exported from runtime.rkt will be alpha-renamed.
    (list (expand-syntax #'srcloc)                          ; expands to kernel:srcloc   
@@ -643,7 +643,7 @@
 ;;;
 ;;;
 
-(eval #'(displayln ((λ() 42))))
+; (eval #'(displayln ((λ() 42))))
 
 #;(begin
     (require racket/unsafe/ops)

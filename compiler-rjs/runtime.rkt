@@ -2,6 +2,7 @@
 (require urlang urlang/extra urlang/for
          syntax/parse syntax/stx racket/syntax)
 (require (for-syntax (only-in urlang urmodule-name->exports))) ; make-base-namespace
+
 ;;; This file contains the runtime library for the
 ;;; Racket to JavaScript compiler in urlang/compiler-rjs.
 ;;; The compiler and the runtime is included as an *example*
@@ -14,7 +15,7 @@
 ;;; NOTES
 ;;;
 
-; Most primitives are representation as javascript functions.
+; Most primitives are represented as javascript functions.
 ; Primitives that need tail call information are represented as Racket closures.
 ; Closures are represented as arrays whose first element is a tag.
 ; See "4.17 Procedures" below for details on the representation of closures.
@@ -26,6 +27,9 @@
 ;;;
 ;;; TODO
 ;;;
+
+;; Node interprets .js files as CommonJS modules and .mjs files as ES modules.
+;; We need to switch to .mjs.
 
 ;;  - add struct type properties to str
 ;;  - add supers to struct type properties
@@ -811,7 +815,7 @@
         [else ; todo: pass arguments to raise-arity-error
          (raise-arity-error (string->symbol "make-string") (list 1 2))]))
     (define/export/arity (make-string1 k)
-      (make-string2 k "\u0000"))
+      (make-string2 k "\\u0000"))  ; todo: check that this produces an ASCII 0 (nul) character in JS
     (define/export/arity (make-string2 k ch)
       ; make-string produces a mutable string
       (var [a (Array (+ k 1))])
@@ -982,7 +986,7 @@
       (array MUTABLE-BYTES (Int8Array.from (ref bs 1))))
     (define/export/arity (byte? v)
       (and (exact-integer? v)
-           (<= 0 v 255)))
+           (and (<= 0 v) (<= v 255))))
     (define/export/arity (bytes-length bs)
       (ref (ref bs 1) "length"))
     (define/export/arity (bytes-ref bs k)
@@ -1528,16 +1532,16 @@
     ;; Representation:
     ;;   (array BOX value )
     
-    (define/export/arity (box? v)             (and (array? v)
-                                                     (or (= (tag v) BOX)
-                                                         (= (tag v) IMMUTABLE-BOX))))
-    (define/export/arity (box v)              (array BOX v))
-    (define/export/arity (box-immutable v)    (array IMMUTABLE-BOX v))
-    (define/export/arity (unbox b)            (ref b 1))
-    (define/export/arity (set-box! b v)       (:= b 1 v))
-    (define/export/arity (box-cas! b old new) (if (eq? (ref b 1) old)
-                                                    (begin (:= b 1 new) #t)
-                                                    #f))
+    (define/export/arity (box? v)              (and (array? v)
+                                                    (or (= (tag v) BOX)
+                                                        (= (tag v) IMMUTABLE-BOX))))
+    (define/export/arity (box v)               (array BOX v))
+    (define/export/arity (box-immutable v)     (array IMMUTABLE-BOX v))
+    (define/export/arity (unbox b)             (ref b 1))
+    (define/export/arity (set-box! b v)        (:= b 1 v))
+    (define/export/arity (box-cas! b old neww) (if (eq? (ref b 1) old)
+                                                   (begin (:= b 1 neww) #t)
+                                                   #f))
     (define/export/arity (immutable-box? v)  (and (array? v) (= (tag v) IMMUTABLE-BOX)))
 
     ;;;
@@ -3328,3 +3332,6 @@
 ;;;
 
 (generate-runtime)
+
+
+;; Remember to copy runtime.js to runtime.mjs to run it as an ES6 module in Node.

@@ -186,7 +186,7 @@
 ;;; PRIMITIVES
 ;;;
 
-;; For some primitives we have need an easy way to construct a
+;; For some primitives we need an easy way to construct a
 ;; variable reference to the primitive.
 
 (define primitives '())
