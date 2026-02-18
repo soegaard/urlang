@@ -27,7 +27,7 @@
 ;;; COND
 ;;;
 
-(check-equal? (rs (urlang (urmodule scond
+(check-equal? (rs (urlang (urmodule cond
                             (+ (cond [#f 10] [0 1] [#t 10])    ;   1
                                (cond [#f 4] [else 10])         ;  10
                                (cond [else 100])))))           ; 100                 
