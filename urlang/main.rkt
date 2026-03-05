@@ -2614,7 +2614,7 @@
                                               [else               d])]
                               [else (error 'generate-code "expected datum, got ~a" d)])]
     [(dot ,e ,pn)            (let ((e (Expr e)))
-                               (if (regexp-match #rx"^([$_a-z][$_a-z0-9]*$)" (~a (syntax-e pn)))
+                               (if (regexp-match #rx"^([$_a-zA-Z][$_a-zA-Z0-9]*$)" (~a (syntax-e pn)))
                                    (list e "." pn)
                                    (list e (~brackets "\"" pn "\""))))]
     [(if ,e0 ,e1 ,e2)       (let ((e0 (Expr e0)) (e1 (Expr e1)) (e2 (Expr e2)))
@@ -2669,7 +2669,7 @@
     [(ref ,e0 ,e1 ,e ...)  (define (pn? _)
                              (nanopass-case (L1 Expr) e1
                                [(quote ,d) (and (property-name? d) (not (number? d))
-                                                (regexp-match #rx"^([$_a-z][$_a-z0-9]*$)"
+                                                (regexp-match #rx"^([$_a-zA-Z][$_a-zA-Z0-9]*$)"
                                                               (~a (if (syntax? d)
                                                                       (syntax-e d)
                                                                       d)))
